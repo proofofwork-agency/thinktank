@@ -4,6 +4,12 @@
   "description": "Record, replay, and govern Vercel AI SDK agents in CI — no API keys. JSONL evidence ledgers and vitest-native trajectory assertions.",
   "type": "module",
   "sideEffects": false,
+  "author": "Danillo Felixdaal (proofofwork-agency)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/proofofwork-agency/thinktank.git",
+    "directory": "concepts/actweave"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
