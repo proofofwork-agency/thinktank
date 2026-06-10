@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.actweave/
+.generated/
+coverage/
+*.tgz
+.engram/
+.contextrelay/
+.DS_Store
+npm-debug.log*
