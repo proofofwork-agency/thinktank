@@ -1,10 +1,20 @@
-name: CI
+name: actweave
 
 on:
   push:
     branches:
       - main
+    paths:
+      - "concepts/actweave/**"
+      - ".github/workflows/actweave.yml"
   pull_request:
+    paths:
+      - "concepts/actweave/**"
+      - ".github/workflows/actweave.yml"
+
+defaults:
+  run:
+    working-directory: concepts/actweave
 
 jobs:
   verify:
@@ -25,6 +35,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
+          cache-dependency-path: concepts/actweave/package-lock.json
 
       - name: Install
         run: npm ci
@@ -44,6 +55,14 @@ jobs:
         if: matrix.node-version == '22.x'
         run: npm run pack:check
 
+      - name: Example (keyless end-to-end)
+        if: matrix.node-version == '22.x'
+        run: |
+          npm run build
+          cd examples/refund-agent
+          npm install
+          npm test
+
   # Non-blocking early warning: do the integration tests still pass against
   # the newest ai release? (The verify job pins an exact version.)
   ai-canary:
@@ -58,6 +77,7 @@ jobs:
         with:
           node-version: "22.x"
           cache: npm
+          cache-dependency-path: concepts/actweave/package-lock.json
 
       - name: Install
         run: npm ci
