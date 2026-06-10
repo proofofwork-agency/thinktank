@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE COG — the metre of the intelligence economy</title>
+<style>
+  :root {
+    --bg: #0a0e14; --panel: #111722; --line: #1e2836;
+    --text: #d6e2f0; --dim: #6b7d93; --accent: #ffb347; --good: #4ade80; --bad: #f87171;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 16px/1.6 -apple-system, "Segoe UI", sans-serif; padding: 0 24px 80px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { padding: 56px 0 8px; }
+  .kicker { color: var(--accent); font-family: var(--mono); font-size: 13px; letter-spacing: 2.5px; text-transform: uppercase; }
+  h1 { font-size: 52px; line-height: 1.05; letter-spacing: -1px; margin: 10px 0 6px; }
+  h1 .gear { color: var(--accent); }
+  .sub { color: var(--dim); font-size: 19px; max-width: 720px; }
+  .fixcard { display: flex; gap: 32px; flex-wrap: wrap; align-items: baseline; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px 28px; margin: 30px 0; }
+  .fixcard .big { font-family: var(--mono); font-size: 44px; color: var(--accent); font-weight: 700; }
+  .fixcard .lbl { color: var(--dim); font-size: 13px; font-family: var(--mono); letter-spacing: 1px; text-transform: uppercase; }
+  .fixcard .cell small { display: block; color: var(--dim); font-size: 12px; margin-top: 2px; }
+  h2 { font-size: 26px; margin: 48px 0 6px; letter-spacing: -0.3px; }
+  .note { color: var(--dim); font-size: 14px; margin-bottom: 16px; }
+  canvas { width: 100%; height: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px 28px; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: block; color: var(--dim); font-size: 12px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  input, select, button { font: 15px var(--mono); color: var(--text); background: #0d1320; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  input { width: 130px; }
+  button { cursor: pointer; background: var(--accent); color: #1a1206; font-weight: 700; border: none; padding: 11px 22px; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .out { display: flex; gap: 36px; flex-wrap: wrap; margin-top: 22px; }
+  .out .v { font-family: var(--mono); font-size: 28px; font-weight: 700; }
+  .out .bad { color: var(--bad); } .out .good { color: var(--good); }
+  .short { font-size: 15px; color: var(--dim); margin-top: 14px; }
+  .short b { color: var(--bad); }
+  table { border-collapse: collapse; font-family: var(--mono); font-size: 13px; margin-top: 14px; width: 100%; }
+  td, th { padding: 5px 14px 5px 0; text-align: right; color: var(--dim); border-bottom: 1px solid var(--line); }
+  th { color: var(--text); } td:first-child, th:first-child { text-align: left; }
+  #liveout { font-family: var(--mono); font-size: 14px; white-space: pre; overflow-x: auto; color: var(--dim); margin-top: 16px; }
+  #liveout .hit { color: var(--good); }
+  footer { color: var(--dim); font-size: 13px; margin-top: 64px; border-top: 1px solid var(--line); padding-top: 18px; }
+  a { color: var(--accent); }
+  .hero { border-left: 4px solid var(--accent); padding: 6px 0 6px 22px; margin: 34px 0 6px; }
+  .hero .one { font-size: 30px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.25; }
+  .hero .three { color: var(--dim); font-size: 17px; max-width: 760px; margin-top: 10px; }
+  .hero .three b { color: var(--accent); }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .card .emoji { font-size: 26px; }
+  .card h3 { font-size: 17px; margin: 8px 0 6px; }
+  .card p { color: var(--dim); font-size: 14.5px; line-height: 1.55; }
+  .card p b { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">COG · proofofworks · draft 0.2</div>
+  <h1>THE C<span class="gear">⚙</span>G</h1>
+  <p class="sub">A capability-indexed unit of account for the intelligence economy.
+  Not a coin. Not a chain. A <em>ruler that doesn't bend</em> — because the price of cognition
+  falls ~10× a year, and every AI contract written in dollars is a hidden bet on that curve.</p>
+</header>
+
+<div class="hero">
+  <div class="one">Stop paying 2024 prices for 2026 intelligence.</div>
+  <div class="three">AI gets ~10× cheaper every year, but a fixed-dollar contract keeps charging
+  you the old price anyway — on a $10k/month deal, that's <b>$195,409</b> quietly lost over two
+  years. Write the deal in <b>cogs</b> — a unit repriced daily to what AI actually costs — and
+  your bill falls with the market. Automatically. No renegotiation.</div>
+</div>
+
+<div class="grid3">
+  <div class="card"><div class="emoji">⛽</div>
+    <h3>Buy liters, not euros</h3>
+    <p>Nobody signs up for “€80 of fuel per month forever” — you buy <b>50 liters at today's pump
+    price</b>. A cog is a liter of intelligence: the contract fixes the <b>amount</b> of AI work,
+    and the price updates daily. Fuel gets cheaper → your bill drops by itself.</p></div>
+  <div class="card"><div class="emoji">📞</div>
+    <h3>The 50-cent minute</h3>
+    <p>People kept paying <b>€0.50/minute</b> on old phone plans for years after calls became
+    nearly free. Every fixed-dollar AI contract is that phone plan — except AI prices fall
+    <b>10× per year</b>, so it turns into a ripoff in months, not decades.</p></div>
+  <div class="card"><div class="emoji">🇨🇱</div>
+    <h3>Chile already proved it</h3>
+    <p>Inflation made mortgages impossible to write, so since <b>1967</b> Chileans write them in
+    the <b>UF</b> — a unit repriced daily by one published number. A whole economy runs on it.
+    The cog is the same machine, pointed the other way: at prices that <b>fall</b>.</p></div>
+</div>
+
+<div class="fixcard">
+  <div class="cell"><div class="lbl" id="fixOfficialLbl">COG-1 fix (official)</div><div class="big" id="fixOfficial">—</div><small id="fixOfficialNote">cheapest documented qualifying run · 2026-06 snapshot</small></div>
+  <div class="cell"><div class="lbl">provisional</div><div class="big" style="font-size:30px" id="fixProv">—</div><small id="fixProvNote">—</small></div>
+  <div class="cell"><div class="lbl">3-yr deflation</div><div class="big" style="font-size:30px" id="deflation">—</div><small>frontier tier, Mar 2023 → Jun 2026</small></div>
+</div>
+
+<h2>The bending ruler</h2>
+<p class="note">USD price of the COG-1 reference workload (1M blended tokens at GPT-4-class capability), log scale.
+The orange line is what your dollar-denominated contract silently assumed. The flat line is the cog: 1 workload = 1 cog, forever, by construction.</p>
+<canvas id="chart" width="1904" height="760"></canvas>
+
+<h2>What the hidden short costs you</h2>
+<p class="note">Reprice any fixed-USD AI contract in cogs. Same price on day one — then the fix takes over.
+Production templates are <b>hybrid</b>: put the vendor's people/support costs in the fixed leg — only the cognition leg rides the fix.</p>
+<div class="panel">
+  <div class="row">
+    <div><label>total USD / month</label><input id="usd" type="number" value="10000" min="1"></div>
+    <div><label>of which fixed (non-AI) leg</label><input id="fixedLeg" type="number" value="0" min="0"></div>
+    <div><label>term (months)</label><input id="months" type="number" value="24" min="1" max="48"></div>
+    <div><label>signed</label><select id="start"></select></div>
+    <div><button id="go">reprice in cogs</button></div>
+  </div>
+  <div class="out">
+    <div><label>fixed-USD total</label><div class="v bad" id="oUsd">—</div></div>
+    <div><label>cog-denominated total</label><div class="v good" id="oCog">—</div></div>
+    <div><label>the hidden short</label><div class="v bad" id="oShort">—</div></div>
+  </div>
+  <div class="short" id="oNote"></div>
+  <table id="oTable" hidden></table>
+</div>
+
+<h2>Live provisional fix</h2>
+<p class="note">Pulls posted prices from OpenRouter's public API in your browser and computes the cheapest
+blended price among assumed-qualifying models. A real fixer replaces posted prices with <em>receipted executed runs</em>.</p>
+<div class="panel">
+  <button class="ghost" id="live">fetch live fix from OpenRouter</button>
+  <div id="liveout"></div>
+</div>
+
+<footer>
+  1 cog = depth-verified market price of 1M blended tokens (800k in / 200k out) at frozen GPT-4-class capability
+  (volume-weighted median of receipted sized runs — a loss-leader sip can't set the fix) ·
+  blended $/M = 0.8×input + 0.2×output · backtest uses documented launch prices as proxy (approximate; see
+  <a href="../WHITEPAPER.md">WHITEPAPER.md</a> and <a href="../cogfix/data.json">data.json</a>) ·
+  precedents: Chile's UF (1967), the lumen (1924), chained CPI
+</footer>
+
+</div>
+<script>
+// ——— data (mirrors cogfix/data.json; sources there) ———
+const SERIES = [ // [YYYY-MM, model, blended $/M, status]
+  ["2023-03","GPT-4",36.0,"documented"],
+  ["2023-11","GPT-4 Turbo",14.0,"documented"],
+  ["2024-05","GPT-4o",7.0,"documented"],
+  ["2024-08","GPT-4o (Aug)",4.0,"documented"],
+  ["2024-12","DeepSeek-V3",0.436,"documented"],
+  ["2025-09","Grok 4 Fast",0.26,"documented"],
+  ["2026-06","DeepSeek V3.2",0.2517,"live-quote"],
+  ["2026-06","DeepSeek V4 Flash",0.118,"provisional"],
+];
+const ALLOWLIST = ["deepseek/deepseek-v3.2","deepseek/deepseek-v4-flash","deepseek/deepseek-v4-pro",
+  "openai/gpt-4o-mini","google/gemini-2.0-flash-001","x-ai/grok-4-fast",
+  "meta-llama/llama-3.3-70b-instruct","qwen/qwen-2.5-72b-instruct"];
+
+const mi = ym => { const [y,m] = ym.split("-").map(Number); return y*12+m-1; };
+const ymAdd = (ym,k) => { const i = mi(ym)+k; return `${String(Math.floor(i/12)).padStart(4,"0")}-${String(i%12+1).padStart(2,"0")}`; };
+const fmt$ = x => "$" + Math.round(x).toLocaleString("en-US");
+
+// official fix series: cheapest non-provisional per month
+const OFFICIAL = (() => {
+  const m = new Map();
+  for (const [d,,p,s] of SERIES) if (s !== "provisional") m.set(mi(d), Math.min(m.get(mi(d)) ?? Infinity, p));
+  return [...m.entries()].sort((a,b) => a[0]-b[0]);
+})();
+
+function fixAt(ym) { // log-linear interpolation; held flat after last point
+  const i = mi(ym), s = OFFICIAL;
+  if (i <= s[0][0]) return s[0][1];
+  if (i >= s.at(-1)[0]) return s.at(-1)[1];
+  for (let k = 0; k < s.length-1; k++) {
+    const [i0,p0] = s[k], [i1,p1] = s[k+1];
+    if (i >= i0 && i <= i1) return Math.exp(Math.log(p0) + (i-i0)/(i1-i0) * (Math.log(p1)-Math.log(p0)));
+  }
+}
+
+// ——— fix cards ———
+const official = OFFICIAL.at(-1)[1];
+const prov = SERIES.find(r => r[3] === "provisional");
+document.getElementById("fixOfficial").textContent = "$" + official.toFixed(4);
+document.getElementById("fixProv").textContent = "$" + prov[2].toFixed(4);
+document.getElementById("fixProvNote").textContent = prov[1] + " · pending qualifying basket run";
+document.getElementById("deflation").textContent = Math.round(OFFICIAL[0][1] / official) + "×";
+
+// upgrade the cards to the PUBLISHED fix when fixerd output is served alongside the demo
+fetch("../fixer/fix.json").then(r => r.ok ? r.json() : null).then(p => {
+  if (!p || !p.fix_usd) return;
+  document.getElementById("fixOfficialLbl").textContent = "COG-1 fix (published)";
+  document.getElementById("fixOfficial").textContent = "$" + p.fix_usd.toFixed(4);
+  document.getElementById("fixOfficialNote").textContent =
+    `fixerd · ${p.date} · ${p.mode} mode · ssh-signed`;
+  if (p.floor_usd) {
+    document.getElementById("fixProv").textContent = "$" + p.floor_usd.toFixed(4);
+    document.getElementById("fixProvNote").textContent = "cheapest posted today (floor, unreceipted)";
+  }
+  document.getElementById("deflation").textContent = Math.round(OFFICIAL[0][1] / p.fix_usd) + "×";
+}).catch(() => {});
+
+// ——— chart ———
+(() => {
+  const cv = document.getElementById("chart"), ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height, L = 110, R = 40, T = 50, B = 70;
+  const i0 = mi("2023-01"), i1 = mi("2026-09");
+  const yMin = Math.log10(0.05), yMax = Math.log10(60);
+  const X = i => L + (i - i0) / (i1 - i0) * (W - L - R);
+  const Y = p => T + (yMax - Math.log10(p)) / (yMax - yMin) * (H - T - B);
+  ctx.fillStyle = "#111722"; ctx.fillRect(0,0,W,H);
+  ctx.font = "22px ui-monospace, Menlo, monospace";
+  // gridlines (decades)
+  for (const p of [0.1, 1, 10]) {
+    ctx.strokeStyle = "#1e2836"; ctx.beginPath(); ctx.moveTo(L, Y(p)); ctx.lineTo(W-R, Y(p)); ctx.stroke();
+    ctx.fillStyle = "#6b7d93"; ctx.textAlign = "right"; ctx.fillText("$" + p, L - 12, Y(p) + 7);
+  }
+  for (let y = 2023; y <= 2026; y++) {
+    const x = X(mi(y + "-01"));
+    ctx.strokeStyle = "#161e2b"; ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, H-B); ctx.stroke();
+    ctx.fillStyle = "#6b7d93"; ctx.textAlign = "center"; ctx.fillText(y, x, H - 34);
+  }
+  // flat cog line (1 workload = 1 cog)
+  ctx.strokeStyle = "#4ade80"; ctx.setLineDash([10,8]); ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(L, Y(1)); ctx.lineTo(W-R, Y(1)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "#4ade80"; ctx.textAlign = "left";
+  ctx.fillText("the cog: 1 reference workload = 1 cog, forever", L + 14, Y(1) - 12);
+  // USD line through official points (log-linear segments)
+  ctx.strokeStyle = "#ffb347"; ctx.lineWidth = 4; ctx.beginPath();
+  OFFICIAL.forEach(([i,p], k) => k ? ctx.lineTo(X(i), Y(p)) : ctx.moveTo(X(i), Y(p)));
+  ctx.stroke();
+  // points + labels
+  const pts = SERIES.filter(r => r[3] !== "provisional");
+  for (const [d, name, p] of pts) {
+    ctx.fillStyle = "#ffb347"; ctx.beginPath(); ctx.arc(X(mi(d)), Y(p), 8, 0, 7); ctx.fill();
+  }
+  // label a few key points
+  const lab = (d, p, txt, dy=-18, anchor="center") => { ctx.fillStyle = "#d6e2f0"; ctx.textAlign = anchor; ctx.fillText(txt, X(mi(d)), Y(p) + dy); };
+  lab("2023-03", 36, "GPT-4  $36.00", -20, "left");
+  lab("2024-05", 7, "GPT-4o  $7.00", -22);
+  lab("2024-12", 0.436, "DeepSeek-V3  $0.44", -22);
+  lab("2026-06", 0.2517, "$0.25", -22, "right");
+  // provisional point
+  ctx.fillStyle = "#f87171"; ctx.beginPath(); ctx.arc(X(mi(prov[0])), Y(prov[2]), 8, 0, 7); ctx.fill();
+  ctx.textAlign = "right"; ctx.fillText("V4 Flash $0.12 (prov.)", X(mi(prov[0])) - 14, Y(prov[2]) + 8);
+  // title
+  ctx.fillStyle = "#6b7d93"; ctx.textAlign = "left";
+  ctx.fillText("USD price of the COG-1 reference workload — log scale — 143× in 39 months (~4.6×/yr)", L, 30);
+})();
+
+// ——— repricer ———
+const sel = document.getElementById("start");
+for (let i = mi("2023-03"); i <= mi("2026-06"); i++) {
+  const ym = `${Math.floor(i/12)}-${String(i%12+1).padStart(2,"0")}`;
+  const o = document.createElement("option"); o.value = o.textContent = ym;
+  if (ym === "2024-05") o.selected = true;
+  sel.appendChild(o);
+}
+function reprice() {
+  const usd = +document.getElementById("usd").value, months = +document.getElementById("months").value, start = sel.value;
+  const fixedLeg = Math.min(Math.max(+document.getElementById("fixedLeg").value || 0, 0), usd - 1);
+  document.getElementById("fixedLeg").value = fixedLeg;
+  const f0 = fixAt(start), cogs = (usd - fixedLeg) / f0;
+  let totalCog = 0; const rows = [];
+  for (let k = 0; k < months; k++) {
+    const ym = ymAdd(start, k), f = fixAt(ym), inv = fixedLeg + cogs * f;
+    totalCog += inv; rows.push([k+1, ym, f, inv]);
+  }
+  const totalUsd = usd * months, short = totalUsd - totalCog;
+  document.getElementById("oUsd").textContent = fmt$(totalUsd);
+  document.getElementById("oCog").textContent = fmt$(totalCog);
+  document.getElementById("oShort").textContent = fmt$(short) + ` (${Math.round(short/totalUsd*100)}%)`;
+  document.getElementById("oNote").innerHTML =
+    (fixedLeg
+      ? `Hybrid deal: <b>${fmt$(fixedLeg)} fixed + ${Math.round(cogs).toLocaleString()} cogs/month</b> (identical price at signing, fix $${f0.toFixed(4)}/cog). The people-leg never deflates — the vendor's payroll survives; the buyer still captures all cognition deflation.`
+      : `Same deal as <b>${Math.round(cogs).toLocaleString()} cogs/month</b> (identical price at signing, fix $${f0.toFixed(4)}/cog). The difference is the bet on AI progress you never chose to make.`) +
+    (mi(ymAdd(start, months-1)) > OFFICIAL.at(-1)[0] ? " <i>Months beyond Jun 2026 hold the fix flat — no extrapolation.</i>" : "");
+  const t = document.getElementById("oTable"); t.hidden = false;
+  const show = rows.length <= 8 ? rows : [...rows.slice(0,3), null, ...rows.slice(-3)];
+  t.innerHTML = "<tr><th>month</th><th>fix $/cog</th><th>indexed invoice</th><th>fixed-USD invoice</th></tr>" +
+    show.map(r => r ? `<tr><td>${r[1]}</td><td>${r[2].toFixed(4)}</td><td>${fmt$(r[3])}</td><td>${fmt$(usd)}</td></tr>`
+                    : `<tr><td colspan="4" style="text-align:center">…</td></tr>`).join("");
+}
+document.getElementById("go").onclick = reprice;
+reprice();
+
+// ——— live fix ———
+document.getElementById("live").onclick = async () => {
+  const out = document.getElementById("liveout");
+  out.textContent = "fetching openrouter.ai/api/v1/models …";
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/models");
+    const models = new Map((await r.json()).data.map(m => [m.id, m]));
+    let best = null, lines = [["model","in $/M","out $/M","blended"].map(s => s.padStart(s === "model" ? 0 : 10)).join("  ")];
+    for (const id of ALLOWLIST) {
+      const m = models.get(id); if (!m) continue;
+      const pin = m.pricing.prompt * 1e6, pout = m.pricing.completion * 1e6, b = 0.8*pin + 0.2*pout;
+      lines.push(id.padEnd(36) + pin.toFixed(3).padStart(8) + pout.toFixed(3).padStart(10) + b.toFixed(4).padStart(10));
+      if (!best || b < best[1]) best = [id, b];
+    }
+    out.textContent = lines.join("\n") + "\n\n";   // API-adjacent: textContent only, never markup
+    const verdict = document.createElement("span");
+    verdict.className = best ? "hit" : "";
+    verdict.textContent = best
+      ? `PROVISIONAL LIVE FIX: 1 cog = $${best[1].toFixed(4)}  (${best[0]}, posted price, unreceipted)`
+      : "no allowlisted models in feed.";
+    out.appendChild(verdict);
+  } catch (e) {
+    out.textContent = "fetch failed (offline or CORS): " + e.message + "\nFalling back to bundled snapshot: 1 cog = $" + official.toFixed(4) + " (2026-06-10).";
+  }
+};
+</script>
+</body>
+</html>

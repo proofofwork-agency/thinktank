@@ -1,0 +1,9 @@
+# the fixer's private signing key NEVER leaves this machine
+fixer/keys/
+
+.contextrelay/
+harness/dryrun_report.json
+fixer/fixerd.log
+__pycache__/
+*.pyc
+.DS_Store

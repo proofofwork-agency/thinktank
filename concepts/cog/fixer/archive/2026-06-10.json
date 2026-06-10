@@ -1,0 +1,55 @@
+{
+  "basket": "COG-1 (draft)",
+  "date": "2026-06-10",
+  "mode": "quote",
+  "fix_usd": 0.144,
+  "floor_usd": 0.11796,
+  "method": "median of 3 cheapest allowlisted posted blended prices (PROVISIONAL, unreceipted)",
+  "blend": "blended $/M = 0.8*input + 0.2*output (4:1 reference mix)",
+  "reference_workload": "1,000,000 blended tokens (800k in / 200k out) at COG-1 tier",
+  "qualification": {
+    "basis": "assumed static allowlist (no exam run yet \u2014 run harness/qualify.py)"
+  },
+  "models": [
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "in_usd_per_M": 0.0983,
+      "out_usd_per_M": 0.1966,
+      "blended_usd_per_M": 0.11796
+    },
+    {
+      "model": "meta-llama/llama-3.3-70b-instruct",
+      "in_usd_per_M": 0.1,
+      "out_usd_per_M": 0.32,
+      "blended_usd_per_M": 0.144
+    },
+    {
+      "model": "openai/gpt-4o-mini",
+      "in_usd_per_M": 0.15,
+      "out_usd_per_M": 0.6,
+      "blended_usd_per_M": 0.24
+    },
+    {
+      "model": "deepseek/deepseek-v3.2",
+      "in_usd_per_M": 0.2288,
+      "out_usd_per_M": 0.3432,
+      "blended_usd_per_M": 0.25168
+    },
+    {
+      "model": "qwen/qwen-2.5-72b-instruct",
+      "in_usd_per_M": 0.36,
+      "out_usd_per_M": 0.4,
+      "blended_usd_per_M": 0.368
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "in_usd_per_M": 0.435,
+      "out_usd_per_M": 0.87,
+      "blended_usd_per_M": 0.522
+    }
+  ],
+  "receipts": [],
+  "spend_usd_est": 0.0,
+  "publisher": "proofofwork-agency/cog fixerd v0.1",
+  "spec": "WHITEPAPER.md (COG-1 draft 0.1)"
+}

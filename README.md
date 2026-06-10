@@ -21,9 +21,10 @@ Language at the edges, verification at the core.
 | Concept | One-liner | Status | Verdict |
 |---|---|---|---|
 | [`concepts/ultrabrain`](concepts/ultrabrain/) | LLM as perception only; knowledge enters a per-user ledger through a deterministic verify-gate; answers come with Datalog proofs | **Concept — working prototype** | Architecture proved; perception stays commodity; the gate + ledger + proofs are the keep |
+| [`concepts/cog`](concepts/cog/) | The COG — deflation-native unit of account for AI contracts: 1 cog = depth-verified price of a frozen workload at frozen capability; daily ssh-signed fix, exam-gated qualification, MCP server, hybrid contract riders | **Concept — operating prototype** (fix published daily since 2026-06-09) | Unit sound, 2× novelty-verified (nearest prior art: arXiv "Standard Inference Token"); hybrid fixed-USD+cog is the adoption shape; open: real exam runs, receipted buys, public hosting |
 
-Related (separate repos): **DeliveryProof** (receipts for delivered work) · **cog** (the COG —
-deflation-native unit of account; the price half of receipts).
+Related (separate repos): **DeliveryProof** (receipts for delivered work — the *did-it-happen*
+half; the cog is the *what-is-it-worth* half).
 
 ## Layout
 
