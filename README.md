@@ -1,6 +1,7 @@
 # ThinkTank
 
-**ProofOfWorks' concept lab — a monorepo of inventions: sparred, prototyped, verdicted.**
+**ProofOfWorks' concept lab (stuff that needs to get out of our heads) — a monorepo of inventions: sparred, prototyped, verdicted.** 
+
 
 Every concept here follows the same lifecycle:
 
