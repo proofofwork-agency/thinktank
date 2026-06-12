@@ -8,7 +8,7 @@ assignees: ""
 
 ## Concept
 
-Which concept (e.g. `concepts/actweave`, `concepts/cog`, `concepts/ultrabrain`) and version/commit.
+Which concept (e.g. `concepts/actweave`, `concepts/cog`, `concepts/ultrabrain`, `concepts/deliveryproof`) and version/commit.
 
 ## What Happened
 

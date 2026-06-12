@@ -1,0 +1,56 @@
+name: deliveryproof
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "concepts/deliveryproof/**"
+      - ".github/workflows/deliveryproof.yml"
+  pull_request:
+    paths:
+      - "concepts/deliveryproof/**"
+      - ".github/workflows/deliveryproof.yml"
+
+defaults:
+  run:
+    working-directory: concepts/deliveryproof
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - "22.x"
+          - "24.x"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: concepts/deliveryproof/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Dependency guard
+        run: npm run verify:deps
+
+      - name: Demo build
+        if: matrix.node-version == '22.x'
+        working-directory: concepts/deliveryproof/example
+        run: |
+          npm ci
+          npm run build

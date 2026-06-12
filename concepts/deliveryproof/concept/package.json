@@ -1,0 +1,39 @@
+{
+  "name": "deliveryproof",
+  "version": "0.9.1",
+  "description": "Objective verified-delivery settlement protocol with one audited runtime dependency (@noble/hashes) for Ethereum keccak/ABI helpers; otherwise Node built-ins only",
+  "author": "danillo felixdaal",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/proofofwork-agency/thinktank.git",
+    "directory": "concepts/deliveryproof/concept"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "src/",
+    "examples/",
+    "docs/",
+    "README.md",
+    "SPEC.md",
+    "PRODUCTION-READINESS.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "find src test examples scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check",
+    "demo": "for f in examples/*.mjs; do node \"$f\"; done"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@noble/hashes": "2.2.0"
+  }
+}

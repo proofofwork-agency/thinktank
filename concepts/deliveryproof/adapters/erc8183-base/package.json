@@ -1,0 +1,40 @@
+{
+  "name": "@deliveryproof/rail-erc8183-base",
+  "version": "0.1.0",
+  "description": "First DeliveryProof RailAdapter for the ERC-8183 (Agentic Commerce) evaluator slot: reads an already-funded Submitted job and releases (complete) or refunds (reject) escrow from a signed DeliveryProof receipt. Evaluator only — never funds, custodies, or submits. Testnet/local only. viem is an optional, lazily imported dependency.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/proofofwork-agency/thinktank.git",
+    "directory": "concepts/deliveryproof/adapters/erc8183-base"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "src/",
+    "examples/",
+    "docs/",
+    "README.md",
+    "SECURITY.md",
+    "ESCALATIONS.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "find src test examples -name '*.mjs' -print0 | xargs -0 -n1 node --check",
+    "conformance": "node examples/conformance-demo.mjs"
+  },
+  "dependencies": {
+    "deliveryproof": "*"
+  },
+  "optionalDependencies": {
+    "viem": "^2"
+  }
+}

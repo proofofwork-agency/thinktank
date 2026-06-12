@@ -1,0 +1,26 @@
+{
+  "name": "deliveryproof-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "DeliveryProof monorepo: the verified-delivery-gated settlement reference library (concept/) plus real rail adapters (adapters/*).",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/proofofwork-agency/thinktank.git",
+    "directory": "concepts/deliveryproof"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "concept",
+    "adapters/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "check": "npm run check --workspaces --if-present",
+    "verify:deps": "DELIVERYPROOF_DEP_GUARD_ROOT=concept node concept/scripts/verify-dependencies.mjs",
+    "test:concept": "npm test -w concept"
+  }
+}

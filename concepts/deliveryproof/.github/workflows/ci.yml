@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 22.x
+          - 24.x
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # Single workspace install: links concept + adapters and hoists deps
+      # (including the adapter's optional viem). The core's one-dependency
+      # guarantee is verified separately against concept/ in isolation below.
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Verify core dependency allowlist (concept/ in isolation)
+        run: DELIVERYPROOF_DEP_GUARD_ROOT=concept node concept/scripts/verify-dependencies.mjs
+
+      - name: Run all workspace tests
+        run: npm test --workspaces --if-present
+
+      - name: Syntax-check all workspaces
+        run: npm run check --workspaces --if-present
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Verify core package contents
+        run: npm pack --workspace concept --dry-run
