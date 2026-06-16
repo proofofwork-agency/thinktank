@@ -194,9 +194,50 @@ class SkillMemory:
 class ContextAssembler:
     """Builds compact model context from trusted facts and procedural memory."""
 
-    def __init__(self, kb, skills=None):
+    def __init__(self, kb, skills=None, ledger=None, evidence=None):
         self.kb = kb
         self.skills = skills
+        self.ledger = ledger
+        self.evidence = evidence or getattr(kb, "evidence", None)
+
+    def _recent_failures(self, task, limit=3):
+        if not self.ledger:
+            return []
+        q = _terms(task)
+        hits = []
+        for row in self.ledger.read("failures"):
+            text = f"{row.get('reason') or ''} {row.get('artifact') or ''}"
+            score = len(q & _terms(text))
+            if score:
+                hits.append((score, row.get("ts", 0), row))
+        hits.sort(key=lambda item: (-item[0], -item[1]))
+        return [
+            {
+                "reason": row.get("reason"),
+                "artifact": row.get("artifact"),
+                "episode_id": row.get("episode_id"),
+            }
+            for _score, _ts, row in hits[:limit]
+        ]
+
+    def _relevant_beliefs(self, task, limit=5):
+        if not self.evidence:
+            return []
+        q = _terms(task)
+        hits = []
+        for claim, belief in self.evidence.active_beliefs().items():
+            score = len(q & _terms(claim))
+            if score:
+                hits.append((score, belief.get("ts", 0), claim, belief))
+        hits.sort(key=lambda item: (-item[0], -item[1], item[2]))
+        return [
+            {
+                "claim": claim,
+                "source_type": belief.get("source_type"),
+                "verifier": belief.get("verifier"),
+            }
+            for _score, _ts, claim, belief in hits[:limit]
+        ]
 
     def build(self, task, skill_limit=3, fact_limit=12):
         facts = self.kb.dump()[:fact_limit] if self.kb else []
@@ -204,6 +245,8 @@ class ContextAssembler:
         return {
             "task": task,
             "trusted_facts": facts,
+            "recent_failures": self._recent_failures(task),
+            "relevant_beliefs": self._relevant_beliefs(task),
             "relevant_skills": [
                 {"title": s["title"], "path": s["path"], "content": s["content"]}
                 for s in skill_hits
@@ -227,7 +270,7 @@ class SelfLearningAgent:
         self.evidence = evidence
 
     def context_for(self, task, skill_limit=3, fact_limit=12):
-        return ContextAssembler(self.kb, self.skills).build(task, skill_limit, fact_limit)
+        return ContextAssembler(self.kb, self.skills, self.ledger, self.evidence).build(task, skill_limit, fact_limit)
 
     def tell(self, statement, proposal=None, source="user", teacher=None):
         episode = self.ledger.record_episode(
@@ -295,6 +338,23 @@ class SelfLearningAgent:
             raise ValueError("evidence store is not configured")
         evidence = self.evidence.run_pytest(cwd, args=args)
         return {"evidence": evidence, "beliefs": [b for b in self.evidence.beliefs() if evidence["id"] in b["evidence_ids"]]}
+
+    def oracle_py_compile(self, cwd, path):
+        if not self.evidence:
+            raise ValueError("evidence store is not configured")
+        evidence = self.evidence.run_py_compile(cwd, path)
+        return {"evidence": evidence, "beliefs": [b for b in self.evidence.beliefs() if evidence["id"] in b["evidence_ids"]]}
+
+    def oracle_code_search(self, cwd, symbol):
+        if not self.evidence:
+            raise ValueError("evidence store is not configured")
+        evidence = self.evidence.run_code_search(cwd, symbol)
+        return {"evidence": evidence, "beliefs": [b for b in self.evidence.beliefs() if evidence["id"] in b["evidence_ids"]]}
+
+    def record_project_claim(self, claim, note=None):
+        if not self.evidence:
+            raise ValueError("evidence store is not configured")
+        return self.evidence.record_user_claim(claim, note=note)
 
     def why_belief(self, claim):
         if not self.evidence:

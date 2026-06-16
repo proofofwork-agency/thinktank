@@ -7,6 +7,7 @@ import os
 from ultrabrain.kb import KB
 from ultrabrain.evidence import EvidenceStore
 from ultrabrain.identity import validate_user_id
+from ultrabrain.project import ingest_project
 from ultrabrain.self_learning import ExperienceLedger, SelfLearningAgent, SkillMemory
 
 
@@ -36,6 +37,24 @@ def run(cmd, agent):
     elif op == "oracle-pytest":
         cwd, _, args = rest.partition(" -- ")
         show(agent.oracle_pytest(cwd or ".", args.split() if args else None))
+    elif op == "oracle-compile":
+        show(agent.oracle_py_compile(".", rest))
+    elif op == "oracle-search":
+        show(agent.oracle_code_search(".", rest))
+    elif op == "ingest":
+        show(ingest_project(agent, rest or "."))
+    elif op == "depends":
+        module, sep, dep = rest.partition("=>")
+        if not sep:
+            show({"accepted": False, "verdict": "depends command needs: depends module => dependency"})
+        else:
+            show(agent.record_project_claim(f"depends_on({module.strip()},{dep.strip()})", note=rest))
+    elif op == "bug":
+        symptom, sep, cause = rest.partition("=>")
+        if not sep:
+            show({"accepted": False, "verdict": "bug command needs: bug symptom => cause"})
+        else:
+            show(agent.record_project_claim(f"bug_caused_by({symptom.strip()},{cause.strip()})", note=rest))
     elif op == "why-belief":
         show(agent.why_belief(rest))
     elif op == "training-traces":
@@ -67,7 +86,7 @@ def run(cmd, agent):
     elif op == "context":
         show(agent.context_for(rest))
     else:
-        show({"accepted": False, "verdict": "commands: tell | teacher | proposal | oracle-git-diff | oracle-pytest | why-belief | training-traces | retract | verify-ledger | math | teacher-math | learn | ask | skill | context"})
+        show({"accepted": False, "verdict": "commands: tell | teacher | proposal | oracle-git-diff | oracle-pytest | oracle-compile | oracle-search | ingest | depends | bug | why-belief | training-traces | retract | verify-ledger | math | teacher-math | learn | ask | skill | context"})
 
 
 def main():
@@ -80,9 +99,9 @@ def main():
     a = ap.parse_args()
     user = validate_user_id(a.user)
 
-    kb = KB(user, root=a.kb_root)
     ledger = ExperienceLedger(user, root=a.state_root)
     evidence = EvidenceStore(user, root=a.state_root)
+    kb = KB(user, root=a.kb_root, evidence=evidence)
     skills = SkillMemory(os.path.join(a.skills_root, user))
     agent = SelfLearningAgent(kb, ledger, skills, evidence=evidence)
 

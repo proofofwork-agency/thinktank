@@ -25,6 +25,7 @@ sampled tokens are not reasoning. UltraBrain splits the brain:
 | Evidence | oracle/user-backed records | trusted beliefs trace to exact evidence; `why-belief` shows the command + digest |
 | Skills | Markdown procedural memory | verified procedures are retrieved before acting |
 | Action core (v0.3) | predict the next **verified action**, not the next token | trained on actions a verifier blessed; eval is verified-yield vs baselines |
+| Project brain (M2/M6) | read-only tool oracles → project predicates + `fix_verified_by` | remembers a codebase across restarts; connects fixes to verifying tests; auto-retracts on regression |
 
 The LM proposes; oracles, user corrections, and deterministic trust policy decide what
 can become trusted. In v0.3 the trust boundary is a **capability**, not a naming
@@ -124,6 +125,25 @@ v0.3 action-prediction core — predict the next **verified action**, not the ne
 python3 train_actions.py            # train on verified-action traces (synthetic + real)
 python3 eval_actions.py             # verified-yield vs majority / random baselines
 ```
+
+Local project brain (M2 tool layer + M6 domain) — point it at a real repo, build verified
+memory, connect fixes to the tests that verified them:
+
+```bash
+python3 agent.py --user you \
+  --cmd 'ingest .' \
+  --cmd 'oracle-compile ultrabrain/evidence.py' \
+  --cmd 'oracle-search EvidenceStore' \
+  --cmd 'why-belief fix_verified_by(ultrabrain/kb.py,0)'
+```
+
+`ingest` runs a read-only tool battery (git diff, import checks, `py_compile`, pytest) and
+records `compiles_ok` / `imports_ok` / `file_contains` / `changed_file` / `pytest_passed`,
+then derives `fix_verified_by(change, pytest_exit)` for every changed file consistent with a
+passing suite — which the TMS **auto-retracts the moment a later test fails** (connecting
+fixes to tests, and avoiding known-bad fixes). Dogfooding: UltraBrain ingests its **own**
+repo (35 `compiles_ok`, 8 `imports_ok`, 7 `fix_verified_by`, each with a proof chain back to
+the exact tool command) — the project brain that knows its own codebase.
 
 Demo of the point:
 

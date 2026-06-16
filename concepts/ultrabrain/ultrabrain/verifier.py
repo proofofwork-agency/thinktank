@@ -42,6 +42,8 @@ BUILTINS = {"neq", "lt", "gt"}
 CONTRADICTS = {
     "imports_ok": "imports_broken",
     "imports_broken": "imports_ok",
+    "compiles_ok": "compile_error",
+    "compile_error": "compiles_ok",
 }
 
 

@@ -64,20 +64,35 @@ Implemented:
   `skill`, `context`, `proposal`, `oracle-git-diff`, `oracle-pytest`, `why-belief`,
   and `training-traces`.
 - Tests proving teacher rejection, proof answers, training candidates, and skill retrieval.
+- **v0.3:** capability-gated trust boundary (unforgeable in-process grants), a real Truth
+  Maintenance System (append-only retraction + dependent cascade + cross-predicate
+  contradiction + rank precedence), KB as a live typed projection of the evidence store,
+  a tamper-evident ledger hash chain, and an action-prediction core (predict the next
+  verified action) with a verified-yield eval.
+- **Decisive experiment:** the Trust-Boundary A/B experiment ran and System B (UltraBrain)
+  cleared all five pass bars vs a vector-DB baseline (see `docs/EXPERIMENT.md`).
+- **M2/M6 first slice:** read-only project tool layer (`run_py_compile`, `run_code_search`,
+  alongside git diff / pytest / import check) with `risk_class` metadata; project predicates
+  (`file_contains`, `compiles_ok`/`compile_error`, `fix_verified_by`, `depends_on`,
+  `bug_caused_by`); `fix_verified_by` derived from a change + passing suite and auto-retracted
+  on regression; `ingest_project` battery + `ingest`/`oracle-compile`/`oracle-search` CLI;
+  the context assembler surfaces recent failures + relevant beliefs. UltraBrain can ingest
+  its own repo (dogfooding).
 
 Not implemented yet:
 
 - Real external teacher connector.
-- General tool execution layer beyond the first two oracles.
-- Tool policy/permission model.
+- Write/shell/destructive tool execution + approval policy (read-only tools shipped; the
+  `risk_class` field is the forward hook).
+- Per-test pytest result parsing (`test_passes(test_id,result)`) and causal fix attribution.
 - Structured model-output parser for plans/actions.
 - Retrieval beyond simple keyword matching.
 - Lesson extraction automation.
-- Adapter training pipeline.
-- Model promotion/eval harness.
-- Real benchmark suite.
-- Full TMS dependency graph with dependent belief re-derivation across arbitrary predicates.
-- Unified evidence-backed projection for trusted rules and derived Datalog facts.
+- Full adapter training pipeline (the action model is the first specialist).
+- Real benchmark suite (the decisive experiment is the first head-to-head).
+- Datalog bridging of project predicates and a unified projection for trusted rules.
+- SQLite-backed evidence store with an indexed active projection (scale), and HMAC/
+  signed-checkpoint ledger authentication (the hash chain is tamper-evident, not authenticated).
 
 ## Milestone 0 — Keep The Kernel Honest
 

@@ -763,3 +763,82 @@ def test_kb_projection_is_live_not_snapshot():
         store.record_user_claim("parent(maria,jan)")  # direct store write
         assert ("parent", ("maria", "jan")) in kb.facts  # reflected live
         assert kb.facts == store.typed_facts()
+
+
+def test_py_compile_oracle_records_registered_claims():
+    # M2/M6: a real py_compile subprocess → registered compiles_ok/compile_error.
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(d, "good.py"), "w") as f:
+            f.write("x = 1\n")
+        with open(os.path.join(d, "bad.py"), "w") as f:
+            f.write("def oops(:\n")
+        store = EvidenceStore("u", root=os.path.join(d, "state"))
+        store.run_py_compile(d, "good.py")
+        store.run_py_compile(d, "bad.py")
+
+        active = store.active_beliefs()
+        assert "compiles_ok(good.py)" in active
+        assert "compile_error(bad.py)" in active
+        why = store.why("compile_error(bad.py)")
+        assert why["proved"] is True
+        assert "py_compile" in why["evidence"][0]["command"]
+        assert why["evidence"][0]["exit_code"] != 0
+
+        try:
+            store.run_py_compile(d, "../escape.py")
+            assert False, "expected unsafe path to be rejected"
+        except ValueError:
+            pass
+
+
+def test_compile_contradiction_flips_on_fix():
+    # compiles_ok / compile_error are a CONTRADICTS pair: fixing the file flips it.
+    with tempfile.TemporaryDirectory() as d:
+        modpath = os.path.join(d, "mod.py")
+        with open(modpath, "w") as f:
+            f.write("def oops(:\n")
+        store = EvidenceStore("u", root=os.path.join(d, "state"))
+        store.run_py_compile(d, "mod.py")
+        assert "compile_error(mod.py)" in store.active_beliefs()
+
+        with open(modpath, "w") as f:
+            f.write("ok = True\n")
+        store.run_py_compile(d, "mod.py")
+        active = store.active_beliefs()
+        assert "compiles_ok(mod.py)" in active
+        assert "compile_error(mod.py)" not in active
+
+
+def test_code_search_oracle_emits_file_contains():
+    # In-process code search over real bytes → file_contains for hits, none absent.
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(d, "widget.py"), "w") as f:
+            f.write("class Widget:\n    pass\n")
+        with open(os.path.join(d, "other.py"), "w") as f:
+            f.write("x = 1\n")
+        store = EvidenceStore("u", root=os.path.join(d, "state"))
+        store.run_code_search(d, "Widget")
+
+        active = store.active_beliefs()
+        assert "file_contains(widget.py,Widget)" in active
+        assert "file_contains(other.py,Widget)" not in active
+
+        store.run_code_search(d, "Nonexistent")  # absent → no claim
+        assert "file_contains(widget.py,Nonexistent)" not in store.active_beliefs()
+
+        try:
+            store.run_code_search(d, "a b")  # not an identifier
+            assert False, "expected non-identifier symbol to be rejected"
+        except ValueError:
+            pass
+
+
+def test_tool_evidence_records_risk_class_and_ledger_intact():
+    # M2 metadata: tool evidence carries risk_class="read"; hash chain still ok.
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(d, "m.py"), "w") as f:
+            f.write("y = 2\n")
+        store = EvidenceStore("u", root=os.path.join(d, "state"))
+        store.run_py_compile(d, "m.py")
+        assert all(e.get("risk_class") == "read" for e in store.evidence())
+        assert store.verify_ledger()["ok"] is True

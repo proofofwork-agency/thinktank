@@ -7,6 +7,7 @@ oracle execution path can promote a claim to active trusted belief.
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -38,6 +39,8 @@ INACTIVE_STATUSES = {"superseded", "retracted", "rejected", "untrusted"}
 ORACLE_ONLY_PREDICATES = {
     "pytest_passed", "pytest_failed", "pytest_error", "pytest_collected",
     "changed_file", "math_verified", "imports_ok", "imports_broken",
+    # project-tool observations: must come from a real tool run, never derived
+    "file_contains", "compiles_ok", "compile_error",
 }
 PYTEST_COLLECTION_ARGS = {"--co", "--collect-only", "--collectonly"}
 DEFAULT_TIMEOUT = 60
@@ -150,6 +153,18 @@ def _claim_key(claim):
     return claim
 
 
+def _safe_relpath(path):
+    """Project-safe path: non-empty, relative, no traversal or newline. The
+    canonical rule, shared by changed_file and every project predicate."""
+    return bool(path) and not path.startswith("/") and ".." not in path.split("/") and "\n" not in path
+
+
+def _safe_symbol(sym):
+    """An identifier-like token, so file_contains(path,symbol) stays 'a symbol'
+    rather than arbitrary text or a regex."""
+    return bool(sym) and (sym[0] == "_" or sym[0].isalpha()) and all(c.isalnum() or c == "_" for c in sym)
+
+
 def _registered_claim_verdict(claim):
     pred, args = _claim_parts(claim)
     if pred is None:
@@ -158,11 +173,8 @@ def _registered_claim_verdict(claim):
         fact, verdict = verify_fact(claim, set())
         return fact is not None, verdict
     if pred == "changed_file":
-        if len(args) != 1:
-            return False, "rejected: changed_file needs one path"
-        path = args[0]
-        if not path or path.startswith("/") or ".." in path.split("/") or "\n" in path:
-            return False, "rejected: changed_file path must be relative and safe"
+        if len(args) != 1 or not _safe_relpath(args[0]):
+            return False, "rejected: changed_file needs one relative safe path"
         return True, "registered: git_diff_observed"
     if pred in ("pytest_passed", "pytest_failed"):
         if len(args) != 1 or not args[0].lstrip("-").isdigit():
@@ -185,6 +197,27 @@ def _registered_claim_verdict(claim):
         if len(args) != 1 or not args[0] or "\n" in args[0]:
             return False, "rejected: module_unhealthy needs one module argument"
         return True, "registered: module_unhealthy"
+    if pred == "file_contains":
+        if len(args) != 2 or not _safe_relpath(args[0]) or not _safe_symbol(args[1]):
+            return False, "rejected: file_contains needs (relative safe path, identifier symbol)"
+        return True, "registered: code_search_observed"
+    if pred in ("compiles_ok", "compile_error"):
+        if len(args) != 1 or not _safe_relpath(args[0]):
+            return False, f"rejected: {pred} needs one relative safe path"
+        return True, f"registered: {pred}"
+    if pred == "fix_verified_by":
+        # Derived glue. arg1 is the VERIFYING PYTEST EXIT CODE, not a test id:
+        # fix_verified_by(path,0) = "this changed file is consistent with a pytest
+        # run that exited 0" (suite-consistency, NOT causal coverage). Soundness is
+        # enforced by record_derived_belief's Datalog entailment check.
+        if len(args) != 2 or not _safe_relpath(args[0]) or not args[1].lstrip("-").isdigit():
+            return False, "rejected: fix_verified_by needs (relative safe path, pytest exit code)"
+        return True, "registered: fix_verified_by (change consistent with pytest exit)"
+    if pred in ("depends_on", "bug_caused_by"):
+        # user/teacher assertions, not oracle observations: structural check only
+        if len(args) != 2 or not all(args) or any("\n" in a for a in args):
+            return False, f"rejected: {pred} needs two non-empty arguments"
+        return True, f"registered: {pred}"
     return False, f"rejected: unregistered trusted claim '{pred}'"
 
 
@@ -206,12 +239,12 @@ class EvidenceStore:
     def beliefs(self):
         return _read_jsonl(self.belief_path)
 
-    def record_evidence(self, source_type, oracle, command, cwd, exit_code, stdout, stderr="", claims=None, verifier=None):
+    def record_evidence(self, source_type, oracle, command, cwd, exit_code, stdout, stderr="", claims=None, verifier=None, risk_class="read"):
         if source_type in TRUSTED_SOURCE_TYPES:
             raise ValueError("trusted evidence must use record_oracle_result() or record_user_claim()")
-        return self._record_evidence(source_type, oracle, command, cwd, exit_code, stdout, stderr, claims, verifier)
+        return self._record_evidence(source_type, oracle, command, cwd, exit_code, stdout, stderr, claims, verifier, risk_class)
 
-    def _record_evidence(self, source_type, oracle, command, cwd, exit_code, stdout, stderr="", claims=None, verifier=None):
+    def _record_evidence(self, source_type, oracle, command, cwd, exit_code, stdout, stderr="", claims=None, verifier=None, risk_class="read"):
         if source_type not in SOURCE_RANK:
             raise ValueError(f"unknown source_type: {source_type}")
         source_rank = SOURCE_RANK[source_type]
@@ -230,6 +263,7 @@ class EvidenceStore:
             "stderr": stderr,
             "output_digest": _sha(raw_output),
             "commit": self._commit(cwd),
+            "risk_class": risk_class,
             "verifier": verifier or ("verified" if exit_code == 0 else "observed_failure"),
         }
         _append_jsonl(self.evidence_path, evidence)
@@ -376,11 +410,12 @@ class EvidenceStore:
         )
         return {"evidence": evidence, "belief": belief}
 
-    def _record_oracle_result(self, oracle, command, cwd, exit_code, stdout, stderr="", claims=None, verifier=None):
+    def _record_oracle_result(self, oracle, command, cwd, exit_code, stdout, stderr="", claims=None, verifier=None, risk_class="read"):
         """PRIVATE trusted constructor — mints oracle-rank beliefs. Must only be
         called by a real runner (run_pytest / run_git_diff / run_import_check /
-        record_math_result) that actually executed the tool. Not public: a caller
-        must never be able to fabricate oracle output into trusted memory."""
+        run_py_compile / run_code_search / record_math_result) that actually
+        executed the tool or read real bytes. Not public: a caller must never be
+        able to fabricate oracle output into trusted memory."""
         accepted_claims = []
         rejected_claims = []
         for claim in claims or []:
@@ -399,6 +434,7 @@ class EvidenceStore:
             stderr=stderr,
             claims=[],
             verifier=verifier,
+            risk_class=risk_class,
         )
         oracle_verifier = verifier or evidence["verifier"]
         for claim in accepted_claims:
@@ -701,74 +737,102 @@ class EvidenceStore:
         )
         return {"evidence": evidence, "claim": claim}
 
-    def run_git_diff(self, cwd, timeout=DEFAULT_TIMEOUT):
+    def _run_oracle(self, oracle, argv, cwd, claim_fn, risk_class="read", timeout=DEFAULT_TIMEOUT):
+        """Shared read-only subprocess oracle: run argv, derive (claims, verifier)
+        from the REAL output via claim_fn, mint through the private trusted
+        constructor. claim_fn(exit_code, stdout, stderr) -> (list[str], str) is the
+        ONLY per-tool logic, so 'subprocess output -> claim' stays airtight — there
+        is no path to bless claims that did not come from this run's output."""
+        if risk_class != "read":
+            raise ValueError("only read-only oracles are permitted in this slice")
         cwd = self._safe_cwd(cwd)
         try:
-            proc = subprocess.run(["git", "diff", "--name-only"], cwd=cwd, text=True, capture_output=True, timeout=timeout)
+            proc = subprocess.run(argv, cwd=cwd, text=True, capture_output=True, timeout=timeout)
             exit_code, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
         except Exception as exc:
             exit_code, stdout, stderr = 127, "", str(exc)
-        files = [line.strip() for line in stdout.splitlines() if line.strip()]
-        claims = [f"changed_file({path})" for path in files]
+        claims, verifier = claim_fn(exit_code, stdout, stderr)
         return self._record_oracle_result(
-            oracle="git.diff",
-            command="git diff --name-only",
-            cwd=cwd,
-            exit_code=exit_code,
-            stdout=stdout,
-            stderr=stderr,
-            claims=claims,
-            verifier="git_diff_observed",
+            oracle=oracle, command=" ".join(argv), cwd=cwd,
+            exit_code=exit_code, stdout=stdout, stderr=stderr,
+            claims=claims, verifier=verifier, risk_class=risk_class,
         )
 
+    def run_git_diff(self, cwd, timeout=DEFAULT_TIMEOUT):
+        def claim_fn(exit_code, stdout, stderr):
+            files = [line.strip() for line in stdout.splitlines() if line.strip()]
+            return [f"changed_file({path})" for path in files], "git_diff_observed"
+        return self._run_oracle("git.diff", ["git", "diff", "--name-only"], cwd, claim_fn, timeout=timeout)
+
     def run_pytest(self, cwd, args=None, timeout=DEFAULT_TIMEOUT):
-        cwd = self._safe_cwd(cwd)
         args = list(args or ["-q"])
         cmd = [sys.executable, "-m", "pytest", *args]
-        try:
-            proc = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout)
-            exit_code, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
-        except Exception as exc:
-            exit_code, stdout, stderr = 127, "", str(exc)
         collection_only = any(a in PYTEST_COLLECTION_ARGS for a in args)
-        status = "collected" if collection_only else "passed" if exit_code == 0 else "failed"
-        claims = [] if collection_only else [f"pytest_{status}({exit_code})"]
-        return self._record_oracle_result(
-            oracle="pytest",
-            command=" ".join(cmd),
-            cwd=cwd,
-            exit_code=exit_code,
-            stdout=stdout,
-            stderr=stderr,
-            claims=claims,
-            verifier=f"pytest_{status}",
-        )
+        def claim_fn(exit_code, stdout, stderr):
+            status = "collected" if collection_only else "passed" if exit_code == 0 else "failed"
+            claims = [] if collection_only else [f"pytest_{status}({exit_code})"]
+            return claims, f"pytest_{status}"
+        return self._run_oracle("pytest", cmd, cwd, claim_fn, timeout=timeout)
 
     def run_import_check(self, cwd, module, timeout=DEFAULT_TIMEOUT):
         """Real import oracle: actually attempts `import <module>` in a
         subprocess. Emits imports_ok(module) on success, imports_broken(module)
         on failure — derived from a real execution, never caller-supplied."""
-        cwd = self._safe_cwd(cwd)
         if not module or (module[0] != "_" and not module[0].isalpha()) or \
                 not all(c.isalnum() or c in "_." for c in module):
             raise ValueError(f"invalid module name: {module!r}")
+        def claim_fn(exit_code, stdout, stderr):
+            claim = f"imports_ok({module})" if exit_code == 0 else f"imports_broken({module})"
+            return [claim], "import_check"
         # -B: never write/read .pyc, so the check always reflects current source.
-        cmd = [sys.executable, "-B", "-c", f"import {module}"]
-        try:
-            proc = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout)
-            exit_code, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
-        except Exception as exc:
-            exit_code, stdout, stderr = 127, "", str(exc)
-        claim = f"imports_ok({module})" if exit_code == 0 else f"imports_broken({module})"
+        return self._run_oracle("import_check", [sys.executable, "-B", "-c", f"import {module}"], cwd, claim_fn, timeout=timeout)
+
+    def run_py_compile(self, cwd, path, timeout=DEFAULT_TIMEOUT):
+        """Real compile/syntax-check oracle: py_compile the file in a subprocess.
+        Emits compiles_ok(path) on success, compile_error(path) on failure. An
+        honest compile/syntax check (not full type inference). -B avoids .pyc."""
+        if not _safe_relpath(path) or not path.endswith(".py"):
+            raise ValueError(f"path must be a relative safe .py file: {path!r}")
+        def claim_fn(exit_code, stdout, stderr):
+            claim = f"compiles_ok({path})" if exit_code == 0 else f"compile_error({path})"
+            return [claim], "py_compile"
+        return self._run_oracle("py_compile", [sys.executable, "-B", "-m", "py_compile", path], cwd, claim_fn, timeout=timeout)
+
+    def run_code_search(self, cwd, symbol, max_files=2000, max_bytes=1_000_000):
+        """In-process code-search oracle: walk *.py under cwd and emit
+        file_contains(relpath, symbol) for each file whose text contains the
+        symbol as an identifier token. A deterministic read of real bytes, routed
+        through the private trusted constructor exactly like a subprocess oracle
+        (smaller attack surface than a shell). No claim when the symbol is absent."""
+        cwd = self._safe_cwd(cwd)
+        if not _safe_symbol(symbol):
+            raise ValueError(f"symbol must be an identifier: {symbol!r}")
+        skip = {".git", "__pycache__", "state", "kb", "checkpoints", ".venv", "venv", "node_modules"}
+        token = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(symbol) + r"(?![A-Za-z0-9_])")
+        hits, scanned = [], 0
+        for root, dirs, files in os.walk(cwd):
+            dirs[:] = [d for d in dirs if d not in skip]
+            for name in files:
+                if not name.endswith(".py") or scanned >= max_files:
+                    continue
+                full = os.path.join(root, name)
+                try:
+                    if os.path.getsize(full) > max_bytes:
+                        continue
+                    with open(full, encoding="utf-8", errors="replace") as f:
+                        text = f.read()
+                except OSError:
+                    continue
+                scanned += 1
+                rel = os.path.relpath(full, cwd)
+                if _safe_relpath(rel) and token.search(text):
+                    hits.append(rel)
+        claims = [f"file_contains({rel},{symbol})" for rel in sorted(hits)]
+        summary = json.dumps({"symbol": symbol, "hits": sorted(hits), "scanned": scanned}, sort_keys=True)
         return self._record_oracle_result(
-            oracle="import_check",
-            command=" ".join(cmd),
-            cwd=cwd,
-            exit_code=exit_code,
-            stdout=stdout,
-            stderr=stderr,
-            claims=[claim],
-            verifier="import_check",
+            oracle="code_search", command=f"code_search {symbol}", cwd=cwd,
+            exit_code=0, stdout=summary, stderr="",
+            claims=claims, verifier="code_search_observed", risk_class="read",
         )
 
     def _safe_cwd(self, cwd):
