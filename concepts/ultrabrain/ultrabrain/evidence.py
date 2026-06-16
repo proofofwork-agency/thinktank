@@ -42,6 +42,7 @@ ORACLE_ONLY_PREDICATES = {
     "changed_file", "math_verified", "imports_ok", "imports_broken",
     # project-tool observations: must come from a real tool run, never derived
     "file_contains", "compiles_ok", "compile_error",
+    "test_passes", "test_fails",
 }
 PYTEST_COLLECTION_ARGS = {"--co", "--collect-only", "--collectonly"}
 DEFAULT_TIMEOUT = 60
@@ -69,6 +70,30 @@ class _Grant:
 def _grant(source_type, evidence_id, verifier):
     """Mint a capability grant. Called only from real oracle/user code paths."""
     return _Grant(_MINT, source_type, evidence_id, verifier)
+
+
+@dataclass(frozen=True)
+class _WriteGrant:
+    token: object
+    risk_class: str
+    confirmation: str
+
+
+def _write_grant(risk_class, confirmation):
+    """Mint a write-tool capability — reserved for a future human-confirmed write
+    path. Carries the same private _MINT sentinel as _Grant, so it cannot be
+    forged from a string. No code mints one yet, so write/approval tools stay
+    blocked by construction: this is the capability gate, not a built tool."""
+    return _WriteGrant(_MINT, risk_class, confirmation)
+
+
+def _write_grant_ok(grant, risk_class):
+    return (
+        isinstance(grant, _WriteGrant)
+        and grant.token is _MINT
+        and grant.risk_class == risk_class
+        and bool(grant.confirmation)
+    )
 
 
 def _id(prefix):
@@ -179,6 +204,10 @@ def _claim_key(claim):
     pred, args = _claim_parts(claim)
     if pred in ("pytest_passed", "pytest_failed", "pytest_error", "pytest_collected"):
         return "pytest_status"
+    if pred in ("test_passes", "test_fails") and args:
+        # a single test's pass/fail share a key so a later result supersedes the
+        # earlier one (and cascades to any fix_verified_by derived from it)
+        return f"test_status:{args[0]}"
     if pred == "changed_file" and len(args) == 1:
         return f"changed_file:{args[0]}"
     if pred in FUNCTIONAL and args:
@@ -196,6 +225,13 @@ def _safe_symbol(sym):
     """An identifier-like token, so file_contains(path,symbol) stays 'a symbol'
     rather than arbitrary text or a regex."""
     return bool(sym) and (sym[0] == "_" or sym[0].isalpha()) and all(c.isalnum() or c == "_" for c in sym)
+
+
+def _is_test_digest(s):
+    """A 12-hex test_id digest (sha12 of a pytest nodeid). We key per-test claims
+    on the digest, not the raw nodeid, because nodeids contain ::[]/ which would
+    break Datalog atoms; the raw nodeid stays auditable in the evidence stdout."""
+    return len(s) == 12 and all(c in "0123456789abcdef" for c in s)
 
 
 def _registered_claim_verdict(claim):
@@ -238,14 +274,25 @@ def _registered_claim_verdict(claim):
         if len(args) != 1 or not _safe_relpath(args[0]):
             return False, f"rejected: {pred} needs one relative safe path"
         return True, f"registered: {pred}"
+    if pred in ("test_passes", "test_fails"):
+        # per-test oracle result, keyed by a sha12 digest of the pytest nodeid
+        if len(args) != 1 or not _is_test_digest(args[0]):
+            return False, f"rejected: {pred} needs one test_id digest"
+        return True, f"registered: {pred}"
     if pred == "fix_verified_by":
-        # Derived glue. arg1 is the VERIFYING PYTEST EXIT CODE, not a test id:
-        # fix_verified_by(path,0) = "this changed file is consistent with a pytest
-        # run that exited 0" (suite-consistency, NOT causal coverage). Soundness is
-        # enforced by record_derived_belief's Datalog entailment check.
+        # CAUSAL derived glue: arg2 is a test_id digest. fix_verified_by(path,T)
+        # means "this changed file is verified by the specific passing test T",
+        # derived from changed_file(path) AND test_passes(T). Soundness enforced by
+        # record_derived_belief's Datalog entailment check.
+        if len(args) != 2 or not _safe_relpath(args[0]) or not _is_test_digest(args[1]):
+            return False, "rejected: fix_verified_by needs (relative safe path, test_id digest)"
+        return True, "registered: fix_verified_by (change verified by a passing test)"
+    if pred == "change_consistent_with_suite":
+        # coarse suite-consistency: arg2 is a pytest exit code (the old
+        # fix_verified_by semantics, renamed so the predicate means what it says).
         if len(args) != 2 or not _safe_relpath(args[0]) or not args[1].lstrip("-").isdigit():
-            return False, "rejected: fix_verified_by needs (relative safe path, pytest exit code)"
-        return True, "registered: fix_verified_by (change consistent with pytest exit)"
+            return False, "rejected: change_consistent_with_suite needs (relative safe path, pytest exit code)"
+        return True, "registered: change_consistent_with_suite"
     if pred in ("depends_on", "bug_caused_by"):
         # user/teacher assertions, not oracle observations: structural check only
         if len(args) != 2 or not all(args) or any("\n" in a for a in args):
@@ -800,14 +847,18 @@ class EvidenceStore:
         )
         return {"evidence": evidence, "claim": claim}
 
-    def _run_oracle(self, oracle, argv, cwd, claim_fn, risk_class="read", timeout=DEFAULT_TIMEOUT):
+    def _run_oracle(self, oracle, argv, cwd, claim_fn, risk_class="read", timeout=DEFAULT_TIMEOUT, write_grant=None):
         """Shared read-only subprocess oracle: run argv, derive (claims, verifier)
         from the REAL output via claim_fn, mint through the private trusted
         constructor. claim_fn(exit_code, stdout, stderr) -> (list[str], str) is the
         ONLY per-tool logic, so 'subprocess output -> claim' stays airtight — there
-        is no path to bless claims that did not come from this run's output."""
-        if risk_class != "read":
-            raise ValueError("only read-only oracles are permitted in this slice")
+        is no path to bless claims that did not come from this run's output.
+
+        risk_class != "read" requires an unforgeable, human-confirmed _WriteGrant.
+        Nothing mints one yet, so write/approval tools are blocked by construction
+        — the policy is a capability gate, not a doc promise."""
+        if risk_class != "read" and not _write_grant_ok(write_grant, risk_class):
+            raise ValueError("write/approval oracles require a human-confirmed _WriteGrant")
         cwd = self._safe_cwd(cwd)
         try:
             proc = subprocess.run(argv, cwd=cwd, text=True, capture_output=True, timeout=timeout)
@@ -827,13 +878,22 @@ class EvidenceStore:
             return [f"changed_file({path})" for path in files], "git_diff_observed"
         return self._run_oracle("git.diff", ["git", "diff", "--name-only"], cwd, claim_fn, timeout=timeout)
 
-    def run_pytest(self, cwd, args=None, timeout=DEFAULT_TIMEOUT):
+    def run_pytest(self, cwd, args=None, timeout=DEFAULT_TIMEOUT, per_test=False):
         args = list(args or ["-q"])
+        if per_test and "-rA" not in args:
+            args = ["-rA", *args]  # short summary of every test outcome
         cmd = [sys.executable, "-m", "pytest", *args]
         collection_only = any(a in PYTEST_COLLECTION_ARGS for a in args)
         def claim_fn(exit_code, stdout, stderr):
             status = "collected" if collection_only else "passed" if exit_code == 0 else "failed"
             claims = [] if collection_only else [f"pytest_{status}({exit_code})"]
+            if per_test and not collection_only:
+                # per-test results -> test_passes/test_fails(sha12(nodeid)). The
+                # raw nodeids remain in the stored stdout for audit.
+                from .pytest_report import parse_results
+                for nodeid, passed in parse_results(stdout):
+                    digest = _sha(nodeid)[:12]
+                    claims.append(f"test_{'passes' if passed else 'fails'}({digest})")
             return claims, f"pytest_{status}"
         return self._run_oracle("pytest", cmd, cwd, claim_fn, timeout=timeout)
 

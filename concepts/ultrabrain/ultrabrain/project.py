@@ -15,7 +15,8 @@ SKIP_DIRS = {
     ".pytest_cache",
 }
 
-FIX_VERIFIED_RULE = "fix_verified_by(P,T) :- changed_file(P), pytest_passed(T)"
+FIX_VERIFIED_RULE = "fix_verified_by(P,T) :- changed_file(P), test_passes(T)"
+SUITE_CONSISTENT_RULE = "change_consistent_with_suite(P,T) :- changed_file(P), pytest_passed(T)"
 
 
 def _rel(path, cwd):
@@ -88,7 +89,15 @@ def _changed_file_premises(active):
     }
 
 
-def _summarize(agent, derived_fixes, failures):
+def _test_pass_premises(active):
+    return {
+        claim[len("test_passes("):-1]: belief["id"]
+        for claim, belief in active.items()
+        if claim.startswith("test_passes(") and claim.endswith(")")
+    }
+
+
+def _summarize(agent, derived_fixes, suite_consistent, failures):
     by_predicate = {}
     for claim in agent.evidence.active_beliefs():
         pred = claim.split("(", 1)[0]
@@ -97,6 +106,7 @@ def _summarize(agent, derived_fixes, failures):
         "evidence_count": len(agent.evidence.evidence()),
         "beliefs_by_predicate": dict(sorted(by_predicate.items())),
         "derived_fixes": derived_fixes,
+        "suite_consistent": suite_consistent,
         "failures": failures,
     }
 
@@ -146,20 +156,42 @@ def ingest_project(agent, cwd, modules=None, pytest_args=None):
     pytest_args = list(pytest_args or ["-q"])
     run_step(
         {"kind": "oracle_pytest", "cwd": cwd, "args": pytest_args},
-        lambda: agent.evidence.run_pytest(cwd, pytest_args),
+        lambda: agent.evidence.run_pytest(cwd, pytest_args, per_test=True),
     )
 
     derived_fixes = []
+    suite_consistent = []
     active = agent.evidence.active_beliefs()
     pytest_belief = active.get("pytest_passed(0)")
+    changed = _changed_file_premises(active)
     if pytest_belief:
-        for path, changed_id in sorted(_changed_file_premises(active).items()):
-            claim = f"fix_verified_by({path},0)"
+        for path, changed_id in sorted(changed.items()):
+            claim = f"change_consistent_with_suite({path},0)"
+            try:
+                derived = agent.evidence.record_derived_belief(
+                    claim,
+                    SUITE_CONSISTENT_RULE,
+                    [changed_id, pytest_belief["id"]],
+                )
+            except ValueError:
+                continue
+            suite_consistent.append(claim)
+            agent.ledger.record_action(
+                episode_id,
+                action={"kind": "derive_change_consistent_with_suite", "claim": claim},
+                result={"belief_id": derived["belief"]["id"], "claim": claim},
+                verifier="datalog_derived",
+                accepted=True,
+            )
+
+    for path, changed_id in sorted(changed.items()):
+        for digest, test_pass_id in sorted(_test_pass_premises(active).items()):
+            claim = f"fix_verified_by({path},{digest})"
             try:
                 derived = agent.evidence.record_derived_belief(
                     claim,
                     FIX_VERIFIED_RULE,
-                    [changed_id, pytest_belief["id"]],
+                    [changed_id, test_pass_id],
                 )
             except ValueError:
                 continue
@@ -172,4 +204,4 @@ def ingest_project(agent, cwd, modules=None, pytest_args=None):
                 accepted=True,
             )
 
-    return _summarize(agent, derived_fixes, failures)
+    return _summarize(agent, derived_fixes, suite_consistent, failures)

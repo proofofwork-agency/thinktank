@@ -44,6 +44,8 @@ CONTRADICTS = {
     "imports_broken": "imports_ok",
     "compiles_ok": "compile_error",
     "compile_error": "compiles_ok",
+    "test_passes": "test_fails",
+    "test_fails": "test_passes",
 }
 
 

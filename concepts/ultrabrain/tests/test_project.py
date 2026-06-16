@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ultrabrain.evidence import EvidenceStore
 from ultrabrain.kb import KB
-from ultrabrain.project import FIX_VERIFIED_RULE, ingest_project
+from ultrabrain.project import FIX_VERIFIED_RULE, SUITE_CONSISTENT_RULE, ingest_project
 from ultrabrain.self_learning import ExperienceLedger, SelfLearningAgent
 
 
@@ -43,11 +43,29 @@ def failing_test(path):
 
 def derive_fix(store, path="app.py"):
     active = store.active_beliefs()
+    digest, test_pass = next(
+        (claim[len("test_passes("):-1], belief)
+        for claim, belief in active.items()
+        if claim.startswith("test_passes(") and claim.endswith(")")
+    )
     return store.record_derived_belief(
-        f"fix_verified_by({path},0)",
+        f"fix_verified_by({path},{digest})",
         FIX_VERIFIED_RULE,
+        [active[f"changed_file({path})"]["id"], test_pass["id"]],
+    )
+
+
+def derive_suite_consistency(store, path="app.py"):
+    active = store.active_beliefs()
+    return store.record_derived_belief(
+        f"change_consistent_with_suite({path},0)",
+        SUITE_CONSISTENT_RULE,
         [active[f"changed_file({path})"]["id"], active["pytest_passed(0)"]["id"]],
     )
+
+
+def active_claims_with_prefix(store, prefix):
+    return sorted(claim for claim in store.active_beliefs() if claim.startswith(prefix))
 
 
 def test_agent_project_wrappers_record_oracle_beliefs():
@@ -94,18 +112,22 @@ def test_fix_verified_by_retracts_when_test_later_fails():
         store = EvidenceStore("u", root=os.path.join(d, "state"))
 
         store.run_git_diff(d)
-        store.run_pytest(d, ["-q"])
+        store.run_pytest(d, ["-q"], per_test=True)
         derived = derive_fix(store)
-        assert derived["belief"]["claim"] == "fix_verified_by(app.py,0)"
-        assert store.why("fix_verified_by(app.py,0)")["proved"] is True
+        fix_claim = derived["belief"]["claim"]
+        digest = fix_claim.rsplit(",", 1)[1][:-1]
+        assert fix_claim.startswith("fix_verified_by(app.py,")
+        assert store.why(fix_claim)["proved"] is True
 
         failing_test(d)
-        store.run_pytest(d, ["-q"])
+        store.run_pytest(d, ["-q"], per_test=True)
         active = store.active_beliefs()
 
         assert "pytest_passed(0)" not in active
-        assert "fix_verified_by(app.py,0)" not in active
-        assert store.why("fix_verified_by(app.py,0)")["proved"] is False
+        assert f"test_passes({digest})" not in active
+        assert f"test_fails({digest})" in active
+        assert fix_claim not in active
+        assert store.why(fix_claim)["proved"] is False
         assert store.why("pytest_passed(0)")["proved"] is False
 
 
@@ -121,14 +143,35 @@ def test_ingest_seeds_project_memory_in_one_pass_and_survives_restart():
         assert summary["beliefs_by_predicate"]["changed_file"] == 1
         assert summary["beliefs_by_predicate"]["compiles_ok"] >= 2
         assert summary["beliefs_by_predicate"]["pytest_passed"] == 1
-        assert summary["derived_fixes"] == ["fix_verified_by(app.py,0)"]
-        assert "fix_verified_by(app.py,0)" in active
+        assert summary["suite_consistent"] == ["change_consistent_with_suite(app.py,0)"]
+        assert "change_consistent_with_suite(app.py,0)" in active
+        assert summary["derived_fixes"]
+        assert summary["derived_fixes"] == active_claims_with_prefix(agent.evidence, "fix_verified_by(app.py,")
 
         fresh = make_agent(d)
-        assert "fix_verified_by(app.py,0)" in fresh.evidence.active_beliefs()
-        proof = fresh.why_belief("fix_verified_by(app.py,0)")
+        assert "change_consistent_with_suite(app.py,0)" in fresh.evidence.active_beliefs()
+        fix_claim = summary["derived_fixes"][0]
+        assert fix_claim in fresh.evidence.active_beliefs()
+        proof = fresh.why_belief(fix_claim)
         assert proof["proved"] is True
         assert proof["belief"]["derived_from"]
+
+
+def test_causal_fix_verified_by_derives_from_changed_file_and_test_pass():
+    with tempfile.TemporaryDirectory() as d:
+        init_repo(d)
+        dirty_app(d)
+        store = EvidenceStore("u", root=os.path.join(d, "state"))
+
+        store.run_git_diff(d)
+        store.run_pytest(d, ["-q"], per_test=True)
+        derived = derive_fix(store)
+        fix_claim = derived["belief"]["claim"]
+        digest = fix_claim.rsplit(",", 1)[1][:-1]
+
+        assert fix_claim == f"fix_verified_by(app.py,{digest})"
+        assert store.why(fix_claim)["proved"] is True
+        assert store.why(f"test_passes({digest})")["proved"] is True
 
 
 def test_project_oracle_validation_rejects_unsafe_path_and_bad_symbol():
@@ -153,14 +196,21 @@ def test_oracle_only_project_predicates_cannot_be_derived_but_fix_can():
         dirty_app(d)
         store = EvidenceStore("u", root=os.path.join(d, "state"))
         store.run_git_diff(d)
-        store.run_pytest(d, ["-q"])
+        store.run_pytest(d, ["-q"], per_test=True)
         active = store.active_beliefs()
         changed_id = active["changed_file(app.py)"]["id"]
         pytest_id = active["pytest_passed(0)"]["id"]
+        test_claim, test_belief = next(
+            (claim, belief)
+            for claim, belief in active.items()
+            if claim.startswith("test_passes(")
+        )
+        digest = test_claim[len("test_passes("):-1]
 
         for claim, rule in (
             ("compiles_ok(app.py)", "compiles_ok(P) :- changed_file(P)"),
             ("file_contains(app.py,Widget)", "file_contains(P,Widget) :- changed_file(P)"),
+            (f"test_passes({digest})", "test_passes(T) :- changed_file(P)"),
         ):
             try:
                 store.record_derived_belief(claim, rule, [changed_id])
@@ -168,12 +218,18 @@ def test_oracle_only_project_predicates_cannot_be_derived_but_fix_can():
             except ValueError:
                 pass
 
-        belief = store.record_derived_belief(
-            "fix_verified_by(app.py,0)",
-            FIX_VERIFIED_RULE,
+        suite = store.record_derived_belief(
+            "change_consistent_with_suite(app.py,0)",
+            SUITE_CONSISTENT_RULE,
             [changed_id, pytest_id],
         )
-        assert belief["belief"]["status"] == "active"
+        fix = store.record_derived_belief(
+            f"fix_verified_by(app.py,{digest})",
+            FIX_VERIFIED_RULE,
+            [changed_id, test_belief["id"]],
+        )
+        assert suite["belief"]["status"] == "active"
+        assert fix["belief"]["status"] == "active"
 
 
 def test_context_assembler_surfaces_recorded_project_failure():
