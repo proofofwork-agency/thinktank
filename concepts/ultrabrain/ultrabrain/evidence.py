@@ -5,6 +5,7 @@ oracle execution path can promote a claim to active trusted belief.
 """
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -78,11 +79,41 @@ def _sha(text):
     return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
 
-def _row_hash(row):
-    """sha256 over the row's canonical content, excluding row_hash itself but
-    including prev_hash (so each row commits to the one before it)."""
+def _row_hash(row, key=None):
+    """Keyed row hash over the row's canonical content (excluding row_hash, but
+    INCLUDING prev_hash and hash_algo, so each row commits to the one before it and
+    to its own algorithm). HMAC-SHA256 when a key is given (an attacker without the
+    key cannot recompute it); plain SHA256 otherwise (tamper-evident only)."""
     payload = {k: v for k, v in row.items() if k != "row_hash"}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8", errors="replace")).hexdigest()
+    data = json.dumps(payload, sort_keys=True).encode("utf-8", errors="replace")
+    if key:
+        return hmac.new(key, data, hashlib.sha256).hexdigest()
+    return hashlib.sha256(data).hexdigest()
+
+
+def _load_ledger_key(root):
+    """Per-store HMAC key from $ULTRABRAIN_LEDGER_KEY or <root>/.ledger_key (0600,
+    gitignored). None => the ledger uses bare SHA256 (tamper-evident, not
+    authenticated). Local authentication only: an attacker who also reads the key
+    file can still forge — signed checkpoints are the upgrade path."""
+    env = os.environ.get("ULTRABRAIN_LEDGER_KEY")
+    if env:
+        return env.encode("utf-8")
+    keypath = os.path.join(root, ".ledger_key")
+    if os.path.exists(keypath):
+        with open(keypath, "rb") as f:
+            return f.read().strip() or None
+    return None
+
+
+def _generate_ledger_key(root):
+    os.makedirs(root, exist_ok=True)
+    keypath = os.path.join(root, ".ledger_key")
+    key = hashlib.sha256(os.urandom(32)).hexdigest().encode("utf-8")
+    fd = os.open(keypath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(key)
+    return key
 
 
 def _last_row_hash(path):
@@ -101,13 +132,15 @@ def _last_row_hash(path):
         return ""
 
 
-def _append_jsonl(path, entry):
-    # Tamper-evident hash chain: each row carries prev_hash (the previous row's
-    # row_hash) and row_hash. Editing/deleting/reordering any row breaks the
-    # chain, detectable by EvidenceStore.verify_ledger(). The flock helper makes
-    # the append atomic against concurrent writers.
+def _append_jsonl(path, entry, key=None):
+    # Tamper-evident hash chain: each row carries hash_algo, prev_hash (the
+    # previous row's row_hash), and row_hash. With a key the row_hash is an HMAC,
+    # so an attacker without the key cannot recompute it. Editing/deleting/
+    # reordering any row breaks the chain (EvidenceStore.verify_ledger()). flock
+    # makes the append atomic against concurrent writers.
+    entry["hash_algo"] = "hmac-sha256" if key else "sha256"
     entry["prev_hash"] = _last_row_hash(path)
-    entry["row_hash"] = _row_hash(entry)
+    entry["row_hash"] = _row_hash(entry, key)
     _locked_append(path, json.dumps(entry, sort_keys=True))
 
 
@@ -224,11 +257,26 @@ def _registered_claim_verdict(claim):
 class EvidenceStore:
     """Append-only evidence with conflict-aware active belief projection."""
 
-    def __init__(self, user, root="state"):
+    def __init__(self, user, root="state", authenticate=False):
         self.user = validate_user_id(user)
         self.root = os.path.join(root, self.user)
         self.evidence_path = os.path.join(self.root, "evidence.jsonl")
         self.belief_path = os.path.join(self.root, "beliefs.jsonl")
+        # Ledger authentication: always load an existing per-store HMAC key so we
+        # stay consistent with the persisted ledger; with authenticate=True, mint
+        # one if absent (new ledgers become HMAC-authenticated). No key => bare
+        # SHA256 (tamper-evident only) — the backward-compatible default.
+        self._ledger_key = _load_ledger_key(self.root)
+        if authenticate and not self._ledger_key:
+            self._ledger_key = _generate_ledger_key(self.root)
+        # Projection cache: _active_by_key() is on every read/write path and was
+        # O(ledger) per call. The belief ledger is append-only, so its byte size
+        # uniquely identifies its content (same size => same bytes); we memoize
+        # the projection and invalidate by an O(1) size check. Any append (ours or
+        # external) changes the size and forces a recompute, so the cache can't
+        # drift. Callers must treat the returned dict as read-only.
+        self._proj_cache = None
+        self._proj_cache_size = -1
 
     def _evidence_by_id(self):
         return {e["id"]: e for e in self.evidence()}
@@ -266,7 +314,7 @@ class EvidenceStore:
             "risk_class": risk_class,
             "verifier": verifier or ("verified" if exit_code == 0 else "observed_failure"),
         }
-        _append_jsonl(self.evidence_path, evidence)
+        _append_jsonl(self.evidence_path, evidence, key=self._ledger_key)
         for claim in claims or []:
             # Only untrusted evidence reaches here (record_evidence rejects
             # trusted types), so these beliefs stay untrusted: no grant.
@@ -340,7 +388,7 @@ class EvidenceStore:
             "derived_from": sorted(set(derived_from or [])),
             "grade": _status_grade(status),
         }
-        _append_jsonl(self.belief_path, belief)
+        _append_jsonl(self.belief_path, belief, key=self._ledger_key)
         return belief
 
     def _resolve_conflicts(self, claim, key, rank, supersedes, status):
@@ -573,7 +621,7 @@ class EvidenceStore:
             "retraction_reason": reason,
             "grade": _status_grade("retracted"),
         }
-        _append_jsonl(self.belief_path, row)
+        _append_jsonl(self.belief_path, row, key=self._ledger_key)
         return row
 
     def _latest_retraction(self, claim):
@@ -582,6 +630,14 @@ class EvidenceStore:
         return retractions[-1] if retractions else None
 
     def _active_by_key(self):
+        size = os.path.getsize(self.belief_path) if os.path.exists(self.belief_path) else 0
+        if self._proj_cache is not None and self._proj_cache_size == size:
+            return self._proj_cache
+        by_key = self._compute_active_by_key()
+        self._proj_cache, self._proj_cache_size = by_key, size
+        return by_key
+
+    def _compute_active_by_key(self):
         beliefs = self.beliefs()
         superseded = set()
         for belief in beliefs:
@@ -635,17 +691,24 @@ class EvidenceStore:
         """Walk the evidence and belief hash chains. Returns {"ok": True} if
         intact, else the first break (path, index, id, reason).
 
-        Tamper-EVIDENT, not tamper-PROOF (git's model): it catches accidental
-        corruption and naive edits, but an attacker who can write the file can
-        also recompute the chain. Authenticating it needs an external secret
-        (HMAC with a key kept outside the ledger) or signed checkpoints — a
-        deliberate upgrade path, out of scope for a single-user local store."""
+        Each row records hash_algo: 'sha256' is tamper-EVIDENT (catches corruption
+        and naive edits, but an attacker who can write the file can recompute it);
+        'hmac-sha256' is tamper-PROOF against an attacker without the per-store key.
+        An HMAC-era row with no available key FAILS CLOSED ('missing_key'). Local
+        authentication only: an attacker who also reads the key file can still
+        forge — signed checkpoints are the upgrade path."""
         for path in (self.evidence_path, self.belief_path):
             prev = ""
             for i, row in enumerate(_read_jsonl(path)):
+                algo = row.get("hash_algo", "sha256")
+                key = None
+                if algo.startswith("hmac"):
+                    if not self._ledger_key:
+                        return {"ok": False, "path": path, "index": i, "id": row.get("id"), "reason": "missing_key"}
+                    key = self._ledger_key
                 if row.get("prev_hash", "") != prev:
                     return {"ok": False, "path": path, "index": i, "id": row.get("id"), "reason": "prev_hash break"}
-                if row.get("row_hash") != _row_hash(row):
+                if row.get("row_hash") != _row_hash(row, key):
                     return {"ok": False, "path": path, "index": i, "id": row.get("id"), "reason": "row_hash mismatch"}
                 prev = row.get("row_hash", "")
         return {"ok": True}
