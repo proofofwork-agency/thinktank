@@ -1,5 +1,7 @@
 __pycache__/
 checkpoints/
 kb/
+state/
+experiment/results/
 data/shakespeare.txt
 *.pt

@@ -2,7 +2,7 @@
 
 Training: 99%+ held-out accuracy, ~9 min. KB ingested once; restarts carry zero context.
 
-## Hallucination cannot land (Generate → Verify → Keep, live)
+## Unsupported entity hallucination cannot land (Generate → Verify → Keep, live)
 
 ```
 > maria works at asml
@@ -25,7 +25,7 @@ ultrabrain · user=danillo · facts/rules loaded from ledger (zero context resen
     parent(maria,jan)   [told]
 ```
 
-## Contradiction refused; no guessing
+## Contradiction refused in v1's order-dependent toy KB; no guessing
 
 ```
 > tell rotterdam is the capital of the netherlands
@@ -33,6 +33,10 @@ ultrabrain · user=danillo · facts/rules loaded from ledger (zero context resen
 > where does jan work
   no proof (won't guess into the KB)
 ```
+
+This demo depends on `capital(netherlands,amsterdam)` being loaded first. Reverse the order and
+the v1 toy KB would entrench the wrong first write. Trust Boundary v0.2 fixes the thesis by
+requiring oracle/user-backed evidence for trusted beliefs.
 
 ## Arithmetic with proofs; users isolated
 

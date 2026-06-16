@@ -2,7 +2,7 @@
 
 ## Prediction at the Edges, Verification at the Core
 
-*Draft 0.1 — June 2026 — ProofOfWorks*
+*Draft 0.2 — June 2026 — ProofOfWorks*
 
 ---
 
@@ -16,14 +16,13 @@ inference. Both defects are usually treated as facts of nature. This paper argue
 the prompt; sampled logic was tolerated because language has no truth oracle.
 
 We split the brain instead. Prediction stays where it is unbeaten — perception and phrasing —
-and a deterministic core does what prediction cannot: a verifier gates every write
-(**Generate → Verify → Keep**, the AlphaZero/AlphaProof/DreamCoder learning rule), an
-append-only per-user ledger persists knowledge across restarts with zero context resend, and
-a Datalog engine answers queries with derivation trees. The LM's stochasticity can never
-corrupt the store: anything unfaithful is rejected or deterministically repaired. We built
-the smallest complete instance — 10M-param from-scratch GPT, byte-BPE, hand-written
-attention, verifier, ledger, reasoner; ~700 lines, trains in minutes on a laptop, 99%+
-held-out translation. Restart it: facts remain, proofs replay, hallucinations don't exist.
+and a trust boundary does what prediction cannot: oracle/user-backed evidence promotes
+beliefs, weaker model outputs remain proposals, and an append-only per-user ledger persists
+state across restarts with low context resend. The v1 toy verifier was a useful syntactic
+gate, but not a truth oracle; v0.2 narrows the claim to high-verifier-density domains where
+tool output, math checks, or user corrections can ground trusted memory. The decisive v0.2
+experiment has now run: UltraBrain cleared all five pass bars against a simpler vector-memory
+baseline on the axes this paper claims.
 
 ---
 
@@ -42,39 +41,60 @@ is only the I/O.
 ## 2. The learning rule
 
 Prediction is unbeaten for acquiring language at scale: free labels, scaling laws, GPU
-parallelism. But there exists a second proven rule wherever a deterministic verifier exists:
+parallelism. But there exists a second proven rule wherever an independent verifier exists:
 **Generate → Verify → Keep** — AlphaZero (win/lose oracle), AlphaProof (Lean checker),
-DreamCoder (programs that reproduce examples). UltraBrain applies it to knowledge: the LM
-generates candidate logic; the verifier disposes; only verified facts are kept.
+DreamCoder (programs that reproduce examples). UltraBrain applies it only where the verifier
+is real: math, tests, compilers, git, shell, user correction, or deterministic source policy.
 
 ## 3. Architecture
 
 | Layer | Mechanism | Properties |
 |---|---|---|
 | Perception | from-scratch GPT (NL↔logic, both ways) | stochastic, replaceable |
-| Gate | arity, contradiction, **two-way faithfulness**, repair | deterministic |
+| Gate | typed syntax, token faithfulness, oracle/user evidence | deterministic where grounded |
 | Memory | append-only JSONL, per user | persistent, multi-tenant, retractable |
-| Reason | semi-naive Datalog + `neq`, derivation traces | proofs, no guessing |
+| Reason | Datalog fixture + evidence proof queries | proofs where evidence exists |
 
-**Two-way faithfulness:** every argument must occur in the sentence, every known entity in
-the sentence must occur in the proposal. **Repair:** unfaithful proposals are rebuilt
-deterministically from the sentence's own entities and predicate keywords. **Routing:** the
-LM signals questions by emitting a variable — language stays in the model.
+**Faithfulness is not truth:** every proposed argument must occur as source tokens, and typed
+toy predicates reject obvious domain errors. That only blocks unsupported entities and role
+shape mistakes. Trusted v0.2 beliefs require oracle/user evidence or deterministic trust policy.
+
+The core hardening is implemented: active trusted beliefs require an in-process capability
+grant bound to a real evidence row; the TMS supports append-only retraction, dependent
+cascade, cross-predicate contradiction, and rank precedence; and the typed KB is now a live
+projection of active evidence-backed beliefs rather than a second writer. Ledger rows carry a
+hash chain that is tamper-evident in the same sense as git history, but not authenticated; an
+HMAC or signed checkpoint would be the stronger at-rest guarantee.
 
 ## 4. What the prototype shows
 
 Tell it facts once, kill the process, restart with zero context: queries answer with proof
-trees (`why grandparent(lucas,jan)` prints the derivation, premises labeled `[told]`).
-Contradictions are refused. Unknown queries say "no proof" — they never guess into the KB.
-Hallucinations occur (the 10M LM is gladly bad) and never land. One frozen model serves any
-number of users; brains are files.
+trees in the toy fixture, and v0.2 evidence queries trace active beliefs to command output and
+digests. Unknown queries say "no proof" rather than guessing. Hallucinations still exist; the
+claim is narrower: unsupported model proposals do not become trusted memory.
+
+The decisive experiment compared System A, a frontier-agent-style stack with vector memory,
+against System B, UltraBrain's evidence/belief memory, using the same offline teacher and tool
+runners. System B cleared every pass bar:
+
+| Metric | System A | System B | Result |
+|---|---:|---:|---|
+| Task success | 70.0% | 90.0% | PASS |
+| Repeated-failure rate | 10.0% | 0.0% | PASS |
+| Context tokens by final session | 1217 | 45 | PASS |
+| Provenance audit pass | 0.0% | 100.0% | PASS |
+| Unsupported trusted writes | 19 | 0 | PASS |
+
+This supports the narrow thesis: unsupported proposals can be kept out of trusted memory while
+retaining useful task performance and reducing context resend. It does not prove that model
+outputs cannot hallucinate, only that the trust boundary prevents those unsupported outputs
+from becoming active trusted beliefs.
 
 ## 5. Honest limits
 
-Five relations, ~150 entities, template English; no negation, time, or arithmetic; symbolic
-brittleness outside crisp domains is exactly Cyc's lesson. The bet is not LLM-free language —
-it is sovereignty inversion: language serves logic; logic never serves language. Perception
-scales by swapping the model; the KB and proofs don't change a line.
+The toy KB remains small and order-dependent; it is a fixture, not the product core. Open-world
+truth is not solved by token faithfulness. The bet is now narrower: in domains with real
+oracles, the model proposes, the toolchain/user decides, and the ledger preserves provenance.
 
 ---
 

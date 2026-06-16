@@ -2,24 +2,47 @@
 
 import re
 
-from .datalog import Rule, parse_atom
+from .datalog import Rule, is_var, parse_atom
 
 try:
     from data.synth import POOLS
     ENTITIES = {e for pool in POOLS.values() for e in pool}
 except ImportError:
+    POOLS = {}
     ENTITIES = set()
 
 
+def tokens(text):
+    return re.findall(r"[a-z]+|\d+", text.lower().replace("_", " "))
+
+
 def known_entities(sentence):
-    words = re.findall(r"[a-z]+|\d+", sentence.lower())
+    words = tokens(sentence)
     return [w for w in words if w in ENTITIES or w.isdigit()]
 
-SCHEMAS = {"capital": 2, "lives_in": 2, "parent": 2, "works_at": 2, "located_in": 2,
-           "grandparent": 2, "compatriot": 2, "colleague": 2, "age": 2, "older": 2}
+SCHEMAS = {
+    "capital": ("COUNTRY", "CITY"),
+    "lives_in": ("PERSON", "CITY"),
+    "parent": ("PERSON", "PERSON"),
+    "works_at": ("PERSON", "COMPANY"),
+    "located_in": ("COUNTRY", "CITY"),
+    "grandparent": ("PERSON", "PERSON"),
+    "compatriot": ("PERSON", "PERSON"),
+    "colleague": ("PERSON", "PERSON"),
+    "age": ("PERSON", "NUM"),
+    "older": ("PERSON", "PERSON"),
+}
 # functional: first argument determines a unique second argument
 FUNCTIONAL = {"capital", "located_in", "lives_in", "works_at", "age"}
 BUILTINS = {"neq", "lt", "gt"}
+
+# Predicate pairs that cannot both hold for the same first-argument subject.
+# Used by the TMS to supersede a contradictory active belief on a *different*
+# predicate (the functional/key mechanism only catches same-key conflicts).
+CONTRADICTS = {
+    "imports_ok": "imports_broken",
+    "imports_broken": "imports_ok",
+}
 
 
 # keyword -> predicate, and the pool that fills slot 0 vs 1 (None = ambiguous, no repair)
@@ -75,7 +98,7 @@ def repair_query(question, proposal):
 def repair_fact(sentence):
     """Deterministic fallback when the LM can't translate faithfully: unambiguous predicates only."""
     s = sentence.lower()
-    words = re.findall(r"[a-z]+|\d+", s)
+    words = tokens(s)
     for pat, pred, pools in PRED_HINTS:
         if pools and re.search(pat, s):
             a, b = _slot(pools, known_entities(s), words)
@@ -84,23 +107,56 @@ def repair_fact(sentence):
     return None
 
 
+def _arity(pred):
+    return len(SCHEMAS[pred])
+
+
+def _domain_ok(domain, arg, source_tokens=None):
+    if domain == "NUM":
+        return arg.isdigit()
+    pools = {
+        "PERSON": "PEOPLE",
+        "CITY": "CITIES",
+        "COUNTRY": "COUNTRIES",
+        "COMPANY": "COMPANIES",
+    }
+    pool = set(POOLS.get(pools[domain], ()))
+    if arg in pool:
+        return True
+    if domain == "PERSON" and source_tokens is not None:
+        arg_tokens = tokens(arg)
+        other_entities = set().union(
+            set(POOLS.get("CITIES", ())),
+            set(POOLS.get("COUNTRIES", ())),
+            set(POOLS.get("COMPANIES", ())),
+        )
+        return bool(arg_tokens) and set(arg_tokens) <= source_tokens and arg not in other_entities
+    return False
+
+
 def verify_fact(stmt, facts, source=None):
     try:
         pred, args = parse_atom(stmt)
     except ValueError:
         return None, "rejected: not of the form pred(a,b)"
-    if source is not None:
-        s = source.lower()
-        missing = [a for a in args if a.replace("_", " ") not in s]
-        if missing:
-            return None, f"rejected: unfaithful — {','.join(missing)} not in the sentence"
-        dropped = [e for e in known_entities(s) if e not in args]
-        if dropped:
-            return None, f"rejected: unfaithful — sentence mentions {','.join(dropped)} but proposal drops it"
     if pred not in SCHEMAS:
         return None, f"rejected: unknown predicate '{pred}'"
-    if len(args) != SCHEMAS[pred] or not all(args):
-        return None, f"rejected: {pred} needs {SCHEMAS[pred]} arguments"
+    if len(args) != _arity(pred) or not all(args):
+        return None, f"rejected: {pred} needs {_arity(pred)} arguments"
+    if any(is_var(a) for a in args):
+        return None, "rejected: ground facts cannot contain variables"
+    source_tokens = None
+    if source is not None:
+        source_tokens = set(tokens(source))
+        missing = [a for a in args if not set(tokens(a)) <= source_tokens]
+        if missing:
+            return None, f"rejected: unfaithful — {','.join(missing)} not in the sentence"
+        dropped = [e for e in known_entities(source) if e not in args]
+        if dropped:
+            return None, f"rejected: unfaithful — sentence mentions {','.join(dropped)} but proposal drops it"
+    bad = [(a, d) for a, d in zip(args, SCHEMAS[pred]) if not _domain_ok(d, a, source_tokens)]
+    if bad:
+        return None, "rejected: type mismatch — " + ", ".join(f"{a} is not {d}" for a, d in bad)
     if pred == "parent" and args[0] == args[1]:
         return None, "rejected: nobody is their own parent"
     fact = (pred, args)
@@ -118,13 +174,25 @@ def verify_rule(stmt, rules):
         r = Rule.parse(stmt)
     except Exception:
         return None, "rejected: not a valid rule (head :- body)"
-    for pred, args in [r.head, *r.body]:
-        if pred in BUILTINS and (pred, args) in r.body and len(args) == 2:
+    bound = set()
+    for i, (pred, args) in enumerate(r.body):
+        if pred in BUILTINS:
+            if len(args) != 2:
+                return None, f"rejected: {pred} builtin arity"
+            unbound = [a for a in args if is_var(a) and a not in bound]
+            if unbound:
+                return None, "rejected: builtin variables must be bound first: " + ",".join(unbound)
             continue
         if pred not in SCHEMAS:
             return None, f"rejected: unknown predicate '{pred}'"
-        if len(args) != SCHEMAS[pred]:
+        if len(args) != _arity(pred):
             return None, f"rejected: {pred} arity"
+        bound |= {t for t in args if is_var(t)}
+    pred, args = r.head
+    if pred not in SCHEMAS:
+        return None, f"rejected: unknown predicate '{pred}'"
+    if len(args) != _arity(pred):
+        return None, f"rejected: {pred} arity"
     if any(r.text == x.text for x in rules):
         return None, "duplicate: rule already known"
     head_vars = {t for t in r.head[1] if t[:1].isupper()}
