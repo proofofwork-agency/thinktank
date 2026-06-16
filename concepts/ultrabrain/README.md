@@ -1,22 +1,32 @@
 # UltraBrain
 
-> **Status: v0.3** — trust boundary hardened to a real capability, a working Truth
-> Maintenance System, KB as a live projection of the evidence store, and the
-> decisive A/B experiment **passing all five bars**. See [docs/SPARRING.md](docs/SPARRING.md)
-> for why it exists, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how, and
-> [docs/DEMO.md](docs/DEMO.md) for real receipts. Plan + results: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
-> Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md). Math-first curriculum: [docs/MATH_FIRST.md](docs/MATH_FIRST.md).
-> Experiment: [docs/EXPERIMENT.md](docs/EXPERIMENT.md). Whitepaper: [WHITEPAPER.md](WHITEPAPER.md).
+> **Status: v0.4 — the generator pivot.** The active build is a **verifier-grounded
+> generator**: generation by *search + verify*, not next-token prediction. It runs on a
+> hardened substrate — capability trust boundary, a working Truth Maintenance System, KB as a
+> live projection of the evidence store, the decisive A/B experiment **passing all five bars**,
+> a per-test project brain, and an action-prediction core. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+> for how, [docs/DEMO.md](docs/DEMO.md) for receipts, [docs/ROADMAP.md](docs/ROADMAP.md) for the
+> arc, [thoughts/00_INDEX.md](thoughts/00_INDEX.md) for the research spine, and
+> [WHITEPAPER.md](WHITEPAPER.md) for the thesis.
 
-A local agent architecture where the LLM is **not** the memory, **not** the logic,
-and **not** the judge — only perception and proposal.
+**The bet: replace next-token prediction as the foundation of generation.** Not "a better
+LLM" — a *verifier-grounded generator* that produces answers by **search + verify**, so every
+emitted answer is correct *by construction* or it abstains. This is how single-company LLM
+hegemony breaks: value moves from "one giant predictor trained on megawatts" to the verifier +
+composition + local-learning layer ([thoughts/00_INDEX.md](thoughts/00_INDEX.md)). Honest scope
+([thoughts/23_beyond_token_prediction.md](thoughts/23_beyond_token_prediction.md)): replacing
+token generation *entirely* is unsolved; replacing it for a *verifiable* domain is realistic now
+— and shipping (v0.4, math): `solve-search` returns a verified derivation, never sampled tokens.
 
-Born from a sparring session about what's wrong with LLMs: prediction is unbeaten as a
-*learning rule for raw text*, but statelessness is just a multi-tenancy artifact, and
-sampled tokens are not reasoning. UltraBrain splits the brain:
+Everything below is the **scaffolding that makes such a generator trainable** — the verifier is
+its teacher, verified traces are its data. To build a thing that says "is this output correct?"
+you first need the verifier, the evidence store, the memory, and the trust boundary. So UltraBrain
+splits the brain — the LLM is **not** the memory, **not** the logic, and **not** the judge, only
+perception and proposal:
 
 | Layer | Mechanism | Properties |
 |---|---|---|
+| **Generator (v0.4)** | generation = **search + verify**, not token sampling | every emitted answer is verified-correct by construction or it abstains; the policy only makes search efficient, never correctness |
 | Perception | tiny GPT, trained from scratch here | stochastic, replaceable |
 | Acquisition | **capability-gated** Generate → Verify → Keep | trusted memory needs an unforgeable in-process grant from a real oracle/user — not a string argument |
 | Memory | append-only JSONL + hash chain + **TMS** | persists across restarts; conflicts retract/supersede; tamper-evident ledger |

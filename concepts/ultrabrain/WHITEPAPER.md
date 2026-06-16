@@ -24,6 +24,18 @@ tool output, math checks, or user corrections can ground trusted memory. The dec
 experiment has now run: UltraBrain cleared all five pass bars against a simpler vector-memory
 baseline on the axes this paper claims.
 
+**But the trust boundary is the means, not the end.** The endgame is to replace the next-token
+objective itself with a *verifier-grounded generator*: generation as **search over
+verifier-accepted states**, where every emitted answer is correct *by construction* or the
+generator abstains — a guarantee no token sampler can make. The verified-memory layer is exactly
+the **scaffolding** that makes such a generator trainable: the verifier is its teacher, verified
+traces are its data, and the trust boundary is what keeps an unverified step out of a "verified"
+output. v0.4 ships the first instance in the math domain (`solve-search`): a derivation searched
+and certified by an exact oracle, not sampled token-by-token. Honest scope: replacing token
+generation for *verifiable* domains is realistic now; replacing it *entirely* — soft domains with
+no certifying oracle — is not yet solved. This is the bet that breaks single-company LLM hegemony:
+value moves from one giant predictor on megawatts to the verifier/composition/local layer.
+
 ---
 
 ## 1. Two complaints, one cause

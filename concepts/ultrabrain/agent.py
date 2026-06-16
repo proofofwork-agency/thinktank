@@ -3,11 +3,14 @@
 import argparse
 import json
 import os
+from dataclasses import asdict
 
 from ultrabrain.kb import KB
 from ultrabrain.evidence import EvidenceStore
 from ultrabrain.identity import validate_user_id
 from ultrabrain.project import ingest_project
+from ultrabrain.render import render_derivation
+from ultrabrain.search import HeuristicPolicy, solve_search
 from ultrabrain.self_learning import ExperienceLedger, SelfLearningAgent, SkillMemory
 
 
@@ -64,6 +67,11 @@ def run(cmd, agent):
         show(agent.retract_belief(statement.strip(), reason.strip() if sep else "manual retraction"))
     elif op == "verify-ledger":
         show(agent.verify_ledger())
+    elif op == "solve-search":
+        deriv = solve_search(rest, HeuristicPolicy())
+        rendered = render_derivation(deriv)
+        recorded = agent.math(rest, deriv.answer) if deriv.certified else None
+        show({"derivation": asdict(deriv), "rendered": rendered, "recorded": recorded})
     elif op == "math":
         problem, sep, proposal = rest.partition("=>")
         show(agent.math(problem.strip(), proposal.strip() if sep else None))
@@ -86,7 +94,7 @@ def run(cmd, agent):
     elif op == "context":
         show(agent.context_for(rest))
     else:
-        show({"accepted": False, "verdict": "commands: tell | teacher | proposal | oracle-git-diff | oracle-pytest | oracle-compile | oracle-search | ingest | depends | bug | why-belief | training-traces | retract | verify-ledger | math | teacher-math | learn | ask | skill | context"})
+        show({"accepted": False, "verdict": "commands: tell | teacher | proposal | oracle-git-diff | oracle-pytest | oracle-compile | oracle-search | ingest | depends | bug | why-belief | training-traces | retract | verify-ledger | solve-search | math | teacher-math | learn | ask | skill | context"})
 
 
 def main():
