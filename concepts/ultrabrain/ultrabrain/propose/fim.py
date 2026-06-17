@@ -39,6 +39,18 @@ DEFAULT_TOK = os.path.join(ROOT, "checkpoints", "tokenizer.json")
 _UNAVAILABLE = "# diffusion-fim unavailable: {reason}\n"
 
 
+def _special_token_ids(tok) -> set:
+    """Every special-token id the tokenizer reserves: PAD/MASK always, and for the byte-level BPE
+    tokenizer also <S>/<SEP>/<E>. A FIM fill must contain NONE of them — they are structural markers,
+    not code, and (Codex + workflow review) <S>/<SEP>/<E> decode to literal tags that a mask/pad-only
+    text check misses entirely."""
+    ids = {int(tok.pad_id), int(tok.mask_id)}
+    special = getattr(tok, "special", None)  # byte-level BPE Tokenizer exposes {name: id}
+    if isinstance(special, dict):
+        ids |= {int(v) for v in special.values()}
+    return ids
+
+
 def load_denoiser(ckpt_path=DEFAULT_CKPT, tok_path=DEFAULT_TOK, device="cpu"):
     """Load a trained denoiser + BPE tokenizer from disk (mirrors sample.py). Lazy torch import."""
     import torch
@@ -112,18 +124,20 @@ class DiffusionFIMProposer:
                 self.model, self.tok, self.block = load_denoiser(checkpoint, tokenizer_path, self.device)
             except Exception as exc:  # missing/incompatible checkpoint -> degrade
                 self._err = f"checkpoint load failed: {exc}"
+        self._special_ids = _special_token_ids(self.tok) if self.tok is not None else set()
 
     @property
     def available(self) -> bool:
         return self.model is not None
 
     @staticmethod
-    def _leaks_special(fill_ids, mask_id, pad_id) -> bool:
-        """True if a raw fill token is a special id. Checked BEFORE decode because both tokenizers
-        decode <MASK>/<PAD> ids to the empty string, so a real special-id leak is invisible at the
-        TEXT layer (Codex review). generate() also suppresses these ids; this enforces the contract
-        even if a future sampler change stops suppressing them."""
-        specials = {int(mask_id), int(pad_id)}
+    def _leaks_special(fill_ids, special_ids) -> bool:
+        """True if a raw fill token is a reserved special id. Checked BEFORE decode because both
+        tokenizers decode <MASK>/<PAD> to '' (and BPE decodes <S>/<SEP>/<E> to literal tags), so a
+        real special-id leak is invisible or mislabeled at the TEXT layer (Codex + workflow review).
+        generate() also suppresses mask/pad ids; this enforces the contract for ALL specials even if
+        a future sampler change stops suppressing them."""
+        specials = {int(s) for s in special_ids}
         return any(int(t) in specials for t in fill_ids)
 
     def _fill_once(self, prefix: str, suffix: str, fill_len: int, seed: int):
@@ -155,24 +169,26 @@ class DiffusionFIMProposer:
             pad_id=self.tok.pad_id, noise=self.noise,
         )
         fill_ids = out[0].tolist()[len(pre_ids): len(pre_ids) + fill_len]
-        if self._leaks_special(fill_ids, self.tok.mask_id, self.tok.pad_id):
+        if self._leaks_special(fill_ids, self._special_ids):
             return None, "fim_bad_boundary: special token id leaked into the fill"
         fill = self.tok.decode(fill_ids)
         # Byte-exact prefix/suffix; ONLY the middle is model-generated.
         return prefix + fill + suffix, None
 
     def _validated(self, candidate, prefix: str, suffix: str) -> str:
-        """Reject silent boundary/invariant drift (Codex review) instead of emitting a malformed
-        trace: a tokenization / truncation / pinning mistake must surface as a gate-rejected
-        sentinel, never as a plausible-but-different program. We do NOT claim span purity — the
-        certified claim is "the assembled program passes the hardened suite" — but the pinned
-        prefix/suffix must be byte-exact and no special token may leak into the fill."""
-        if candidate is None:
-            return _UNAVAILABLE.format(reason="fim_overflow: prefix+suffix leave no room for a fill")
-        if MASK in candidate or PAD in candidate:
-            return _UNAVAILABLE.format(reason="fim_bad_boundary: special token leaked into the fill")
+        """Reject silent boundary/invariant drift (Codex + workflow review) instead of emitting a
+        malformed trace: a tokenization / pinning mistake must surface as a gate-rejected sentinel,
+        never as a plausible-but-different program. We do NOT claim span purity — the certified claim
+        is "the assembled program passes the hardened suite" — but the pinned prefix/suffix must be
+        byte-exact, and the model-generated FILL region must carry no special-token literal. (The
+        primary id-level guard runs in _fill_once before decode; this is the text-layer backstop,
+        scoped to the fill so a special literal legitimately inside the pinned context is not
+        over-rejected.)"""
         if not (candidate.startswith(prefix) and candidate.endswith(suffix)):
             return _UNAVAILABLE.format(reason="fim_bad_boundary: pinned prefix/suffix not preserved")
+        fill = candidate[len(prefix): len(candidate) - len(suffix)]
+        if MASK in fill or PAD in fill:
+            return _UNAVAILABLE.format(reason="fim_bad_boundary: special token leaked into the fill")
         return candidate
 
     def propose(self, task: dict, n: int) -> list:

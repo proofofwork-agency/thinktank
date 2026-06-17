@@ -160,6 +160,14 @@ def run(argv=None):
             return collect
         train_rc = _train(args, quiet)
         metrics = _eval(args, quiet)
+        if isinstance(metrics, dict) and metrics.get("error"):  # eval fail-closed (e.g. no isolation)
+            if args.json:
+                print(json.dumps({"error": "eval_failed", "detail": metrics["error"], "round": r},
+                                 indent=2, sort_keys=True))
+            else:
+                print(f"ERROR: eval failed (round {r}): {metrics['error']} — executing model output "
+                      f"needs OS isolation. Aborting.", file=sys.stderr)
+            return 2
         trajectory.append({
             "round": r,
             "collected_traces": collect.get("traces_written"),

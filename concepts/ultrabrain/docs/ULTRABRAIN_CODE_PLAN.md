@@ -30,7 +30,7 @@ The trust boundary (`thoughts/22`) made concrete for code:
 | Verifier / orchestrator | **Mac 36 GB** (MLX) | sandbox, test execution, SymPy/CAS, loop orchestration; can host a 27–32B proposer |
 | Cloud | optional, on-demand spot ($1–15/job) | only for >14B fine-tunes or massive trace generation; **$0 for the first milestones** |
 | Identity | "certified output" | learned/token parts are proposers/rankers; only verifier-certified outputs are trusted |
-| From-scratch remnant | the masked-diffusion LM → optional **FIM/infill head** | the one role where diffusion beats same-scale AR (HumanEval-FIM 73.8 > 73.3); droppable |
+| From-scratch remnant | masked-diffusion LM → the **FIM/infill proposer** (Slice 2b, DONE) | the one role where diffusion beats same-scale AR (HumanEval-FIM 73.8 > 73.3); wired in behind the unchanged gate |
 
 **Why not the alternatives:** from-scratch-as-coder loses (sub-10% HumanEval at small scale);
 distillation-from-a-frontier-API caps the ceiling at the teacher *and* taints redistribution
@@ -63,6 +63,14 @@ base + **our own** verifier generating **our own** verified-trace corpus.
 
 ## Slice roadmap
 
+**Status: COMPLETE.** Slices 1, 2, 2b, and 3 are built, tested (`python -m pytest tests -q` →
+87 passed), and adversarially reviewed by Codex + an 8-agent validation workflow (no
+false-certification vector found). The gate is the only trust anchor; every proposer (zero-ML mock,
+Qwen3-Coder-14B `llm`, masked-diffusion `fim`) is a demoted, untrusted, OS-isolated client of it.
+What remains is not code — it is the real fine-tunes / code-corpus training runs on YOUR hardware
+(one command each in the RUNBOOK); the pipeline is verified here end-to-end with zero-ML and a
+real-checkpoint soundness check (fim certifies 0/11, no false certs).
+
 - **Slice 1 — Verifier Gate / Zero-ML Falsification. DONE + hardened.** One model-agnostic gate
   (sandbox + candidate ledger + accept/reject) with two verifier adapters (code *hardened*, CAS
   *airtight*) + the falsification experiments. No model, no training. Verdict: THESIS SUPPORTED
@@ -75,11 +83,28 @@ base + **our own** verifier generating **our own** verified-trace corpus.
   `data/verified_traces.jsonl`), `train_qlora.py` (QLoRA on the RTX 5080; stdlib `--dry_run`). The
   model download + real fine-tune run on YOUR hardware (one command each); the pipeline is verified
   here with a zero-ML mock proposer.
-- **Slice 2b (deferred)** — train the masked-diffusion denoiser on code and wire it as the
-  FIM/edit-anywhere proposer head. Needs a code-training run on your hardware; the gate is already
-  proposer-agnostic, so it slots in with no gate change.
-- **Slice 3** — the verifier zoo for numerical/physics/quantum (conservation, unitarity,
-  convergence) + the decompose-then-verify orchestrator (SciCode subproblem granularity).
+- **Slice 2b — diffusion FIM proposer behind the gate. DONE + hardened.**
+  `ultrabrain/propose/fim.py` (`DiffusionFIMProposer`) wires the from-scratch masked-diffusion
+  denoiser in as a fill-in-the-middle proposer — pin `prefix`/`suffix`, denoise the hole, hand the
+  assembled `prefix+fill+suffix` to the EXISTING gate. The one role where diffusion beats same-scale
+  AR (HumanEval-FIM 73.8 > 73.3): a bidirectional denoiser conditions on both sides at once, which a
+  left-to-right model cannot. `--proposer fim` is wired into all three CLIs (`run_verified_search`,
+  `eval_code`, `self_improve`) and, like `--proposer llm`, runs OS-isolated + fails closed (a
+  diffusion fill is untrusted model output). The gate / verifier / ledger / trace pipeline is
+  UNCHANGED — FIM-ness lives entirely in the proposer (the proposer-agnostic thesis, thoughts/14, 22).
+  `tasks/micro_fim.jsonl` (11 infill tasks) + `tests/test_fim.py` (10 tests) cover the trust boundary,
+  not network quality: an oracle denoiser reconstructs a known fill end-to-end
+  (diffusion→decode→assemble→isolated gate→ledger), Codex + workflow boundary-hardening is enforced
+  (byte-exact prefix/suffix; special-token leak caught on raw ids before decode, incl. BPE
+  `<S>/<SEP>/<E>`; STRICT overflow sentinel — never silently shrink a hole); and a random non-code
+  denoiser false-certifies NOTHING. The shipped checkpoint is Shakespeare-trained, so it certifies
+  0/11 — and that *is* the result: the trust boundary holds THROUGH the diffusion head
+  (`no evidence → no trusted belief`), however good or random the proposer. Real "diffusion fills code
+  holes" capability is one code-training command away (`train.py --corpus`; RUNBOOK § 2b).
+- **Slice 3 — scientific zoo + decompose-then-verify orchestrator. DONE + hardened.** the verifier
+  zoo for numerical/physics/quantum (conservation, unitarity, convergence) + the decompose-then-verify
+  orchestrator (SciCode subproblem granularity). The orchestrator executes untrusted proposer output
+  OS-isolated + fail-closed, like the CLIs (Codex + workflow review).
 
 ## Slice 1 spec
 

@@ -34,13 +34,17 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 try:  # normal package import (``import ultrabrain.orchestrate``)
-    from .verify import CodeTestVerifier, Gate, Ledger, Outcome, harden
+    from .verify import (
+        CodeTestVerifier, Gate, ISOLATION_AVAILABLE, Ledger, Outcome, harden, run_tests_isolated,
+    )
 except ImportError:  # run directly as a script (``python ultrabrain/orchestrate.py``), mirror eval.py
     import os as _os
     import sys as _sys
 
     _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-    from ultrabrain.verify import CodeTestVerifier, Gate, Ledger, Outcome, harden
+    from ultrabrain.verify import (
+        CodeTestVerifier, Gate, ISOLATION_AVAILABLE, Ledger, Outcome, harden, run_tests_isolated,
+    )
 
 
 class MockProposer:
@@ -132,19 +136,26 @@ class CompositeResult:
         }
 
 
-def _verifier_for(sub: dict):
-    """The hardened accept gate's verifier for one subproblem (weak + hidden + property tests)."""
-    return CodeTestVerifier(harden(sub))
+# Zero-ML controls whose output IS our own reference/distractor code (trusted, like the mock CLI
+# proposer). Anything else is an untrusted proposer whose output must execute OS-isolated.
+_TRUSTED_PROPOSERS = (MockProposer, WrongProposer)
 
 
-def solve_subproblem(sub: dict, proposer, n: int = 8, ledger: Optional[Ledger] = None) -> SubResult:
+def _verifier_for(sub: dict, runner=None):
+    """The hardened accept gate's verifier for one subproblem (weak + hidden + property tests).
+    ``runner`` is the execution backend; pass ``run_tests_isolated`` for UNTRUSTED proposer output."""
+    return CodeTestVerifier(harden(sub), runner=runner)
+
+
+def solve_subproblem(sub: dict, proposer, n: int = 8, ledger: Optional[Ledger] = None,
+                     runner=None) -> SubResult:
     """Run ``Gate(CodeTestVerifier(harden(sub)))`` over ``n`` proposer candidates for one subproblem.
 
     Returns the first CERTIFIED outcome (short-circuiting like the verified-search loop). If nothing
     certifies, the SubResult carries the last non-certified verdict's detail so the failure is
     legible. The gate — not this function — owns the certify/reject decision.
     """
-    gate = Gate(_verifier_for(sub), ledger)
+    gate = Gate(_verifier_for(sub, runner=runner), ledger)
     sub_id = sub.get("id", "?")
     candidates = proposer.propose(sub, n)
     last_detail = "no candidates proposed"
@@ -191,6 +202,7 @@ def orchestrate(
     proposer=None,
     n: int = 8,
     ledger: Optional[Ledger] = None,
+    isolated: Optional[bool] = None,
 ) -> CompositeResult:
     """DECOMPOSE-THEN-VERIFY over a composite ``{id, subproblems:[sub_task, ...]}``.
 
@@ -213,12 +225,27 @@ def orchestrate(
 
     if proposer is None:
         proposer = MockProposer()
+
+    # Untrusted proposer output (anything but our zero-ML controls) executes OS-isolated and fails
+    # closed, exactly like the --proposer llm/fim CLIs (Codex + workflow review: orchestrate is the
+    # one untrusted-execution path that was missing this). Explicit isolated= overrides the inference.
+    if isolated is None:
+        isolated = not isinstance(proposer, _TRUSTED_PROPOSERS)
+    runner = None
+    if isolated:
+        if not ISOLATION_AVAILABLE:
+            raise RuntimeError(
+                "orchestrate: OS isolation is REQUIRED to execute untrusted proposer output but is "
+                "unavailable here. Run where the `resource` module works / in a container, pass a "
+                "trusted proposer, or set isolated=False explicitly (DANGEROUS).")
+        runner = run_tests_isolated
+
     subproblems = list(composite.get("subproblems", []))
     result = CompositeResult(id=composite.get("id", "?"))
 
     t0 = time.time()
     for sub in subproblems:
-        result.subproblems.append(solve_subproblem(sub, proposer, n=n, ledger=ledger))
+        result.subproblems.append(solve_subproblem(sub, proposer, n=n, ledger=ledger, runner=runner))
     result.seconds = time.time() - t0
 
     result.solution = compose(result.subproblems)
@@ -241,7 +268,7 @@ def orchestrate(
         result.composition_detail = "subproblems not all certified; composition not verified"
         result.overall_solved = False
     else:
-        whole = CodeTestVerifier(composite_tests).verify(composite, result.solution)
+        whole = CodeTestVerifier(composite_tests, runner=runner).verify(composite, result.solution)
         result.composition_verified = whole.certified
         result.composition_detail = whole.detail
         result.overall_solved = whole.certified

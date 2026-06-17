@@ -91,9 +91,9 @@ def test_fim_boundary_invariants_are_enforced():
     prop = DiffusionFIMProposer(model=OracleDenoiser([0], tok.vocab_size, 64), tokenizer=tok, block=64)
     good = "def f(): return 1\n"
     assert prop._validated(good, "def f(): ", "\n") == good
-    assert "bad_boundary" in prop._validated("def f(): <MASK>\n", "def f(): ", "\n")     # leaked special token
-    assert "bad_boundary" in prop._validated("WRONG", "def f(): ", "\n")                 # broke pinned prefix
-    assert "overflow" in prop._validated(None, "def f(): ", "\n")                        # didn't fit -> explicit
+    assert "bad_boundary" in prop._validated("def f(): <MASK>\n", "def f(): ", "\n")     # special literal in fill
+    assert "bad_boundary" in prop._validated("WRONG\n", "def f(): ", "\n")               # FAILS prefix (suffix ok)
+    assert "bad_boundary" in prop._validated("def f(): return 1", "def f(): ", "\n")     # FAILS suffix (prefix ok)
 
 
 def test_fim_overflow_is_strict_not_silently_shrunk():
@@ -113,13 +113,27 @@ def test_fim_overflow_is_strict_not_silently_shrunk():
 
 def test_fim_special_id_leak_rejected_before_decode():
     """Codex finding: special-token IDs decode to '' so a TEXT-level check misses them; the guard
-    must inspect raw fill_ids BEFORE decode."""
+    must inspect raw fill_ids BEFORE decode, against ALL reserved special ids."""
     tok = CharTokenizer.build("abc return 1\n")
     leaks = DiffusionFIMProposer._leaks_special
-    assert leaks([5, tok.mask_id, 7], tok.mask_id, tok.pad_id)      # MASK id present in the fill
-    assert leaks([tok.pad_id], tok.mask_id, tok.pad_id)            # PAD id present in the fill
-    assert not leaks([5, 6, 7], tok.mask_id, tok.pad_id)           # clean fill
-    assert tok.decode([tok.mask_id, tok.pad_id]) == ""             # why the id check exists: text misses it
+    specials = {tok.mask_id, tok.pad_id}
+    assert leaks([5, tok.mask_id, 7], specials)      # MASK id present in the fill
+    assert leaks([tok.pad_id], specials)             # PAD id present in the fill
+    assert not leaks([5, 6, 7], specials)            # clean fill
+    assert tok.decode([tok.mask_id, tok.pad_id]) == ""   # why the id check exists: text misses it
+
+
+def test_fim_bpe_structural_specials_rejected():
+    """Workflow finding: BPE <S>/<SEP>/<E> are samplable and decode to LITERAL tags, so they escape a
+    mask/pad-only check. The leak guard must cover ALL reserved special ids (via _special_ids)."""
+    from ultrabrain.tokenizer import Tokenizer
+    tok = Tokenizer.build("def f(): return 1\n abc xyz def ghi jkl mno", num_merges=50)
+    sep_id = tok.special["<SEP>"]
+    prop = DiffusionFIMProposer(model=OracleDenoiser([0], tok.vocab_size, 32),
+                                tokenizer=tok, block=32, device="cpu")
+    assert sep_id in prop._special_ids                                 # guard covers <SEP>, not just MASK/PAD
+    assert DiffusionFIMProposer._leaks_special([5, sep_id], prop._special_ids)
+    assert "<SEP>" in tok.decode([sep_id])                             # a mask/pad text-check would miss this
 
 
 # --------------------------------------------------------------------------- THE trust boundary

@@ -16,9 +16,24 @@
 >   endpoint → your local Qwen3-Coder-14B), `run_verified_search.py` (the verified-trace
 >   data-forge), `train_qlora.py` (QLoRA on the RTX 5080). Run: `python run_verified_search.py
 >   --proposer llm ...` then `python train_qlora.py`.
+> - **Slice 2b — diffusion FIM proposer behind the gate, DONE + hardened.**
+>   `ultrabrain/propose/fim.py` wires the masked-diffusion denoiser in as a fill-in-the-middle
+>   proposer — the one role where diffusion beats same-scale AR (native infilling). `--proposer fim`
+>   runs in all three CLIs, OS-isolated and fail-closed exactly like `llm` (a diffusion fill is
+>   untrusted model output); the gate is unchanged. With the Shakespeare checkpoint it certifies
+>   0/11 — the trust boundary holding *through* the diffusion head, not a bug. Code-fill capability is
+>   one `train.py --corpus <code>` run away (RUNBOOK). Run: `python eval_code.py --proposer fim
+>   --tasks tasks/micro_fim.jsonl`.
+> - **Slice 3 — scientific zoo + decompose-then-verify orchestrator, DONE.**
+>   `ultrabrain/verify/scientific.py` + `ultrabrain/orchestrate.py` (`python ultrabrain/orchestrate.py`;
+>   the orchestrator isolates untrusted proposer output too). Eval/loop entry points: `eval_code.py`,
+>   `self_improve.py`.
+> - **Roadmap COMPLETE.** Slices 1, 2, 2b, 3 built + tested (`python -m pytest tests` → 87 passed) +
+>   Codex- and workflow-reviewed; what remains is the real fine-tunes / code-training on your hardware.
 >
 > Everything is local and tested (`python -m pytest tests`). The masked-diffusion LM described
-> below is a **research component** (an optional fill-in-the-middle head), not the product.
+> below is a **research component** — now wired in behind the gate as the Slice 2b FIM proposer
+> (above) — not the product.
 
 ## The masked-diffusion LM (research component)
 
