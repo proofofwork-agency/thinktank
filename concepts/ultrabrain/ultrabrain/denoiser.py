@@ -1,19 +1,26 @@
-"""Decoder-only GPT from scratch: manual causal attention, RMSNorm, SwiGLU.
+"""Bidirectional Transformer denoiser — the network behind the diffusion LM.
 
-Only torch primitives used: Linear, Embedding, softmax, matmul. No nn.Transformer,
-no scaled_dot_product_attention.
+FULL (non-causal) self-attention: every position attends to every other position, because
+the denoiser must use both left and right context to reconstruct masked tokens. It infers the
+noise level from how many <MASK> tokens it sees (a time-independent SUBS denoiser; an explicit
+scalar-t embedding was tried and removed because it measurably hurt learning). Written from
+scratch on torch primitives only — no nn.Transformer, no scaled_dot_product_attention, and no
+causal mask anywhere. This is NOT the old autoregressive GPT with a flag flipped; it is a new
+model for a new (non-AR) approach.
 """
 
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class Config:
-    def __init__(self, vocab_size, n_layer=4, n_head=8, n_embd=256, block=128, dropout=0.1):
-        self.vocab_size, self.n_layer, self.n_head = vocab_size, n_layer, n_head
-        self.n_embd, self.block, self.dropout = n_embd, block, dropout
+    def __init__(self, vocab_size, n_layer=6, n_head=6, n_embd=384, block=128, dropout=0.1):
+        self.vocab_size = vocab_size
+        self.n_layer, self.n_head, self.n_embd = n_layer, n_head, n_embd
+        self.block, self.dropout = block, dropout
 
 
 class RMSNorm(nn.Module):
@@ -25,14 +32,15 @@ class RMSNorm(nn.Module):
         return self.g * x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + 1e-6)
 
 
-class Attention(nn.Module):
+class BidirectionalAttention(nn.Module):
+    """Full self-attention. The absence of a causal mask is the whole point."""
+
     def __init__(self, c):
         super().__init__()
         self.nh, self.hd = c.n_head, c.n_embd // c.n_head
         self.qkv = nn.Linear(c.n_embd, 3 * c.n_embd, bias=False)
         self.proj = nn.Linear(c.n_embd, c.n_embd, bias=False)
         self.drop = nn.Dropout(c.dropout)
-        self.register_buffer("mask", torch.tril(torch.ones(c.block, c.block)).view(1, 1, c.block, c.block))
 
     def forward(self, x):
         B, T, C = x.shape
@@ -41,8 +49,7 @@ class Attention(nn.Module):
         k = k.view(B, T, self.nh, self.hd).transpose(1, 2)
         v = v.view(B, T, self.nh, self.hd).transpose(1, 2)
         att = (q @ k.transpose(-2, -1)) / math.sqrt(self.hd)
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
-        att = self.drop(F.softmax(att, dim=-1))
+        att = self.drop(F.softmax(att, dim=-1))          # no causal mask: bidirectional
         y = (att @ v).transpose(1, 2).contiguous().view(B, T, C)
         return self.proj(y)
 
@@ -63,7 +70,7 @@ class SwiGLU(nn.Module):
 class Block(nn.Module):
     def __init__(self, c):
         super().__init__()
-        self.n1, self.att = RMSNorm(c.n_embd), Attention(c)
+        self.n1, self.att = RMSNorm(c.n_embd), BidirectionalAttention(c)
         self.n2, self.mlp = RMSNorm(c.n_embd), SwiGLU(c)
 
     def forward(self, x):
@@ -71,7 +78,11 @@ class Block(nn.Module):
         return x + self.mlp(self.n2(x))
 
 
-class GPT(nn.Module):
+class Denoiser(nn.Module):
+    """Predicts the clean token at EVERY position from a partially-masked sequence + the
+    scalar noise level. Output is logits over the vocab; the loss (on masked positions only)
+    lives in diffusion.py, keeping this module a pure predictor."""
+
     def __init__(self, c):
         super().__init__()
         self.c = c
@@ -81,39 +92,23 @@ class GPT(nn.Module):
         self.blocks = nn.ModuleList(Block(c) for _ in range(c.n_layer))
         self.norm = RMSNorm(c.n_embd)
         self.head = nn.Linear(c.n_embd, c.vocab_size, bias=False)
-        self.head.weight = self.tok.weight
+        self.head.weight = self.tok.weight               # weight tying
         self.apply(self._init)
 
     def _init(self, m):
         if isinstance(m, (nn.Linear, nn.Embedding)):
             nn.init.normal_(m.weight, std=0.02)
 
-    def forward(self, idx, targets=None, pad_id=None):
+    def forward(self, idx, t=None):
+        # t (noise/mask level) is accepted for API symmetry with the sampler but intentionally
+        # UNUSED: an absorbing masked-diffusion denoiser infers the level from the <MASK> count,
+        # and an explicit scalar-t embedding measurably hurt learning here.
         B, T = idx.shape
-        x = self.drop(self.tok(idx) + self.pos(torch.arange(T, device=idx.device)))
+        x = self.tok(idx) + self.pos(torch.arange(T, device=idx.device))
+        x = self.drop(x)
         for b in self.blocks:
             x = b(x)
-        logits = self.head(self.norm(x))
-        if targets is None:
-            return logits, None
-        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.reshape(-1),
-                               ignore_index=pad_id if pad_id is not None else -100)
-        return logits, loss
+        return self.head(self.norm(x))                   # (B, T, vocab_size)
 
-    @torch.no_grad()
-    def generate(self, idx, max_new, temperature=1.0, top_k=None, stop_id=None):
-        for _ in range(max_new):
-            logits, _ = self(idx[:, -self.c.block:])
-            logits = logits[:, -1, :]
-            if temperature == 0:
-                nxt = logits.argmax(-1, keepdim=True)
-            else:
-                logits = logits / temperature
-                if top_k:
-                    v, _ = torch.topk(logits, top_k)
-                    logits[logits < v[:, [-1]]] = float("-inf")
-                nxt = torch.multinomial(F.softmax(logits, -1), 1)
-            idx = torch.cat([idx, nxt], 1)
-            if stop_id is not None and nxt.item() == stop_id:
-                break
-        return idx
+    def num_params(self):
+        return sum(p.numel() for p in self.parameters())

@@ -1,110 +1,123 @@
-"""Train UltraBrain's perception LM from scratch: BPE -> GPT on Shakespeare + NL->logic pairs."""
+"""Train the masked-diffusion LM from scratch on a character corpus (default: Shakespeare).
 
+No autoregression anywhere. The model learns to reconstruct masked spans of clean text, and
+is trained for MANY passes over the corpus — the data-efficiency regime where masked diffusion
+earns its keep. Saves checkpoints/diffusion.pt + checkpoints/tokenizer.json.
+
+  python train.py                       # full default run
+  python train.py --steps 300 --n_layer 2 --n_embd 128 --max_chars 200000   # quick check
+"""
+
+import argparse
+import math
 import os
 import time
 
 import torch
 
-from data.synth import make_pairs, split
-from ultrabrain.model import GPT, Config
-from ultrabrain.tokenizer import Tokenizer
+from ultrabrain.tokenizer import CharTokenizer
+from ultrabrain.denoiser import Config, Denoiser
+from ultrabrain import diffusion
 
-torch.manual_seed(1337)
 ROOT = os.path.dirname(os.path.abspath(__file__))
 CKPT = os.path.join(ROOT, "checkpoints")
-DEV = "mps" if torch.backends.mps.is_available() else "cpu"
-BLOCK, BATCH, STEPS, LR = 128, 64, 5000, 3e-4
 
 
-def build_tokenizer(shake, pairs):
-    sample = shake[:400_000] + "\n" + "\n".join(f"{s} {l}" for s, l in pairs[:4000])
-    tok = Tokenizer.train(sample, num_merges=256)
-    tok.save(os.path.join(CKPT, "tokenizer.json"))
-    return tok
+def pick_device():
+    if torch.backends.mps.is_available():
+        return "mps"
+    if torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
 
 
-def encode_pairs(tok, pairs):
-    S, SEP, E, PAD = (tok.special[s] for s in ("<S>", "<SEP>", "<E>", "<PAD>"))
-    rows = []
-    for sent, logic in pairs:
-        ids = [S] + tok.encode(sent) + [SEP] + tok.encode(logic) + [E]
-        if len(ids) <= BLOCK:
-            rows.append((ids, len(tok.encode(sent)) + 2))  # loss starts after SEP
-    return rows, PAD
+def get_batch(data, bs, block, dev):
+    ix = torch.randint(len(data) - block, (bs,))
+    return torch.stack([data[i:i + block] for i in ix]).to(dev)
 
 
-def pair_batch(rows, pad, bs):
-    import random
-    picks = random.sample(rows, bs)
-    L = max(len(r[0]) for r in picks)
-    x = torch.full((bs, L - 1), pad)
-    y = torch.full((bs, L - 1), pad)
-    for i, (ids, start) in enumerate(picks):
-        t = torch.tensor(ids)
-        x[i, :len(ids) - 1] = t[:-1]
-        y[i, start - 1:len(ids) - 1] = t[start:]
-    return x.to(DEV), y.to(DEV)
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--steps", type=int, default=4000)
+    ap.add_argument("--batch", type=int, default=64)
+    ap.add_argument("--block", type=int, default=128)
+    ap.add_argument("--n_layer", type=int, default=6)
+    ap.add_argument("--n_head", type=int, default=6)
+    ap.add_argument("--n_embd", type=int, default=384)
+    ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--warmup", type=int, default=200)
+    ap.add_argument("--corpus", default=os.path.join(ROOT, "data", "shakespeare.txt"))
+    ap.add_argument("--max_chars", type=int, default=0, help="cap corpus size (0 = all)")
+    ap.add_argument("--out", default=os.path.join(CKPT, "diffusion.pt"))
+    ap.add_argument("--tok_out", default=os.path.join(CKPT, "tokenizer.json"))
+    ap.add_argument("--eval_every", type=int, default=500)
+    ap.add_argument("--sample_steps", type=int, default=24)
+    args = ap.parse_args(argv)
 
-
-def text_batch(data, bs):
-    ix = torch.randint(len(data) - BLOCK - 1, (bs,))
-    x = torch.stack([data[i:i + BLOCK] for i in ix])
-    y = torch.stack([data[i + 1:i + BLOCK + 1] for i in ix])
-    return x.to(DEV), y.to(DEV)
-
-
-@torch.no_grad()
-def translation_acc(model, tok, holdout, n=100):
-    model.eval()
-    S, SEP, E = tok.special["<S>"], tok.special["<SEP>"], tok.special["<E>"]
-    ok = 0
-    fwd = [(s, l) for s, l in holdout if "(" in l][:n]
-    for sent, logic in fwd:
-        idx = torch.tensor([[S] + tok.encode(sent) + [SEP]], device=DEV)
-        out = model.generate(idx, 40, temperature=0, stop_id=E)[0].tolist()
-        hyp = tok.decode(out[out.index(SEP) + 1:]).replace("<E>", "").strip()
-        ok += hyp == logic
-    model.train()
-    return ok / len(fwd)
-
-
-def main():
     os.makedirs(CKPT, exist_ok=True)
-    shake = open(os.path.join(ROOT, "data", "shakespeare.txt")).read()
-    train_pairs, holdout = split(make_pairs(12000))
-    print(f"pairs train={len(train_pairs)} holdout={len(holdout)}", flush=True)
-    tok = build_tokenizer(shake, train_pairs)
-    print(f"tokenizer vocab={tok.vocab_size}", flush=True)
+    torch.manual_seed(1337)
+    dev = pick_device()
 
-    data = torch.tensor(tok.encode(shake), dtype=torch.long)
-    rows, PAD = encode_pairs(tok, train_pairs)
-    model = GPT(Config(tok.vocab_size, n_layer=8, n_embd=448, block=BLOCK)).to(DEV)
-    print(f"params={sum(p.numel() for p in model.parameters())/1e6:.2f}M device={DEV}", flush=True)
-    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.1)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, STEPS)
+    text = open(args.corpus).read()
+    if args.max_chars:
+        text = text[:args.max_chars]
+    tok = CharTokenizer.build(text)
+    tok.save(args.tok_out)
+    data = torch.tensor(tok.encode(text), dtype=torch.long)
+    n = int(0.9 * len(data))
+    train_data, val_data = data[:n], data[n:]
+    print(f"device={dev} vocab={tok.vocab_size} chars={len(data)} "
+          f"block={args.block} batch={args.batch} steps={args.steps}", flush=True)
+
+    model = Denoiser(Config(tok.vocab_size, args.n_layer, args.n_head, args.n_embd, args.block)).to(dev)
+    print(f"params={model.num_params() / 1e6:.2f}M", flush=True)
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+
+    def lr_lambda(step):                              # linear warmup -> cosine decay
+        if step < args.warmup:
+            return (step + 1) / max(1, args.warmup)
+        progress = (step - args.warmup) / max(1, args.steps - args.warmup)
+        return 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
+
+    sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
+
+    def save_ckpt():
+        torch.save({
+            "model": model.state_dict(),
+            "vocab_size": tok.vocab_size, "n_layer": args.n_layer, "n_head": args.n_head,
+            "n_embd": args.n_embd, "block": args.block,
+        }, args.out)
+
+    @torch.no_grad()
+    def val_loss(iters=20):
+        model.eval()
+        v = sum(diffusion.diffusion_loss(model, get_batch(val_data, args.batch, args.block, dev),
+                                         tok.mask_id, tok.pad_id).item() for _ in range(iters))
+        model.train()
+        return v / iters
 
     t0 = time.time()
-    for step in range(1, STEPS + 1):
-        x, y = text_batch(data, BATCH) if step % 2 else pair_batch(rows, PAD, BATCH)
-        _, loss = model(x, y, pad_id=PAD)
+    for step in range(1, args.steps + 1):
+        x = get_batch(train_data, args.batch, args.block, dev)
+        loss = diffusion.diffusion_loss(model, x, tok.mask_id, tok.pad_id)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
         sched.step()
-        if step % 250 == 0 or step == 1:
-            print(f"step {step:4d} loss {loss.item():.3f} ({time.time()-t0:.0f}s)", flush=True)
-        if step % 1250 == 0:
-            print(f"  holdout translation acc: {translation_acc(tok=tok, model=model, holdout=holdout):.2%}", flush=True)
+        if step == 1 or step % 100 == 0:
+            print(f"step {step:5d} loss {loss.item():.3f} ({time.time() - t0:.0f}s)", flush=True)
+        if step % args.eval_every == 0:
+            print(f"  val_loss {val_loss():.3f}", flush=True)
+            s = diffusion.generate(model, args.block, tok.mask_id, steps=args.sample_steps,
+                                   temperature=0.9, top_k=20, device=dev, pad_id=tok.pad_id)
+            print("  sample:", repr(tok.decode(s[0].tolist()))[:180], flush=True)
+            save_ckpt()  # periodic checkpoint so a long/interrupted run stays recoverable
 
-    torch.save({"model": model.state_dict(), "vocab": tok.vocab_size,
-                "n_layer": 8, "n_embd": 448}, os.path.join(CKPT, "gpt.pt"))
-    acc = translation_acc(model, tok, holdout, n=200)
-    print(f"FINAL holdout translation acc (200): {acc:.2%}", flush=True)
-    idx = torch.tensor([tok.encode("ROMEO:")], device=DEV)
-    print("--- shakespeare sample ---", flush=True)
-    print(tok.decode(model.generate(idx, 200, temperature=0.8, top_k=50)[0].tolist()), flush=True)
+    save_ckpt()
+    print(f"FINAL val_loss {val_loss():.3f} | saved {args.out}", flush=True)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
