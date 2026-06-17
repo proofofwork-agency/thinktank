@@ -110,37 +110,53 @@ def diffusion_mask_accuracy(model, data, block, mask_id, pad_id, device, mask_ra
 
 
 @torch.no_grad()
-def infill_eval(model, tok, heldout, block, device, steps):
+def infill_eval(model, tok, heldout, block, device, steps, examples=8):
     model.eval()
-    text = tok.decode(heldout[:block].tolist())
-    ids = torch.tensor(tok.encode(text), dtype=torch.long)
-    length = min(block, len(ids))
-    ids = ids[:length]
-    span = max(4, min(24, length // 4))
-    start = max(0, (length - span) // 2)
-    end = start + span
-    fixed = {i: int(tok_id) for i, tok_id in enumerate(ids.tolist()) if not (start <= i < end)}
-    out = generate(
-        model,
-        length,
-        tok.mask_id,
-        steps=steps,
-        fixed=fixed,
-        temperature=0,
-        device=device,
-        pad_id=tok.pad_id,
-        noise=0,
-    )[0].cpu()
-    gold = ids[start:end]
-    pred = out[start:end]
+    span_accs, exacts, rows = [], [], []
+    stride = max(1, (len(heldout) - block) // max(1, examples))
+    for i in range(examples):
+        offset = min(max(0, len(heldout) - block), i * stride)
+        text = tok.decode(heldout[offset:offset + block].tolist())
+        ids = torch.tensor(tok.encode(text), dtype=torch.long)
+        length = min(block, len(ids))
+        ids = ids[:length]
+        span = max(4, min(24, length // 4))
+        start = max(0, (length - span) // 2)
+        end = start + span
+        fixed = {j: int(tok_id) for j, tok_id in enumerate(ids.tolist()) if not (start <= j < end)}
+        out = generate(
+            model,
+            length,
+            tok.mask_id,
+            steps=steps,
+            fixed=fixed,
+            temperature=0,
+            device=device,
+            pad_id=tok.pad_id,
+            noise=0,
+        )[0].cpu()
+        gold = ids[start:end]
+        pred = out[start:end]
+        acc = float((pred == gold).float().mean().item()) if len(gold) else 0.0
+        exact = bool(torch.equal(pred, gold))
+        span_accs.append(acc)
+        exacts.append(exact)
+        rows.append({
+            "offset": offset,
+            "span_start": start,
+            "span_len": span,
+            "exact_match": exact,
+            "char_accuracy": acc,
+            "gold": tok.decode(gold.tolist()),
+            "pred": tok.decode(pred.tolist(), show_mask=True),
+            "context": tok.decode(ids.tolist(), show_mask=True),
+        })
+    first = rows[0] if rows else {}
     return {
-        "span_start": start,
-        "span_len": span,
-        "exact_match": bool(torch.equal(pred, gold)),
-        "char_accuracy": float((pred == gold).float().mean().item()) if len(gold) else 0.0,
-        "gold": tok.decode(gold.tolist()),
-        "pred": tok.decode(pred.tolist(), show_mask=True),
-        "context": tok.decode(ids.tolist(), show_mask=True),
+        "examples": len(rows),
+        "exact_match_rate": sum(exacts) / len(exacts) if exacts else 0.0,
+        "char_accuracy": sum(span_accs) / len(span_accs) if span_accs else 0.0,
+        "representative": first,
         "note": "AR baseline is not scored here: bidirectional middle-span infilling is the diffusion capability edge.",
     }
 
@@ -209,6 +225,7 @@ def run(argv=None):
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--mc", type=int, default=16, help="MC samples for diffusion bound")
     ap.add_argument("--sample_steps", type=int, default=16)
+    ap.add_argument("--infill_examples", type=int, default=8)
     ap.add_argument("--t_low", type=float, default=0.15)
     ap.add_argument("--t_high", type=float, default=0.5)
     ap.add_argument("--bound_t_min", type=float, default=0.02)
@@ -225,6 +242,7 @@ def run(argv=None):
         args.n_embd = 64
         args.mc = 4
         args.sample_steps = 8
+        args.infill_examples = 2
 
     torch.manual_seed(1337)
     device = pick_device()
@@ -249,7 +267,7 @@ def run(argv=None):
 
     ar_bits = ar_bpc(ar, val_data, args.block, device)
     diff_bits = diffusion_bpc_upper_bound(diff, val_data, args.block, tok.mask_id, tok.pad_id, device, args.mc, args.bound_t_min)
-    infill = infill_eval(diff, tok, val_data, args.block, device, args.sample_steps)
+    infill = infill_eval(diff, tok, val_data, args.block, device, args.sample_steps, args.infill_examples)
     diff_sample = sample_diffusion(diff, tok, args.block, args.sample_steps, device)
     prompt = tok.decode(val_data[: min(16, len(val_data))].tolist())
     ar_sample = sample_ar(ar, tok, prompt, max(0, args.block - len(prompt)), device)
@@ -333,9 +351,10 @@ def run(argv=None):
         print(f"AR exact bits/char: {ar_bits:.3f}")
         print(f"Diffusion ELBO upper-bound/proxy bits/char (MC={args.mc}): {diff_bits:.3f}")
         print(f"train wall-clock seconds: AR={ar_time:.2f} diffusion={diff_time:.2f}")
-        print(f"diffusion infill exact={infill['exact_match']} char_acc={infill['char_accuracy']:.2%}")
-        print(f"infill gold={infill['gold']!r}")
-        print(f"infill pred={infill['pred']!r}")
+        print(f"diffusion infill exact_rate={infill['exact_match_rate']:.2%} char_acc={infill['char_accuracy']:.2%} examples={infill['examples']}")
+        rep = infill.get("representative", {})
+        print(f"infill representative gold={rep.get('gold', '')!r}")
+        print(f"infill representative pred={rep.get('pred', '')!r}")
         print(f"AR sample distinct-2={result['samples']['ar']['distinct_2']:.3f} rep4={result['samples']['ar']['repetition_rate_4']:.3f}")
         print(f"Diff sample distinct-2={result['samples']['diffusion']['distinct_2']:.3f} rep4={result['samples']['diffusion']['repetition_rate_4']:.3f}")
         print("AR sample:", repr(ar_sample[:220]))
