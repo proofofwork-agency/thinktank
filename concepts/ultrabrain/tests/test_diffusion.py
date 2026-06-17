@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
 
-from ultrabrain.tokenizer import CharTokenizer
+from ultrabrain.tokenizer import CharTokenizer, Tokenizer
 from ultrabrain.denoiser import Config, Denoiser
 from ultrabrain import diffusion
 
@@ -79,3 +79,21 @@ def test_generate_respects_fixed_positions():
     out = diffusion.generate(m, 16, tok.mask_id, steps=8, fixed=fixed)
     for p, v in fixed.items():
         assert int(out[0, p]) == v
+
+
+def test_bpe_tokenizer_roundtrip_lossless():
+    # regression: the pre-tokenizer must not drop runs of spaces, tabs, or CRLF.
+    text = "ROMEO: But soft,  what  light\n\tthrough\r\nyonder window breaks?  \n"
+    tok = Tokenizer.build(text, num_merges=50)
+    assert tok.decode(tok.encode(text)) == text
+    assert tok.mask_id < tok.vocab_size and tok.pad_id < tok.vocab_size
+    assert tok.decode([tok.pad_id, tok.mask_id]) == ""
+
+
+def test_generate_top_k_exceeds_vocab():
+    # regression: top_k larger than the vocab must not crash.
+    tok = _tok()
+    m = Denoiser(Config(tok.vocab_size, 1, 2, 32, 16))
+    m.eval()
+    out = diffusion.generate(m, 16, tok.mask_id, steps=6, top_k=10_000)
+    assert (out != tok.mask_id).all()

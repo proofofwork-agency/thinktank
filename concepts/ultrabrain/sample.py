@@ -12,7 +12,7 @@ import os
 
 import torch
 
-from ultrabrain.tokenizer import CharTokenizer
+from ultrabrain.tokenizer import Tokenizer
 from ultrabrain.denoiser import Config, Denoiser
 from ultrabrain import diffusion
 
@@ -30,7 +30,7 @@ def pick_device():
 
 def load(ckpt_path, tok_path, dev):
     ck = torch.load(ckpt_path, map_location=dev, weights_only=True)
-    tok = CharTokenizer.load(tok_path)
+    tok = Tokenizer.load(tok_path)
     c = Config(ck["vocab_size"], ck["n_layer"], ck["n_head"], ck["n_embd"], ck["block"])
     m = Denoiser(c).to(dev)
     m.load_state_dict(ck["model"])

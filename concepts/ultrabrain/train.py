@@ -15,7 +15,7 @@ import time
 
 import torch
 
-from ultrabrain.tokenizer import CharTokenizer
+from ultrabrain.tokenizer import Tokenizer
 from ultrabrain.denoiser import Config, Denoiser
 from ultrabrain import diffusion
 
@@ -48,6 +48,8 @@ def main(argv=None):
     ap.add_argument("--warmup", type=int, default=200)
     ap.add_argument("--corpus", default=os.path.join(ROOT, "data", "shakespeare.txt"))
     ap.add_argument("--max_chars", type=int, default=0, help="cap corpus size (0 = all)")
+    ap.add_argument("--merges", type=int, default=2000, help="BPE merges (vocab ~ 256+merges+5)")
+    ap.add_argument("--span_prob", type=float, default=0.25, help="fraction of batches masked as a contiguous span (infilling); rest scattered")
     ap.add_argument("--out", default=os.path.join(CKPT, "diffusion.pt"))
     ap.add_argument("--tok_out", default=os.path.join(CKPT, "tokenizer.json"))
     ap.add_argument("--eval_every", type=int, default=500)
@@ -61,7 +63,7 @@ def main(argv=None):
     text = open(args.corpus).read()
     if args.max_chars:
         text = text[:args.max_chars]
-    tok = CharTokenizer.build(text)
+    tok = Tokenizer.build(text, num_merges=args.merges)
     tok.save(args.tok_out)
     data = torch.tensor(tok.encode(text), dtype=torch.long)
     n = int(0.9 * len(data))
@@ -92,14 +94,15 @@ def main(argv=None):
     def val_loss(iters=20):
         model.eval()
         v = sum(diffusion.diffusion_loss(model, get_batch(val_data, args.batch, args.block, dev),
-                                         tok.mask_id, tok.pad_id).item() for _ in range(iters))
+                                         tok.mask_id, tok.pad_id, span_prob=args.span_prob).item()
+                for _ in range(iters))
         model.train()
         return v / iters
 
     t0 = time.time()
     for step in range(1, args.steps + 1):
         x = get_batch(train_data, args.batch, args.block, dev)
-        loss = diffusion.diffusion_loss(model, x, tok.mask_id, tok.pad_id)
+        loss = diffusion.diffusion_loss(model, x, tok.mask_id, tok.pad_id, span_prob=args.span_prob)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

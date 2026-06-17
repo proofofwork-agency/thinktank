@@ -32,7 +32,16 @@ def corrupt(x, mask_id, t, pad_id=None):
     return x_masked, masked
 
 
-def diffusion_loss(model, x, mask_id, pad_id=None, t_low=0.15, t_high=0.5):
+def _span_mask(B, T, t, device):
+    """Per-sequence CONTIGUOUS span of length round(t*T) at a random start -> (B, T) bool.
+    Teaches the model to fill GAPS (infilling), which scattered masking alone does not."""
+    lengths = (t * T).round().long().clamp(1, T)
+    starts = (torch.rand(B, device=device) * (T - lengths + 1).float()).long()
+    ar = torch.arange(T, device=device).unsqueeze(0)
+    return (ar >= starts.unsqueeze(1)) & (ar < (starts + lengths).unsqueeze(1))
+
+
+def diffusion_loss(model, x, mask_id, pad_id=None, t_low=0.15, t_high=0.5, span_prob=0.5):
     """Masked-diffusion reconstruction loss = mean cross-entropy over masked positions.
 
     Sample a per-sequence mask rate t ~ U(t_low, t_high), corrupt x, run the bidirectional
@@ -46,9 +55,14 @@ def diffusion_loss(model, x, mask_id, pad_id=None, t_low=0.15, t_high=0.5):
     held-out masked-CE and the most coherent samples; the 1/t ELBO weighting is left to the
     eval bits-per-char metric, not the optimizer.
     """
-    B = x.shape[0]
+    B, T = x.shape
     t = torch.rand(B, device=x.device) * (t_high - t_low) + t_low
-    x_masked, masked = corrupt(x, mask_id, t, pad_id)
+    scattered = torch.rand(x.shape, device=x.device) < t.view(-1, 1)
+    use_span = (torch.rand(B, device=x.device) < span_prob).view(-1, 1)
+    masked = torch.where(use_span, _span_mask(B, T, t, x.device), scattered)
+    if pad_id is not None:
+        masked = masked & (x != pad_id)
+    x_masked = torch.where(masked, torch.full_like(x, mask_id), x)
     logits = model(x_masked, t)
     ce = F.cross_entropy(
         logits.reshape(-1, logits.size(-1)), x.reshape(-1), reduction="none"
@@ -91,7 +105,7 @@ def generate(model, length, mask_id, *, steps=16, fixed=None, temperature=1.0, t
         else:
             s = logits / temperature
             if top_k:
-                v = torch.topk(s, top_k, dim=-1).values
+                v = torch.topk(s, min(top_k, s.size(-1)), dim=-1).values
                 s = s.masked_fill(s < v[:, [-1]], float("-inf"))
             probs = F.softmax(s, dim=-1)
             pred = torch.multinomial(probs, 1).squeeze(-1)
