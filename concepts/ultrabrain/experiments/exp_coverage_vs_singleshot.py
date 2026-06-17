@@ -135,7 +135,7 @@ def cost_per_solved(code_tasks, n, seed):
     """Wall-clock seconds of (propose+verify) per task solved at budget N, through the gate."""
     import tempfile
     proposer = NoisyProposer(seed=seed)
-    ledger = Ledger(os.path.join(tempfile.mkdtemp(), "slice1_ledger.jsonl"))
+    ledger = Ledger(os.path.join(tempfile.mkdtemp(), "slice1_ledger.jsonl"), secret="slice1-demo")
     solved = 0
     t0 = time.time()
     for task in code_tasks:
@@ -184,8 +184,9 @@ def run(argv=None):
 
     verdict = (
         "THESIS SUPPORTED (zero ML): a hard verifier converts a weak proposer's coverage into "
-        "solved tasks, and hardening eliminates the weak-test false-certifications. Proceed to "
-        "Slice 2 (plug in Qwen3-Coder-14B + diffusion-FIM behind this gate)."
+        "solved tasks, and hardening (hidden + reference-differential property tests) eliminates "
+        "the weak-test false-certifications on the curated distractor pool. Proceed to Slice 2 "
+        "(plug in Qwen3-Coder-14B behind this gate)."
         if supported else
         "THESIS NOT SUPPORTED at this budget — inspect which gate failed before any ML spend. "
         + ("H2 FALSIFIED: hardening did not reduce false-certification. " if not h2_ok else "")
@@ -203,6 +204,9 @@ def run(argv=None):
         "verdict": verdict,
         "notes": [
             "H2 ground truth = design labels (gold correct, distractor wrong); not circular.",
+            "Finite tests are incomplete (an overfit candidate could pass enumerated cases) — mitigated "
+            "by reference-differential property tests (compare to a trusted oracle over many inputs). "
+            "The claim is scoped to the curated distractor pool, not arbitrary adversarial code.",
             "Residual hardened false-certs vs an even-stronger oracle are unmeasured here (the ~4% AlphaCode floor).",
             "no_verifier_true_accuracy == pass_at_1 here by construction; it is the control the verified search beats.",
         ],

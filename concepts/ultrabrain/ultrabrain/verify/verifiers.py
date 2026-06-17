@@ -9,6 +9,7 @@ cause false rejects): treat an UNDECIDED check as ABSTAIN, never as a reject.
 """
 from __future__ import annotations
 
+import ast as _ast
 from dataclasses import dataclass, field
 
 import sympy as sp
@@ -32,12 +33,55 @@ class Verdict:
         return self.status == CERTIFIED
 
 
+# Whitelist for parsing UNTRUSTED candidate math strings. sympify()/eval() will RUN code
+# (Codex confirmed `__import__('os').system(...)` executes), so validate the AST against a pure-math
+# grammar FIRST and only sympify if it passes.
+_ALLOWED_FUNCS = {
+    "sin", "cos", "tan", "cot", "sec", "csc", "asin", "acos", "atan", "atan2", "sinh", "cosh",
+    "tanh", "exp", "log", "ln", "sqrt", "cbrt", "root", "Abs", "sign", "floor", "ceiling",
+    "factorial", "gamma", "Min", "Max", "re", "im", "conjugate", "pi", "E", "I", "oo",
+    "Rational", "Integer", "Float",
+}
+_ALLOWED_NODES = (
+    _ast.Expression, _ast.BinOp, _ast.UnaryOp, _ast.Constant, _ast.Name, _ast.Call, _ast.Load,
+    _ast.Add, _ast.Sub, _ast.Mult, _ast.Div, _ast.FloorDiv, _ast.Mod, _ast.Pow, _ast.USub, _ast.UAdd,
+)
+
+
+def _validate_math(text: str, var: str):
+    try:
+        tree = _ast.parse(text, mode="eval")
+    except SyntaxError as exc:
+        raise ValueError(f"syntax: {exc}") from exc
+    for node in _ast.walk(tree):
+        if not isinstance(node, _ALLOWED_NODES):
+            raise ValueError(f"disallowed syntax: {type(node).__name__}")
+        if isinstance(node, _ast.Name) and node.id != var and node.id not in _ALLOWED_FUNCS:
+            raise ValueError(f"disallowed name: {node.id}")
+        if isinstance(node, _ast.Call) and (
+            not isinstance(node.func, _ast.Name) or node.func.id not in _ALLOWED_FUNCS
+        ):
+            raise ValueError("disallowed call")
+        if isinstance(node, _ast.Constant) and not isinstance(node.value, (int, float, complex)):
+            raise ValueError("disallowed constant")
+    return tree
+
+
 def _expr(text: str, var: str):
+    """Parse an untrusted math string SAFELY: validate against a math whitelist, then sympify."""
+    _validate_math(text, var)
     return sp.sympify(text, locals={var: sp.Symbol(var)})
 
 
 def cas_equivalent(cand: str, ref: str, var: str = "x") -> Verdict:
-    """Certified iff ``cand`` is symbolically equal to ``ref``; abstain if SymPy cannot decide."""
+    """Certified iff ``cand`` equals ``ref`` under GENERIC-POINT (common-domain) equality.
+
+    Semantics, stated explicitly (Codex review): this is equality as expressions on their common
+    domain, the standard CAS/answer-checker notion — so removable singularities certify
+    (``x/x`` certifies as ``1``; ``(x**2-1)/(x-1)`` as ``x+1``). It is NOT total-function equality
+    over every point. For antiderivative/answer-checking this is the intended, sound semantics.
+    Abstains (never false-rejects) when SymPy cannot decide.
+    """
     try:
         ce, re_ = _expr(cand, var), _expr(ref, var)
         residual = sp.simplify(ce - re_)
