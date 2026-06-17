@@ -27,7 +27,7 @@ import time
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
-from ultrabrain.propose import NoisyProposer  # noqa: E402
+from ultrabrain.propose import DiffusionFIMProposer, NoisyProposer  # noqa: E402
 from ultrabrain.propose.llm import LLMProposer, prompt_for  # noqa: E402
 from ultrabrain.verify import (  # noqa: E402
     CASVerifier,
@@ -47,6 +47,13 @@ def load_jsonl(path):
 def build_proposer(args):
     if args.proposer == "llm":
         return LLMProposer(base_url=args.base_url, model=args.model, temperature=args.temperature)
+    if args.proposer == "fim":
+        kw = {"temperature": args.temperature, "seed": args.seed}
+        if args.fim_checkpoint:
+            kw["checkpoint"] = args.fim_checkpoint
+        if args.fim_tokenizer:
+            kw["tokenizer_path"] = args.fim_tokenizer
+        return DiffusionFIMProposer(**kw)
     return NoisyProposer(seed=args.seed)
 
 
@@ -60,10 +67,14 @@ def verifier_for(task, isolated=False):
 def run(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--tasks", default=os.path.join(ROOT, "tasks", "micro_codebench.jsonl"))
-    ap.add_argument("--proposer", choices=["mock", "llm"], default="mock")
+    ap.add_argument("--proposer", choices=["mock", "llm", "fim"], default="mock")
     ap.add_argument("--n", type=int, default=8, help="candidates sampled per task")
     ap.add_argument("--base_url", default="http://localhost:8000/v1")
     ap.add_argument("--model", default="Qwen/Qwen3-Coder-14B")
+    ap.add_argument("--fim_checkpoint", default=None,
+                    help="diffusion denoiser checkpoint for --proposer fim (default: checkpoints/diffusion.pt)")
+    ap.add_argument("--fim_tokenizer", default=None,
+                    help="tokenizer json for --proposer fim (default: checkpoints/tokenizer.json)")
     ap.add_argument("--temperature", type=float, default=0.8)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=os.path.join(ROOT, "data", "verified_traces.jsonl"))
@@ -74,8 +85,8 @@ def run(argv=None):
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
-    # Untrusted LLM output must run isolated; fail closed unless explicitly overridden.
-    isolated = (args.proposer == "llm") and not args.unsafe
+    # Untrusted model output (llm OR diffusion-fim) must run isolated; fail closed unless overridden.
+    isolated = (args.proposer in ("llm", "fim")) and not args.unsafe
     if isolated and not ISOLATION_AVAILABLE:
         print("ERROR: OS isolation is unavailable here but is REQUIRED to execute untrusted LLM "
               "output (--proposer llm). Run where the `resource` module works, wrap in a container, "

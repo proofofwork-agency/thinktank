@@ -69,6 +69,10 @@ def _collect(args, round_idx, quiet):
         "--model", args.model,
         "--temperature", str(args.temperature),
     ]
+    if args.fim_checkpoint:
+        argv += ["--fim_checkpoint", args.fim_checkpoint]
+    if args.fim_tokenizer:
+        argv += ["--fim_tokenizer", args.fim_tokenizer]
     secret = args.ledger_secret
     if secret is None and os.environ.get("ULTRABRAIN_LEDGER_SECRET") is None and args.proposer == "mock":
         secret = "self-improve-mock-demo"  # mock loop is trusted + throwaway -> stay safe-anywhere
@@ -98,6 +102,10 @@ def _eval(args, quiet):
         "--model", args.model,
         "--temperature", str(args.temperature),
     ]
+    if args.fim_checkpoint:
+        argv += ["--fim_checkpoint", args.fim_checkpoint]
+    if args.fim_tokenizer:
+        argv += ["--fim_tokenizer", args.fim_tokenizer]
     with _muffle(quiet):
         return eval_code.run(argv)
 
@@ -106,10 +114,14 @@ def run(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rounds", type=int, default=1, help="number of ReST-EM rounds R")
     ap.add_argument("--tasks", default=os.path.join(ROOT, "tasks", "micro_codebench.jsonl"))
-    ap.add_argument("--proposer", choices=["mock", "llm"], default="mock")
+    ap.add_argument("--proposer", choices=["mock", "llm", "fim"], default="mock")
     ap.add_argument("--n", type=int, default=8, help="candidate budget N per task")
     ap.add_argument("--base_url", default="http://localhost:8000/v1")
     ap.add_argument("--model", default="Qwen/Qwen3-Coder-14B")
+    ap.add_argument("--fim_checkpoint", default=None,
+                    help="diffusion denoiser checkpoint for --proposer fim")
+    ap.add_argument("--fim_tokenizer", default=None,
+                    help="tokenizer json for --proposer fim")
     ap.add_argument("--temperature", type=float, default=0.8)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--traces", default=os.path.join(ROOT, "data", "verified_traces.jsonl"))

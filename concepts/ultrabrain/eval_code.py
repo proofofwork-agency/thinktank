@@ -37,7 +37,7 @@ from collections import Counter
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
-from ultrabrain.propose import NoisyProposer  # noqa: E402
+from ultrabrain.propose import DiffusionFIMProposer, NoisyProposer  # noqa: E402
 from ultrabrain.propose.llm import LLMProposer  # noqa: E402
 from ultrabrain.verify import (  # noqa: E402
     CASVerifier, CodeTestVerifier, Gate, ISOLATION_AVAILABLE, harden, run_tests_isolated,
@@ -49,9 +49,16 @@ def load_jsonl(path):
 
 
 def build_proposer(args):
-    """Same wiring as run_verified_search.py: mock=NoisyProposer, llm=LLMProposer."""
+    """Same wiring as run_verified_search.py: mock=NoisyProposer, llm=LLMProposer, fim=DiffusionFIMProposer."""
     if args.proposer == "llm":
         return LLMProposer(base_url=args.base_url, model=args.model, temperature=args.temperature)
+    if args.proposer == "fim":
+        kw = {"temperature": args.temperature, "seed": args.seed}
+        if args.fim_checkpoint:
+            kw["checkpoint"] = args.fim_checkpoint
+        if args.fim_tokenizer:
+            kw["tokenizer_path"] = args.fim_tokenizer
+        return DiffusionFIMProposer(**kw)
     return NoisyProposer(seed=args.seed)
 
 
@@ -151,10 +158,14 @@ def verdict_for(metrics) -> str:
 def run(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tasks", default=os.path.join(ROOT, "tasks", "micro_codebench.jsonl"))
-    ap.add_argument("--proposer", choices=["mock", "llm"], default="mock")
+    ap.add_argument("--proposer", choices=["mock", "llm", "fim"], default="mock")
     ap.add_argument("--n", type=int, default=8, help="candidate budget N sampled per task")
     ap.add_argument("--base_url", default="http://localhost:8000/v1")
     ap.add_argument("--model", default="Qwen/Qwen3-Coder-14B")
+    ap.add_argument("--fim_checkpoint", default=None,
+                    help="diffusion denoiser checkpoint for --proposer fim (default: checkpoints/diffusion.pt)")
+    ap.add_argument("--fim_tokenizer", default=None,
+                    help="tokenizer json for --proposer fim (default: checkpoints/tokenizer.json)")
     ap.add_argument("--temperature", type=float, default=0.8)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--unsafe", action="store_true",
@@ -162,10 +173,10 @@ def run(argv=None):
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
-    isolated = (args.proposer == "llm") and not args.unsafe
+    isolated = (args.proposer in ("llm", "fim")) and not args.unsafe
     if isolated and not ISOLATION_AVAILABLE:
-        print("ERROR: OS isolation unavailable but required to execute untrusted LLM output "
-              "(--proposer llm). Use a container or pass --unsafe (DANGEROUS).", file=sys.stderr)
+        print("ERROR: OS isolation unavailable but required to execute untrusted model output "
+              "(--proposer llm/fim). Use a container or pass --unsafe (DANGEROUS).", file=sys.stderr)
         return {"error": "isolation_unavailable"}
 
     tasks = load_jsonl(args.tasks)
