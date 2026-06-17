@@ -192,7 +192,9 @@ def run(argv=None):
 
 
 def main(argv=None):
-    run(argv)
+    result = run(argv)
+    if isinstance(result, dict) and result.get("error"):
+        return 2  # propagate isolation-unavailable / error to the process
     return 0
 
 

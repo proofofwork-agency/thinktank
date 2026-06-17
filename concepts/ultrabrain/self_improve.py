@@ -69,8 +69,11 @@ def _collect(args, round_idx, quiet):
         "--model", args.model,
         "--temperature", str(args.temperature),
     ]
-    if args.ledger_secret is not None:
-        argv += ["--ledger_secret", args.ledger_secret]
+    secret = args.ledger_secret
+    if secret is None and os.environ.get("ULTRABRAIN_LEDGER_SECRET") is None and args.proposer == "mock":
+        secret = "self-improve-mock-demo"  # mock loop is trusted + throwaway -> stay safe-anywhere
+    if secret is not None:
+        argv += ["--ledger_secret", secret]
     with _muffle(quiet):
         return run_verified_search.run(argv)
 
@@ -133,6 +136,16 @@ def run(argv=None):
     t0 = time.time()
     for r in range(args.rounds):
         collect = _collect(args, r, quiet)
+        if isinstance(collect, int):  # run_verified_search failed closed (missing secret / no isolation)
+            msg = (f"collect failed (exit {collect}) at round {r}: trace collection needs a private "
+                   f"ledger secret (--ledger_secret / ULTRABRAIN_LEDGER_SECRET); --proposer llm also "
+                   f"needs OS isolation. Aborting before train/eval.")
+            if args.json:
+                print(json.dumps({"error": "collect_failed", "exit_code": collect, "round": r,
+                                  "hint": msg}, indent=2, sort_keys=True))
+            else:
+                print("ERROR:", msg, file=sys.stderr)
+            return collect
         train_rc = _train(args, quiet)
         metrics = _eval(args, quiet)
         trajectory.append({
@@ -189,8 +202,8 @@ def run(argv=None):
 
 
 def main(argv=None):
-    run(argv)
-    return 0
+    result = run(argv)
+    return result if isinstance(result, int) else 0  # propagate collect-failure exit code
 
 
 if __name__ == "__main__":

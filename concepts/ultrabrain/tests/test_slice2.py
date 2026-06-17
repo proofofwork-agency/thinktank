@@ -67,3 +67,18 @@ def test_llm_execution_is_isolated_and_ledger_secret_required():
     assert rvs.verifier_for(task, isolated=True).runner is run_tests_isolated
     assert rvs.verifier_for(task, isolated=False).runner is not run_tests_isolated
     assert rvs.run(["--proposer", "mock"]) == 2  # fails closed: no --ledger_secret / env, no --unsafe
+
+
+def test_cli_fail_closed_exit_codes(tmp_path):
+    # fail-closed must hold at the PROCESS boundary (Codex): main() propagates the exit code.
+    import subprocess
+    p = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "run_verified_search.py"), "--proposer", "mock", "--n", "1",
+         "--out", str(tmp_path / "t.jsonl"), "--ledger", str(tmp_path / "l.jsonl")],
+        capture_output=True, text=True, cwd=ROOT)
+    assert p.returncode == 2, (p.returncode, p.stderr)  # no ledger secret -> nonzero exit
+    p2 = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "self_improve.py"), "--rounds", "1", "--proposer", "mock",
+         "--n", "2", "--json", "--traces", str(tmp_path / "tr.jsonl"), "--ledger", str(tmp_path / "led.jsonl")],
+        capture_output=True, text=True, cwd=ROOT)
+    assert p2.returncode == 0, (p2.returncode, p2.stderr)  # mock dry-run is safe-anywhere

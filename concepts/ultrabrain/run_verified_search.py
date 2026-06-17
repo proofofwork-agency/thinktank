@@ -149,8 +149,8 @@ def run(argv=None):
 
 
 def main(argv=None):
-    run(argv)
-    return 0
+    result = run(argv)
+    return result if isinstance(result, int) else 0  # propagate fail-closed exit code to the process
 
 
 if __name__ == "__main__":
