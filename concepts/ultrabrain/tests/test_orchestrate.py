@@ -80,10 +80,17 @@ def _sub_triple():
     }
 
 
+_COMPOSITE_TESTS = [
+    "assert add_one(triple(double_then_inc(1))) == 10",   # 1 -> 3 -> 9 -> 10
+    "assert triple(add_one(double_then_inc(0))) == 6",    # 0 -> 1 -> 2 -> 6
+]
+
+
 def _composite_good():
     return {
         "id": "helper_plus_main",
         "subproblems": [_sub_add_one(), _sub_main_uses_helper(), _sub_triple()],
+        "tests": list(_COMPOSITE_TESTS),   # whole-artifact tests -> overall_solved requires these to pass
     }
 
 
@@ -92,6 +99,7 @@ def _composite_with_one_bad():
     return {
         "id": "helper_plus_broken_main",
         "subproblems": [_sub_add_one(), _sub_main_uses_helper(), _sub_triple()],
+        "tests": list(_COMPOSITE_TESTS),
     }
 
 
@@ -117,7 +125,10 @@ def test_composite_all_subproblems_certify_and_compose():
     # Helper appears before the main that uses it (solve-order composition).
     assert result.solution.index("def add_one(n):") < result.solution.index("def triple(n):")
 
-    # overall_solved True iff ALL certified.
+    # overall_solved requires BOTH: all subproblems certified AND the composed whole passes the
+    # composite-level tests (whole-artifact re-verification).
+    assert result.subproblems_solved is True
+    assert result.composition_verified is True
     assert result.overall_solved is True
     assert result.n_certified == 3
 
@@ -179,6 +190,15 @@ def test_default_proposer_is_mock_and_certifies():
     """Omitting the proposer uses MockProposer (returns the sub gold) and still certifies."""
     result = orchestrate(_composite_good(), n=2)  # no proposer arg
     assert result.overall_solved is True
+
+
+def test_no_composite_tests_is_not_whole_verified():
+    """Without composite-level tests the WHOLE is not verified: subproblems_solved, but not solved."""
+    composite = {"id": "no_whole_tests", "subproblems": [_sub_add_one(), _sub_triple()]}
+    result = orchestrate(composite, proposer=MockProposer(), n=2)
+    assert result.subproblems_solved is True       # each part certified
+    assert result.composition_verified is None      # nothing to verify the whole against
+    assert result.overall_solved is False           # so NOT whole-artifact solved (Codex fix)
 
 
 def test_wrong_proposer_uses_distractor_by_default():

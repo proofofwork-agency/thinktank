@@ -106,11 +106,12 @@ class NumericalConvergenceVerifier:
     The candidate is a solver ``solve(h) -> approximation`` (a Python callable). We run it at
     resolutions ``h`` and ``h/2``, compare each against an analytic ``reference`` from the task, and
     require the error to actually shrink at the method's expected order ``p`` (the Richardson rate
-    ``log2(e_h / e_h2))`` within ``order_tol``). This is sound up to tolerance: a solver that does not
-    converge at the claimed rate is REJECTED; one that does is CERTIFIED as converging at that order
-    (which is the verifiable claim -- not that the PDE/ODE model itself is correct). ABSTAIN only
-    when the test is genuinely undecidable here (non-callable candidate, non-finite output, or the
-    fine error is already at the floor so the rate is meaningless).
+    ``log2(e_h / e_h2))`` within ``order_tol``). This is sound up to tolerance, and the certificate is
+    TYPED in ``evidence['claim']``: ``order_verified`` when the order was actually measured (Richardson
+    within tol) vs ``accurate_to_floor`` when both errors hit the round-off floor so the rate is
+    meaningless but the solution matches the reference. Consumers (training / eval) MUST NOT treat
+    ``accurate_to_floor`` traces as order-verification examples. A solver that does not converge at the
+    claimed rate is REJECTED; ABSTAIN only when genuinely undecidable (non-callable, non-finite output).
     """
 
     def verify(self, task: dict, candidate=None) -> Verdict:
@@ -366,6 +367,8 @@ def _eval_dim(text: str, units: dict) -> _Dim:
 def _const_pow(node) -> sp.Rational:
     """A power exponent must be a literal rational (e.g. ``m**2`` or ``s**-1``), not a unit."""
     if isinstance(node, _ast.Constant) and isinstance(node.value, (int, float)):
+        if abs(node.value) > 1000:  # DoS hygiene: bound exponent magnitude (mirror the CAS pow guard)
+            raise _DimensionError("exponent magnitude too large")
         return sp.Rational(node.value)
     if isinstance(node, _ast.UnaryOp) and isinstance(node.op, (_ast.USub, _ast.UAdd)):
         inner = _const_pow(node.operand)

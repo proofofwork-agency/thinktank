@@ -174,14 +174,20 @@ def harden(task: dict) -> list:
 
 
 class CodeTestVerifier:
-    """Hardened-execution verifier. Certified iff the candidate passes EVERY test in ``tests``."""
+    """Hardened-execution verifier. Certified iff the candidate passes EVERY test in ``tests``.
 
-    def __init__(self, tests, timeout: float = 5.0):
+    ``runner`` is the execution backend (default ``run_tests``). Inject
+    ``isolate.run_tests_isolated`` for UNTRUSTED candidates (e.g. real LLM output) to add OS resource
+    limits — the executing paths do exactly that for ``--proposer llm`` (Codex review).
+    """
+
+    def __init__(self, tests, timeout: float = 5.0, runner=None):
         self.tests = list(tests)
         self.timeout = timeout
+        self.runner = runner or run_tests
 
     def verify(self, task: dict, candidate: str) -> Verdict:
-        res = run_tests(candidate, self.tests, timeout=self.timeout)
+        res = self.runner(candidate, self.tests, timeout=self.timeout)
         if res.error == "timeout":
             return Verdict(ABSTAIN, "timeout", {"seconds": res.seconds})
         if res.error:

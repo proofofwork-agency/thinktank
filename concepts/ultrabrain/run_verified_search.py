@@ -6,7 +6,13 @@ are written to the HMAC ledger AND to an SFT dataset (``data/verified_traces.jso
 This is how the weights get better without a frontier teacher: ``no evidence -> no clean training
 example`` (thoughts/22, 24).
 
-  python run_verified_search.py --proposer mock                       # zero-ML, tests the loop
+SECURITY (Codex review): ``--proposer llm`` executes UNTRUSTED model output, so code execution runs
+through the OS-isolated runner by default and FAILS CLOSED if isolation is unavailable; and because
+this path writes trusted beliefs, a private ledger secret is REQUIRED. ``--unsafe`` overrides both
+(dev only). The mock proposer runs only our own reference/distractor code, so it does not isolate.
+
+  python run_verified_search.py --proposer mock --ledger_secret dev    # zero-ML, tests the loop
+  ULTRABRAIN_LEDGER_SECRET=$(openssl rand -hex 16) \
   python run_verified_search.py --proposer llm \
       --base_url http://localhost:8000/v1 --model Qwen/Qwen3-Coder-14B  # your local Qwen3-Coder-14B
 """
@@ -23,7 +29,15 @@ sys.path.insert(0, ROOT)
 
 from ultrabrain.propose import NoisyProposer  # noqa: E402
 from ultrabrain.propose.llm import LLMProposer, prompt_for  # noqa: E402
-from ultrabrain.verify import CASVerifier, CodeTestVerifier, Gate, Ledger, harden  # noqa: E402
+from ultrabrain.verify import (  # noqa: E402
+    CASVerifier,
+    CodeTestVerifier,
+    Gate,
+    ISOLATION_AVAILABLE,
+    Ledger,
+    harden,
+    run_tests_isolated,
+)
 
 
 def load_jsonl(path):
@@ -36,8 +50,11 @@ def build_proposer(args):
     return NoisyProposer(seed=args.seed)
 
 
-def verifier_for(task):
-    return CASVerifier() if task.get("kind") == "cas" else CodeTestVerifier(harden(task))
+def verifier_for(task, isolated=False):
+    """CAS for cas tasks; hardened execution for code — OS-isolated when ``isolated`` (untrusted)."""
+    if task.get("kind") == "cas":
+        return CASVerifier()
+    return CodeTestVerifier(harden(task), runner=run_tests_isolated if isolated else None)
 
 
 def run(argv=None):
@@ -52,18 +69,36 @@ def run(argv=None):
     ap.add_argument("--out", default=os.path.join(ROOT, "data", "verified_traces.jsonl"))
     ap.add_argument("--ledger", default=os.path.join(ROOT, "state", "verified_ledger.jsonl"))
     ap.add_argument("--ledger_secret", default=None, help="HMAC secret (else ULTRABRAIN_LEDGER_SECRET)")
+    ap.add_argument("--unsafe", action="store_true",
+                    help="DANGEROUS: skip OS-isolation requirement and allow the insecure default ledger secret")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
+    # Untrusted LLM output must run isolated; fail closed unless explicitly overridden.
+    isolated = (args.proposer == "llm") and not args.unsafe
+    if isolated and not ISOLATION_AVAILABLE:
+        print("ERROR: OS isolation is unavailable here but is REQUIRED to execute untrusted LLM "
+              "output (--proposer llm). Run where the `resource` module works, wrap in a container, "
+              "or pass --unsafe to override (DANGEROUS).", file=sys.stderr)
+        return 2
+
+    # Trace collection writes trusted beliefs: require a private secret.
+    secret = args.ledger_secret or os.environ.get("ULTRABRAIN_LEDGER_SECRET")
+    if secret is None and not args.unsafe:
+        print("ERROR: trace collection writes trusted beliefs to the ledger. Set --ledger_secret or "
+              "ULTRABRAIN_LEDGER_SECRET (or pass --unsafe to use the insecure default).", file=sys.stderr)
+        return 2
+
     tasks = load_jsonl(args.tasks)
     proposer = build_proposer(args)
-    ledger = Ledger(args.ledger, secret=args.ledger_secret)
+    ledger = Ledger(args.ledger, secret=secret)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    count_before = ledger.count()
 
     traces, solved, attempts = [], 0, 0
     t0 = time.time()
     for task in tasks:
-        gate = Gate(verifier_for(task), ledger)
+        gate = Gate(verifier_for(task, isolated), ledger)
         for candidate in proposer.propose(task, args.n):
             attempts += 1
             outcome = gate.judge(task, candidate)
@@ -83,8 +118,14 @@ def run(argv=None):
         for tr in traces:
             fh.write(json.dumps(tr) + "\n")
 
+    # Checkpointed chain verification: detects truncation of THIS run's appends (not just self-consistency).
+    expected_count = count_before + len(traces)
+    expected_head = ledger.head()
+    chain_ok = ledger.verify_chain(expected_count=expected_count, expected_head=expected_head)
+
     result = {
         "proposer": args.proposer,
+        "isolated_execution": isolated,
         "tasks": len(tasks),
         "solved": solved,
         "attempts": attempts,
@@ -92,15 +133,18 @@ def run(argv=None):
         "out": args.out,
         "wall_seconds": round(wall, 3),
         "seconds_per_solved": round(wall / solved, 4) if solved else None,
-        "ledger_chain_ok": ledger.verify_chain(),
+        "ledger_count": ledger.count(),
+        "ledger_head": expected_head,
+        "ledger_chain_ok": chain_ok,
         "note": "every written trace passed the hardened gate -> the SFT set is verified by construction",
     }
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
-        print(f"proposer={args.proposer} solved {solved}/{len(tasks)} "
+        print(f"proposer={args.proposer} isolated={isolated} solved {solved}/{len(tasks)} "
               f"({attempts} attempts, {result['seconds_per_solved']}s/solved)")
-        print(f"wrote {len(traces)} verified traces -> {args.out}  ledger_ok={result['ledger_chain_ok']}")
+        print(f"wrote {len(traces)} verified traces -> {args.out}  "
+              f"ledger_ok={chain_ok} (count={result['ledger_count']})")
     return result
 
 

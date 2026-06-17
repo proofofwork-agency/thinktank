@@ -39,7 +39,9 @@ sys.path.insert(0, ROOT)
 
 from ultrabrain.propose import NoisyProposer  # noqa: E402
 from ultrabrain.propose.llm import LLMProposer  # noqa: E402
-from ultrabrain.verify import CASVerifier, CodeTestVerifier, Gate, harden  # noqa: E402
+from ultrabrain.verify import (  # noqa: E402
+    CASVerifier, CodeTestVerifier, Gate, ISOLATION_AVAILABLE, harden, run_tests_isolated,
+)
 
 
 def load_jsonl(path):
@@ -53,9 +55,11 @@ def build_proposer(args):
     return NoisyProposer(seed=args.seed)
 
 
-def verifier_for(task):
-    """Airtight CAS for cas tasks; hardened (weak+hidden+property) execution for code."""
-    return CASVerifier() if task.get("kind") == "cas" else CodeTestVerifier(harden(task))
+def verifier_for(task, isolated=False):
+    """Airtight CAS for cas tasks; hardened execution for code — OS-isolated when untrusted (llm)."""
+    if task.get("kind") == "cas":
+        return CASVerifier()
+    return CodeTestVerifier(harden(task), runner=run_tests_isolated if isolated else None)
 
 
 def _normalize(candidate: str) -> str:
@@ -76,14 +80,14 @@ def _plurality(candidates):
     return candidates[0], votes
 
 
-def evaluate(tasks, proposer, n):
+def evaluate(tasks, proposer, n, isolated=False):
     """Sample n candidates/task, judge each ONCE, and fold per-task results into the metrics dict."""
     per_task = []
     solved = pass1 = cons_certified = attempts = 0
     t0 = time.time()
 
     for task in tasks:
-        gate = Gate(verifier_for(task))          # no ledger: measure the gate, never write beliefs
+        gate = Gate(verifier_for(task, isolated))  # no ledger: measure the gate, never write beliefs
         candidates = list(proposer.propose(task, n))
         attempts += len(candidates)
 
@@ -153,12 +157,20 @@ def run(argv=None):
     ap.add_argument("--model", default="Qwen/Qwen3-Coder-14B")
     ap.add_argument("--temperature", type=float, default=0.8)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--unsafe", action="store_true",
+                    help="DANGEROUS: skip the OS-isolation requirement for --proposer llm")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
+    isolated = (args.proposer == "llm") and not args.unsafe
+    if isolated and not ISOLATION_AVAILABLE:
+        print("ERROR: OS isolation unavailable but required to execute untrusted LLM output "
+              "(--proposer llm). Use a container or pass --unsafe (DANGEROUS).", file=sys.stderr)
+        return {"error": "isolation_unavailable"}
+
     tasks = load_jsonl(args.tasks)
     proposer = build_proposer(args)
-    metrics = evaluate(tasks, proposer, args.n)
+    metrics = evaluate(tasks, proposer, args.n, isolated)
     metrics["proposer"] = args.proposer
     metrics["tasks_path"] = args.tasks
     metrics["verdict"] = verdict_for(metrics)

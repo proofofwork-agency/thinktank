@@ -56,3 +56,14 @@ def test_train_qlora_dry_run(tmp_path):
     assert stats["usable_examples"] == 1
     assert "### Instruction:" in examples[0]["text"] and "def f" in examples[0]["text"]
     assert train_qlora.main(["--dry_run", "--data", data]) == 0
+
+
+def test_llm_execution_is_isolated_and_ledger_secret_required():
+    # Codex blockers for the real Qwen run: untrusted (llm) code execution must use the OS-isolated
+    # runner, and trace collection must refuse to write beliefs without a private ledger secret.
+    import run_verified_search as rvs
+    from ultrabrain.verify import run_tests_isolated
+    task = _code_tasks()["is_even"]
+    assert rvs.verifier_for(task, isolated=True).runner is run_tests_isolated
+    assert rvs.verifier_for(task, isolated=False).runner is not run_tests_isolated
+    assert rvs.run(["--proposer", "mock"]) == 2  # fails closed: no --ledger_secret / env, no --unsafe

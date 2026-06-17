@@ -93,7 +93,8 @@ class CompositeResult:
 
     id: str
     subproblems: list = field(default_factory=list)   # list[SubResult], in solve order
-    overall_solved: bool = False                       # subproblems certified AND composition verified
+    overall_solved: bool = False                       # whole-artifact VERIFIED (composite tests passed)
+    subproblems_solved: bool = False                   # every subproblem independently certified
     solution: str = ""                                 # composed artifact (verified parts)
     seconds: float = 0.0
     composition_verified: Optional[bool] = None        # whole-artifact re-check: True/False, None if no composite tests
@@ -111,6 +112,7 @@ class CompositeResult:
         return {
             "id": self.id,
             "overall_solved": self.overall_solved,
+            "subproblems_solved": self.subproblems_solved,
             "composition_verified": self.composition_verified,
             "composition_detail": self.composition_detail,
             "n_certified": self.n_certified,
@@ -220,10 +222,11 @@ def orchestrate(
     result.seconds = time.time() - t0
 
     result.solution = compose(result.subproblems)
-    all_sub = bool(subproblems) and all(s.certified for s in result.subproblems)
+    result.subproblems_solved = bool(subproblems) and all(s.certified for s in result.subproblems)
 
-    # Whole-artifact re-verification (Codex/reviewer): per-subproblem certs do NOT prove the parts
-    # work together. If the composite carries its own tests, the COMPOSED solution must pass them.
+    # Whole-artifact re-verification (Codex): per-subproblem certs do NOT prove the parts work
+    # together. overall_solved (= whole-artifact verified) REQUIRES composite-level tests that the
+    # COMPOSED solution passes; without them the whole is NOT verified (only subproblems_solved).
     composite_tests = (
         harden(composite)
         if any(composite.get(k) for k in ("weak_tests", "hidden_tests", "property_tests"))
@@ -231,9 +234,9 @@ def orchestrate(
     )
     if not composite_tests:
         result.composition_verified = None
-        result.composition_detail = "no composite-level tests; overall_solved reflects per-subproblem certs only"
-        result.overall_solved = all_sub
-    elif not (all_sub and result.solution.strip()):
+        result.composition_detail = "no composite-level tests -> whole artifact NOT verified (subproblems_solved only)"
+        result.overall_solved = False
+    elif not (result.subproblems_solved and result.solution.strip()):
         result.composition_verified = False
         result.composition_detail = "subproblems not all certified; composition not verified"
         result.overall_solved = False
