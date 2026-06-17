@@ -63,14 +63,23 @@ base + **our own** verifier generating **our own** verified-trace corpus.
 
 ## Slice roadmap
 
-- **Slice 1 — Verifier Gate / Zero-ML Falsification (this slice).** One model-agnostic gate
-  (sandbox + candidate ledger + accept/reject) with **two verifier adapters** (code *hardened*,
-  CAS *airtight*) + replayable metrics + the two falsification experiments. **No model, no
-  training.** It tries to *kill* the thesis cheaply before any ML spend.
-- **Slice 2** — plug **Qwen3-Coder-14B** + the diffusion-FIM head behind the proven gate; begin
-  verified-trace collection + QLoRA distillation (ReST-EM/RFT) on the RTX 5080.
+- **Slice 1 — Verifier Gate / Zero-ML Falsification. DONE + hardened.** One model-agnostic gate
+  (sandbox + candidate ledger + accept/reject) with two verifier adapters (code *hardened*, CAS
+  *airtight*) + the falsification experiments. No model, no training. Verdict: THESIS SUPPORTED
+  (H1 50%→100% @N=16; H2 weak 8/8 vs hardened 0; CAS 0 false-certs; verify 16× < solve). Codex
+  soundness review folded in: real `__builtins__` restriction (not just AST), ledger truncation
+  checkpoint + caller-provided secret, declared CAS generic-point semantics, reference-differential
+  property tests against finite overfit.
+- **Slice 2 — Model behind the gate. BUILT + tested.** `ultrabrain/propose/llm.py` (OpenAI-
+  compatible endpoint → Qwen3-Coder-14B), `run_verified_search.py` (verified-trace data-forge →
+  `data/verified_traces.jsonl`), `train_qlora.py` (QLoRA on the RTX 5080; stdlib `--dry_run`). The
+  model download + real fine-tune run on YOUR hardware (one command each); the pipeline is verified
+  here with a zero-ML mock proposer.
+- **Slice 2b (deferred)** — train the masked-diffusion denoiser on code and wire it as the
+  FIM/edit-anywhere proposer head. Needs a code-training run on your hardware; the gate is already
+  proposer-agnostic, so it slots in with no gate change.
 - **Slice 3** — the verifier zoo for numerical/physics/quantum (conservation, unitarity,
-  convergence); decompose-then-verify orchestrator.
+  convergence) + the decompose-then-verify orchestrator (SciCode subproblem granularity).
 
 ## Slice 1 spec
 

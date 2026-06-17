@@ -1,4 +1,26 @@
-# UltraBrain — a masked-diffusion language model, from scratch
+# UltraBrain — a verifier-grounded scientific coder
+
+> **Current direction (UltraBrain-Code).** A cheap, sovereign system whose only job is writing
+> code for hard scientific/technical problems (math, algebra, physics, quantum) — built as a
+> **verifier-grounded engine**: the model is a *demoted proposer*, and capability comes from
+> **verified search**, not parameters. Base: **Qwen3-Coder-14B** (Apache-2.0, fine-tunes on a
+> 16 GB GPU). Full plan: **[docs/ULTRABRAIN_CODE_PLAN.md](docs/ULTRABRAIN_CODE_PLAN.md)**.
+>
+> - **Slice 1 — verifier gate (zero ML), DONE + hardened.** `ultrabrain/verify/` + the
+>   `experiments/exp_coverage_vs_singleshot.py` falsification test. Verdict: a hard verifier turns
+>   a weak proposer's coverage into solved tasks (50%→100% @N=16); weak tests false-certify 8/8
+>   wrong solutions, the hardened suite catches all; CAS 0 false-certs; verify 16× cheaper than
+>   solve. Soundness reviewed by Codex (sandbox escape, ledger truncation, CAS semantics, overfit
+>   — all fixed).
+> - **Slice 2 — model behind the gate, BUILT.** `ultrabrain/propose/llm.py` (any OpenAI-compatible
+>   endpoint → your local Qwen3-Coder-14B), `run_verified_search.py` (the verified-trace
+>   data-forge), `train_qlora.py` (QLoRA on the RTX 5080). Run: `python run_verified_search.py
+>   --proposer llm ...` then `python train_qlora.py`.
+>
+> Everything is local and tested (`python -m pytest tests`). The masked-diffusion LM described
+> below is a **research component** (an optional fill-in-the-middle head), not the product.
+
+## The masked-diffusion LM (research component)
 
 A small **generative language model that does not generate left to right.** Text is produced
 by **iterative parallel denoising**: start from an all-`<MASK>` sequence and progressively
