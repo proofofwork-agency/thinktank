@@ -18,10 +18,21 @@ from .verifiers import (
     harden,
     weak_suite,
 )
+from .scientific import (
+    SCIENTIFIC_ZOO,
+    ConservationVerifier,
+    DimensionalVerifier,
+    NumericalConvergenceVerifier,
+    UnitarityVerifier,
+)
+from .isolate import ISOLATION_AVAILABLE, run_tests_isolated
 
 __all__ = [
     "Gate", "Outcome", "Ledger", "ExecResult", "run_tests",
     "Verdict", "CASVerifier", "CodeTestVerifier",
     "cas_equivalent", "cas_antiderivative", "harden", "weak_suite",
     "CERTIFIED", "REJECTED", "ABSTAIN",
+    "UnitarityVerifier", "NumericalConvergenceVerifier", "ConservationVerifier",
+    "DimensionalVerifier", "SCIENTIFIC_ZOO",
+    "run_tests_isolated", "ISOLATION_AVAILABLE",
 ]

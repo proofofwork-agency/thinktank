@@ -48,6 +48,17 @@ _ALLOWED_NODES = (
 )
 
 
+def _safe_pow_exp(node) -> bool:
+    """A power exponent must be a small literal (or simple rational) — blocks x**(9**9) DoS."""
+    if isinstance(node, _ast.UnaryOp) and isinstance(node.op, (_ast.USub, _ast.UAdd)):
+        return _safe_pow_exp(node.operand)
+    if isinstance(node, _ast.Constant) and isinstance(node.value, (int, float)):
+        return abs(node.value) <= 1000
+    if isinstance(node, _ast.BinOp) and isinstance(node.op, _ast.Div):
+        return _safe_pow_exp(node.left) and _safe_pow_exp(node.right)
+    return False
+
+
 def _validate_math(text: str, var: str):
     try:
         tree = _ast.parse(text, mode="eval")
@@ -62,8 +73,14 @@ def _validate_math(text: str, var: str):
             not isinstance(node.func, _ast.Name) or node.func.id not in _ALLOWED_FUNCS
         ):
             raise ValueError("disallowed call")
-        if isinstance(node, _ast.Constant) and not isinstance(node.value, (int, float, complex)):
-            raise ValueError("disallowed constant")
+        if isinstance(node, _ast.Constant):
+            if not isinstance(node.value, (int, float, complex)):
+                raise ValueError("disallowed constant")
+            if isinstance(node.value, int) and abs(node.value) > 10**12:
+                raise ValueError("integer constant too large (DoS guard)")
+        # DoS guard (Codex review): a power exponent must be a small literal, never x**(9**9).
+        if isinstance(node, _ast.BinOp) and isinstance(node.op, _ast.Pow) and not _safe_pow_exp(node.right):
+            raise ValueError("power exponent must be a small literal (DoS guard)")
     return tree
 
 
