@@ -96,14 +96,30 @@ def test_fim_boundary_invariants_are_enforced():
     assert "overflow" in prop._validated(None, "def f(): ", "\n")                        # didn't fit -> explicit
 
 
-def test_fim_overflow_is_explicit_not_silent(tmp_path):
-    """A hole that cannot fit the model block returns an explicit fim_overflow sentinel (rejected),
-    instead of silently clipping prefix/suffix into a different task."""
-    task = {"prefix": "def f(x): ", "suffix": " # trailer\n", "hole_tokens": 50}
-    tok = CharTokenizer.build(task["prefix"] + task["suffix"])
-    prop = DiffusionFIMProposer(model=OracleDenoiser([0], tok.vocab_size, 8), tokenizer=tok, block=8)
-    cand = prop.propose(task, 1)[0]
+def test_fim_overflow_is_strict_not_silently_shrunk():
+    """Codex finding: when prefix+suffix leave SOME room but the requested hole_tokens still exceed
+    the model block, the adapter must return an EXPLICIT fim_overflow sentinel — never silently
+    shrink the hole into a different (smaller) task framing."""
+    tok = CharTokenizer.build("abcxyz return 1 def(): \n")
+    prop = DiffusionFIMProposer(model=OracleDenoiser(list(range(40)), tok.vocab_size, 10),
+                                tokenizer=tok, block=10, temperature=0, device="cpu")
+    # block=10 leaves 10-3-3=4 slots, but we ask for a 20-token hole -> overflow, NOT a shrink-to-4.
+    cand = prop.propose({"prefix": "abc", "suffix": "xyz", "hole_tokens": 20}, 1)[0]
     assert "unavailable" in cand and "overflow" in cand
+    # degenerate case: prefix alone exceeds the block -> also overflow.
+    cand2 = prop.propose({"prefix": "abcxyzabcxyz", "suffix": "x", "hole_tokens": 2}, 1)[0]
+    assert "unavailable" in cand2 and "overflow" in cand2
+
+
+def test_fim_special_id_leak_rejected_before_decode():
+    """Codex finding: special-token IDs decode to '' so a TEXT-level check misses them; the guard
+    must inspect raw fill_ids BEFORE decode."""
+    tok = CharTokenizer.build("abc return 1\n")
+    leaks = DiffusionFIMProposer._leaks_special
+    assert leaks([5, tok.mask_id, 7], tok.mask_id, tok.pad_id)      # MASK id present in the fill
+    assert leaks([tok.pad_id], tok.mask_id, tok.pad_id)            # PAD id present in the fill
+    assert not leaks([5, 6, 7], tok.mask_id, tok.pad_id)           # clean fill
+    assert tok.decode([tok.mask_id, tok.pad_id]) == ""             # why the id check exists: text misses it
 
 
 # --------------------------------------------------------------------------- THE trust boundary
@@ -119,16 +135,19 @@ def test_random_denoiser_never_false_certifies():
     model.eval()
     prop = DiffusionFIMProposer(model=model, tokenizer=tok, block=128, temperature=0.7,
                                 top_k=10, noise=0.5, steps=16, seed=0, device="cpu")
-    solved = false_certs = 0
+    solved = false_certs = generated = 0
     for task in tasks:
         gate = Gate(CodeTestVerifier(harden(task)))
         for cand in prop.propose(task, 4):
             assert "<MASK>" not in cand and "<PAD>" not in cand        # boundary holds even on garbage
-            assert cand.startswith(task["prefix"]) or cand.startswith("# diffusion-fim")
+            if not cand.startswith("# diffusion-fim"):                 # a real generated fill (not a sentinel)
+                assert cand.startswith(task["prefix"]) and cand.endswith(task["suffix"])
+                generated += 1
             if gate.judge(task, cand).certified:
                 solved += 1
                 if not run_tests(cand, harden(task)).ok:               # independent re-check
                     false_certs += 1
+    assert generated > 0             # the diffusion path was actually EXERCISED (not all sentinels) — Codex
     assert false_certs == 0          # the gate is the trust anchor: certified <=> really passes hardened
     assert solved == 0               # a random non-code denoiser certifies nothing -> nothing trusted
 

@@ -117,8 +117,20 @@ class DiffusionFIMProposer:
     def available(self) -> bool:
         return self.model is not None
 
+    @staticmethod
+    def _leaks_special(fill_ids, mask_id, pad_id) -> bool:
+        """True if a raw fill token is a special id. Checked BEFORE decode because both tokenizers
+        decode <MASK>/<PAD> ids to the empty string, so a real special-id leak is invisible at the
+        TEXT layer (Codex review). generate() also suppresses these ids; this enforces the contract
+        even if a future sampler change stops suppressing them."""
+        specials = {int(mask_id), int(pad_id)}
+        return any(int(t) in specials for t in fill_ids)
+
     def _fill_once(self, prefix: str, suffix: str, fill_len: int, seed: int):
-        """One infill: pin prefix at the front + suffix at the back, denoise the middle."""
+        """One infill: pin prefix at the front + suffix at the back, denoise the middle.
+
+        Returns ``(candidate, None)`` on success or ``(None, reason)`` on a contract violation —
+        overflow and special-token leaks are EXPLICIT, never silently papered over."""
         torch = self._torch
         from .. import diffusion
 
@@ -126,11 +138,11 @@ class DiffusionFIMProposer:
         suf_ids = self.tok.encode(suffix)
         fill_len = max(1, int(fill_len))
         total = len(pre_ids) + fill_len + len(suf_ids)
-        if total > self.block:  # doesn't fit the model context: shrink the fill, else give up
-            fill_len = self.block - len(pre_ids) - len(suf_ids)
-            if fill_len < 1:
-                return None
-            total = self.block
+        if total > self.block:
+            # STRICT (Codex review): the requested hole does not fit the model block. Do NOT silently
+            # shrink it into a different, smaller hole — that is task-framing drift. Surface overflow.
+            return None, (f"fim_overflow: prefix+hole({fill_len})+suffix={total} exceeds model "
+                          f"block {self.block}")
 
         fixed = {i: t for i, t in enumerate(pre_ids)}
         for j, t in enumerate(suf_ids):
@@ -143,9 +155,11 @@ class DiffusionFIMProposer:
             pad_id=self.tok.pad_id, noise=self.noise,
         )
         fill_ids = out[0].tolist()[len(pre_ids): len(pre_ids) + fill_len]
+        if self._leaks_special(fill_ids, self.tok.mask_id, self.tok.pad_id):
+            return None, "fim_bad_boundary: special token id leaked into the fill"
         fill = self.tok.decode(fill_ids)
         # Byte-exact prefix/suffix; ONLY the middle is model-generated.
-        return prefix + fill + suffix
+        return prefix + fill + suffix, None
 
     def _validated(self, candidate, prefix: str, suffix: str) -> str:
         """Reject silent boundary/invariant drift (Codex review) instead of emitting a malformed
@@ -170,9 +184,12 @@ class DiffusionFIMProposer:
         out = []
         for i in range(n):
             try:
-                cand = self._fill_once(prefix, suffix, fill_len, self.seed + i)
+                cand, reason = self._fill_once(prefix, suffix, fill_len, self.seed + i)
             except Exception as exc:  # any sampler failure -> sentinel -> gate rejects -> sound
                 out.append(_UNAVAILABLE.format(reason=f"sampler error: {exc}"))
                 continue
-            out.append(self._validated(cand, prefix, suffix))
+            if cand is None:
+                out.append(_UNAVAILABLE.format(reason=reason))
+            else:
+                out.append(self._validated(cand, prefix, suffix))
         return out

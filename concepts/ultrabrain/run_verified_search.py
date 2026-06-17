@@ -88,9 +88,9 @@ def run(argv=None):
     # Untrusted model output (llm OR diffusion-fim) must run isolated; fail closed unless overridden.
     isolated = (args.proposer in ("llm", "fim")) and not args.unsafe
     if isolated and not ISOLATION_AVAILABLE:
-        print("ERROR: OS isolation is unavailable here but is REQUIRED to execute untrusted LLM "
-              "output (--proposer llm). Run where the `resource` module works, wrap in a container, "
-              "or pass --unsafe to override (DANGEROUS).", file=sys.stderr)
+        print("ERROR: OS isolation is unavailable here but is REQUIRED to execute untrusted model "
+              "output (--proposer llm/fim). Run where the `resource` module works, wrap in a "
+              "container, or pass --unsafe to override (DANGEROUS).", file=sys.stderr)
         return 2
 
     # Trace collection writes trusted beliefs: require a private secret.
