@@ -1,0 +1,6 @@
+{"id": "cas_2x", "kind": "cas", "op": "antiderivative", "prompt": "Antiderivative of 2*x.", "var": "x", "integrand": "2*x", "gold": "x**2", "distractors": ["x**2/2", "x**3", "x**2 + x"]}
+{"id": "cas_3x2", "kind": "cas", "op": "antiderivative", "prompt": "Antiderivative of 3*x**2.", "var": "x", "integrand": "3*x**2", "gold": "x**3", "distractors": ["x**2", "3*x**3", "x**3 + x"]}
+{"id": "cas_cos", "kind": "cas", "op": "antiderivative", "prompt": "Antiderivative of cos(x).", "var": "x", "integrand": "cos(x)", "gold": "sin(x)", "distractors": ["-sin(x)", "cos(x)", "sin(x) + x"]}
+{"id": "cas_exp", "kind": "cas", "op": "antiderivative", "prompt": "Antiderivative of exp(x).", "var": "x", "integrand": "exp(x)", "gold": "exp(x)", "distractors": ["exp(x)/2", "x*exp(x)", "exp(2*x)"]}
+{"id": "cas_diff2", "kind": "cas", "op": "equivalent", "prompt": "A form equal to x**2 - 1.", "var": "x", "gold": "x**2 - 1", "distractors": ["(x - 1)**2", "x**2 + 1", "x**2 - 2*x + 1"]}
+{"id": "cas_factor", "kind": "cas", "op": "equivalent", "prompt": "A form equal to (x-1)*(x+1).", "var": "x", "gold": "(x - 1)*(x + 1)", "distractors": ["x**2 + 1", "(x + 1)**2", "x**2 - 2*x + 1"]}
