@@ -1,5 +1,11 @@
 # UltraBrain — a verifier-grounded scientific coder
 
+> 🚧 **Work in progress — active research prototype, not a finished product.** The verifier-gate
+> architecture and the four code slices below are built and tested locally ($0, all on CPU/MPS),
+> but the headline claim (a *cost-per-solved-task* win) has **not yet been measured against a real
+> fine-tune**, and nothing here is released, merged, or production-hardened. Open work and the
+> hardware steps live in [`RUNBOOK.md`](RUNBOOK.md) and [`rtx5080.md`](rtx5080.md).
+
 > **Current direction (UltraBrain-Code).** A cheap, sovereign system whose only job is writing
 > code for hard scientific/technical problems (math, algebra, physics, quantum) — built as a
 > **verifier-grounded engine**: the model is a *demoted proposer*, and capability comes from
