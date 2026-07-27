@@ -172,5 +172,74 @@ class TestMcpServer(unittest.TestCase):
         self.assertIn("Settlement Fix", out["rider_text"])
 
 
+class TestUnitHonesty(unittest.TestCase):
+    """The published label must never claim more evidence than the fix actually carries."""
+
+    def test_unit_label_not_depth_verified_without_receipts(self):
+        desc = cog_mcp.unit_description({"receipts": 0, "qualification": "assumed static allowlist"})
+        self.assertNotIn("depth-verified", desc)
+        self.assertIn("PROVISIONAL", desc)
+        self.assertIn("assumed-qualifying", desc)
+
+    def test_unit_label_earns_depth_verified_with_receipts_and_exam(self):
+        desc = cog_mcp.unit_description({"receipts": 5, "qualification": "exam-qualified"})
+        self.assertIn("depth-verified", desc)
+        self.assertIn("exam-qualified", desc)
+
+    def test_sla_rider_warns_when_publisher_misses_its_own_standard(self):
+        real = cog_mcp.current_fix
+        cog_mcp.current_fix = lambda: {"fix_usd": 0.144, "date": "2026-06-10", "mode": "quote",
+                                       "source": "test", "floor_usd": 0.118, "age_days": 47,
+                                       "stale": True, "receipts": 0,
+                                       "qualification": "assumed static allowlist"}
+        try:
+            out = cog_mcp.t_generate_sla({"cogs_per_month": 1000})
+        finally:
+            cog_mcp.current_fix = real
+        # §6 tells the client to audit against receipts; if there are none, say so.
+        self.assertIn("BASIS WARNING", out["rider_text"])
+        self.assertTrue(out["fix_basis_unmet"])
+
+    def test_corrupt_fix_json_falls_through_instead_of_raising(self):
+        import shutil
+        import tempfile
+        real_root, real_fetch = cog_mcp.ROOT, fixerd.fetch_models
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "fixer").mkdir()
+        (tmp / "fixer" / "fix.json").write_text("{ this is not json")
+        cog_mcp.ROOT = tmp
+        fixerd.fetch_models = lambda: (_ for _ in ()).throw(OSError("offline"))
+        try:
+            f = cog_mcp.current_fix()
+        finally:
+            cog_mcp.ROOT, fixerd.fetch_models = real_root, real_fetch
+            shutil.rmtree(tmp)
+        self.assertEqual(f["mode"], "bundled")
+
+
+class TestQualifyGate(unittest.TestCase):
+    def test_fingerprint_covers_the_pass_mark(self):
+        before = qualify.fingerprint()
+        original = qualify.EXAM["meta"]["threshold"]
+        qualify.EXAM["meta"]["threshold"] = 0.05
+        try:
+            self.assertNotEqual(before, qualify.fingerprint())
+        finally:
+            qualify.EXAM["meta"]["threshold"] = original
+        self.assertEqual(before, qualify.fingerprint())
+
+    def test_spend_cap_aborts_mid_exam_and_a_partial_run_cannot_pass(self):
+        r = qualify.examine("mock/perfect", qualify.mock_asker(1.0), budget=qualify.Budget(0.0005))
+        self.assertTrue(r["aborted"])
+        self.assertLess(r["administered"], r["total"])
+        self.assertFalse(r["passed"])   # a half-sat exam is not a qualification
+
+    def test_generous_budget_completes_the_exam(self):
+        r = qualify.examine("mock/strong", qualify.mock_asker(0.95), budget=qualify.Budget(100.0))
+        self.assertFalse(r["aborted"])
+        self.assertEqual(r["administered"], r["total"])
+        self.assertTrue(r["passed"])
+
+
 if __name__ == "__main__":
     unittest.main()

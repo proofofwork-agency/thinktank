@@ -8,7 +8,8 @@
 
 ## Abstract
 
-The price of cognition falls roughly an order of magnitude per year. Every AI contract
+The price of cognition falls roughly 5× per year at the frontier tier and up to an order of
+magnitude per year at the commodity tier (§1, Appendix C). Every AI contract
 denominated in dollars is therefore mispriced within months of signature: the buyer is
 unknowingly **short AI progress**, the seller is unknowingly long it, and neither party chose
 that bet. The result is a market-wide failure: buyers refuse long-term AI contracts, sellers
@@ -47,8 +48,12 @@ price points:
 \* *Blended = 0.8 × input + 0.2 × output price per million tokens (4:1 ratio). See Appendix C
 for the full table with caveats.*
 
-That is a **1,000× decline in three years** at the lower tier (a16z's measurement) and roughly
-**300× in 39 months** at the frontier tier (ours). Call it 5–10× per year depending on tier.
+That is a **1,000× decline in three years** at the lower tier (a16z's measurement — exactly
+10×/yr) and **143× in 39 months** at the frontier tier (ours — 4.6×/yr, computed by
+`cogfix/cogfix.py` over the non-provisional series). Counting the provisional June-2026 point
+the frontier figure is 305× (5.8×/yr), but that point is excluded from the official fix until
+it clears a qualifying basket run, so the conservative number is the one to quote.
+Call it **4.6–10× per year depending on tier**.
 This is faster than transistor prices fell during Moore's Law, faster than bandwidth fell
 during the dot-com buildout.
 

@@ -5,8 +5,10 @@ Not a coin. Not a chain. A ruler that doesn't bend.
 
 ---
 
-The price of cognition falls ~10× per year (GPT-4-class inference: **$36.00 → $0.25 per
-million blended tokens in 39 months**). Every AI contract denominated in dollars is therefore
+The price of cognition falls fast enough to break contracts: **~4.6× per year** at the
+frontier tier on our own series (GPT-4-class inference: **$36.00 → $0.25 per million blended
+tokens in 39 months** — 143×), and **~10× per year** at the commodity tier a16z measured
+(MMLU~42: $60.00 → $0.06, 1,000× in 3 years). Every AI contract denominated in dollars is therefore
 a hidden, unchosen bet on the rate of AI progress: fixed-price buyers are short it,
 fixed-price sellers are long it. Result: nobody signs long-term AI contracts, and the agent
 economy has no stable unit to write standing obligations in.
@@ -72,6 +74,10 @@ python3 fixer/fixerd.py --receipt --max-spend-usd 0.50
 ssh-keygen -Y verify -f fixer/allowed_signers -I cogfix -n cogfix \
   -s fixer/fix.json.sig < fixer/fix.json
 
+# same, for a dated archive entry (archives are signed too):
+ssh-keygen -Y verify -f fixer/allowed_signers -I cogfix -n cogfix \
+  -s fixer/archive/2026-06-10.json.sig < fixer/archive/2026-06-10.json
+
 # make it daily (cron, 09:07 UTC):
 #   7 9 * * * cd <this repo> && python3 fixer/fixerd.py >> fixer/fixerd.log 2>&1
 ```
@@ -80,6 +86,14 @@ First fix published 2026-06-09 (UTC): **1 cog = $0.144** (quote mode — median 
 cheapest qualifying posted prices; floor $0.118). Receipt mode implements the same plumbing
 with real buys; the full COG-1 depth gate (K=5 × 10M tokens) is the same code with bigger
 numbers.
+
+**Trust-anchor caveat.** `fixer/allowed_signers` is written once, at key bootstrap, and is
+never rewritten by a later run — but it still ships in the same checkout as the signature it
+validates. Verifying both against each other only proves *internal consistency*: a fork with
+its own key produces its own equally "valid" `cogfix` signature. For an adversarial check,
+obtain the publisher's key fingerprint out of band (signed release tag, published
+fingerprint, keyserver) and verify `allowed_signers` against *that* before trusting a fix.
+A signature answers "were these bytes altered?", not "is this publisher who they claim?"
 
 ## The Qualifying Exam — proving capability instead of assuming it
 

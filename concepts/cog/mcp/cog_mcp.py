@@ -16,7 +16,7 @@ Tools:
 import json
 import statistics
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -30,32 +30,65 @@ import fixerd  # noqa: E402
 # ---------------------------------------------------------------- fix lookup
 
 def current_fix():
-    """Best available fix: published file, else live quote, else bundled snapshot."""
+    """Best available fix: published file, else live quote, else bundled snapshot.
+
+    Every result carries the basis it actually earned — age, qualification, and
+    receipt count — so a caller can tell a receipted fix from a provisional
+    posted-price quote. A corrupt or unreadable fix.json falls through to the
+    live quote rather than propagating an exception.
+    """
     fix_file = ROOT / "fixer" / "fix.json"
     today = datetime.now(timezone.utc).date().isoformat()
-    if fix_file.exists():
+    try:
         p = json.loads(fix_file.read_text())
+        age = (date.fromisoformat(today) - date.fromisoformat(p["date"])).days
         return {"fix_usd": p["fix_usd"], "date": p["date"], "mode": p["mode"],
-                "source": "published fixer/fix.json" + ("" if p["date"] == today else " (stale — rerun fixerd)"),
-                "floor_usd": p.get("floor_usd")}
+                "source": "published fixer/fix.json"
+                          + (f" (stale by {age}d — rerun fixerd)" if age > 1 else ""),
+                "floor_usd": p.get("floor_usd"),
+                "age_days": age, "stale": age > 1,
+                "qualification": (p.get("qualification") or {}).get("basis", "unknown"),
+                "receipts": len(p.get("receipts") or [])}
+    except (OSError, ValueError, KeyError):
+        pass  # missing, corrupt, or malformed — fall through to the live quote
     try:
         quotes = fixerd.posted_quotes(fixerd.fetch_models())
+        if len(quotes) < 3:
+            raise ValueError("fewer than 3 qualifying quotes in feed")
         fix = statistics.median(r["blended_usd_per_M"] for r in quotes[:3])
         return {"fix_usd": round(fix, 6), "date": today, "mode": "quote-live",
                 "source": "live OpenRouter posted prices (unreceipted)",
-                "floor_usd": quotes[0]["blended_usd_per_M"]}
+                "floor_usd": quotes[0]["blended_usd_per_M"],
+                "age_days": 0, "stale": False,
+                "qualification": "assumed static allowlist (no exam run)", "receipts": 0}
     except Exception:
         s = cogfix.official_series()
         return {"fix_usd": s[-1][1], "date": "2026-06", "mode": "bundled",
-                "source": "bundled snapshot (offline fallback)", "floor_usd": None}
+                "source": "bundled snapshot (offline fallback)", "floor_usd": None,
+                "age_days": None, "stale": True,
+                "qualification": "assumed static allowlist (no exam run)", "receipts": 0}
+
+
+def unit_description(f):
+    """Describe the unit at the confidence this particular fix actually earned.
+
+    The COG-1 spec defines the cog as *depth-verified*; claiming that label for a
+    posted-price quote with no receipts is exactly the LIBOR failure the
+    whitepaper argues against, so the wording tracks the evidence.
+    """
+    price = ("depth-verified" if f.get("receipts", 0) > 0
+             else "posted-price (PROVISIONAL, unreceipted)")
+    tier = ("exam-qualified" if str(f.get("qualification", "")).startswith("exam-qualified")
+            else "assumed-qualifying (no exam administered)")
+    return (f"1 cog = {price} price of 1M blended tokens (800k in / 200k out) "
+            f"at frozen GPT-4-class capability; tier basis: {tier}")
 
 
 # ---------------------------------------------------------------- tools
 
 def t_get_fix(_args):
     f = current_fix()
-    f["unit"] = ("1 cog = depth-verified market price of 1M blended tokens "
-                 "(800k in / 200k out) at frozen GPT-4-class capability")
+    f["unit"] = unit_description(f)
     return f
 
 
@@ -114,6 +147,20 @@ def t_generate_sla(args):
     term = int(args.get("term_months", 12))
     f = current_fix()
     est = fixed + cogs * f["fix_usd"]
+    # §1 and §6 below describe the COG-1 publication standard (receipted, auditable).
+    # If today's fix does not yet meet that standard, say so in the document itself —
+    # a rider whose audit clause references receipts that do not exist is a trap.
+    unmet = []
+    if f.get("receipts", 0) == 0:
+        unmet.append("no execution receipts (fix is a posted-price quote, PROVISIONAL)")
+    if not str(f.get("qualification", "")).startswith("exam-qualified"):
+        unmet.append("capability tier assumed, not exam-administered")
+    if f.get("stale"):
+        unmet.append(f"published fix is stale (age {f.get('age_days')}d)")
+    warning = ("\n\n!! BASIS WARNING — the reference publisher does NOT currently meet the\n"
+               "   standard described in §1 and §6:\n"
+               + "\n".join(f"     - {u}" for u in unmet)
+               + "\n   Do not rely on §6 (Audit) until the publisher publishes receipts.") if unmet else ""
     text = f"""COG-DENOMINATED PRICING RIDER (TEMPLATE v0.1 — NOT LEGAL ADVICE)
 between {provider} ("Provider") and {client} ("Client")
 
@@ -151,9 +198,11 @@ between {provider} ("Provider") and {client} ("Client")
    Either party may verify any Settlement Fix against the publisher's receipts
    archive. Disputes use the recomputed value from published receipts.
 
-Fix source today: {f['source']} ({f['date']}, mode {f['mode']})."""
+Fix source today: {f['source']} ({f['date']}, mode {f['mode']}).
+Qualification basis: {f.get('qualification', 'unknown')}. Receipts: {f.get('receipts', 0)}.{warning}"""
     return {"rider_text": text, "estimated_month1_usd": round(est, 2),
-            "fix_used": f["fix_usd"], "disclaimer": "template for negotiation; not legal advice"}
+            "fix_used": f["fix_usd"], "fix_basis_unmet": unmet,
+            "disclaimer": "template for negotiation; not legal advice"}
 
 
 TOOLS = {
