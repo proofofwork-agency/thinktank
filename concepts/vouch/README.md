@@ -416,6 +416,10 @@ test/core.test.mjs       encoding, ledger, money, oracle invariants
 Concept complete: **35 tests**, two demos, one real composition with
 DeliveryProof, zero dependencies, runs offline.
 
+[ROADMAP.md](./ROADMAP.md) has the dependency graph from here to something that
+could hold real money, and the one fork that decides whether this stays a port
+of an old instrument.
+
 Known and deliberate gaps, in the order they would need closing:
 
 1. **No custody seam.** Accounts live in an in-memory `Map`. Extracting them
@@ -423,6 +427,9 @@ Known and deliberate gaps, in the order they would need closing:
 2. **Authorization is an `actor` argument, not a signature.** Honest for a local
    simulation; every `open`/`bind` check here becomes a signature check in
    production.
+2b. **No MCP server yet.** This calls itself an MCP sidecar and the sidecar is
+   not written. The self-promotion story routes entirely through MCP, so that
+   claim is currently a design intent rather than a shipped surface.
 3. **Rounding dust.** Premiums `ceil` upward, so many small policies cost more
    in aggregate than one large one. Needs a minimum policy size.
 4. **No portfolio view.** This prices a single policy and says nothing about a
