@@ -10,7 +10,7 @@ const DEFAULT_RESOURCE_LIMITS = {
   stackSizeMb: 4,
 };
 
-const WORKER_URL = new URL('./testsuite-worker.mjs', import.meta.url);
+const WORKER_URL = new URL('./builtin-replay-worker.mjs', import.meta.url);
 
 /**
  * Run objective replay in a worker thread with bounded wall-clock time and V8
@@ -26,17 +26,17 @@ const WORKER_URL = new URL('./testsuite-worker.mjs', import.meta.url);
  * @param {URL} [options.workerURL] Test hook for timeout/crash fixtures.
  * @returns {Promise<{ ok: true, expected: *, matched: boolean } | { ok: false, reason: string }>}
  */
-export async function runTestsuiteReplay(task, options = {}) {
+export async function runBuiltinReplay(task, options = {}) {
   const timeoutMs = boundedPositiveInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 'timeoutMs');
   const maxInputBytes = boundedPositiveInteger(options.maxInputBytes, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_INPUT_BYTES, 'maxInputBytes');
   const maxDepth = boundedPositiveInteger(options.maxDepth, DEFAULT_MAX_DEPTH, DEFAULT_MAX_DEPTH, 'maxDepth');
   const size = jsonSizeBytes(task);
   if (size > maxInputBytes) {
-    return { ok: false, reason: `testsuite input too large (${size} bytes > ${maxInputBytes} bytes)` };
+    return { ok: false, reason: `builtin-replay input too large (${size} bytes > ${maxInputBytes} bytes)` };
   }
   const depth = jsonDepth(task);
   if (depth > maxDepth) {
-    return { ok: false, reason: `testsuite input too deep (${depth} > ${maxDepth})` };
+    return { ok: false, reason: `builtin-replay input too deep (${depth} > ${maxDepth})` };
   }
 
   return runWorkerTask(options.workerURL ?? WORKER_URL, task, {
@@ -67,18 +67,18 @@ export function runWorkerTask(workerURL, workerData, options) {
 
     const timer = setTimeout(() => {
       worker.terminate().catch(() => {});
-      done({ ok: false, reason: `testsuite worker timed out after ${options.timeoutMs}ms` });
+      done({ ok: false, reason: `builtin-replay worker timed out after ${options.timeoutMs}ms` });
     }, options.timeoutMs);
 
     worker.once('message', (message) => {
-      done(message && typeof message === 'object' ? message : { ok: false, reason: 'testsuite worker returned a non-object result' });
+      done(message && typeof message === 'object' ? message : { ok: false, reason: 'builtin-replay worker returned a non-object result' });
     });
     worker.once('error', (err) => {
-      done({ ok: false, reason: `testsuite worker error: ${err.message}` });
+      done({ ok: false, reason: `builtin-replay worker error: ${err.message}` });
     });
     worker.once('exit', (code) => {
       if (code !== 0) {
-        done({ ok: false, reason: `testsuite worker exited with code ${code}` });
+        done({ ok: false, reason: `builtin-replay worker exited with code ${code}` });
       }
     });
   });
@@ -117,6 +117,12 @@ function jsonDepth(value) {
   return 1 + Math.max(0, ...Object.values(value).map(jsonDepth));
 }
 
-export function defaultTestsuiteWorkerPath() {
+export function defaultBuiltinReplayWorkerPath() {
   return fileURLToPath(WORKER_URL);
 }
+
+/** @deprecated Use runBuiltinReplay. */
+export const runTestsuiteReplay = runBuiltinReplay;
+
+/** @deprecated Use defaultBuiltinReplayWorkerPath. */
+export const defaultTestsuiteWorkerPath = defaultBuiltinReplayWorkerPath;

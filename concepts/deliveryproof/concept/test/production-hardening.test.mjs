@@ -38,13 +38,14 @@ function csvCell(value) {
 }
 
 test('production hardening: public API errors use DeliveryProofError taxonomy', async () => {
+  const settlementKey = generateKeypair();
   await assert.rejects(
     () => settle({
       contract: null,
       produceEvidence: () => ({ output: null }),
       verifier: hashVerifier,
-      rail: createMockEscrowRail(),
-      settlementKey: generateKeypair(),
+      rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
+      settlementKey,
     }),
     DeliveryProofValidationError,
   );
@@ -71,7 +72,7 @@ test('production hardening: injectable clocks make receipts, rails, and verifier
     },
     produceEvidence: () => ({ output }),
     verifier: hashVerifier,
-    rail: createMockEscrowRail({ now }),
+    rail: createMockEscrowRail({ now, settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
     now,
   });
@@ -95,7 +96,10 @@ test('production hardening: WAL replay rejects prototype-pollution records fail-
     '{"type":"authorize","idempotencyKey":"x","fingerprint":"f","hold":{"holdId":"h","contractId":"c","amount":1,"currency":"USDC","state":"held","history":[],"__proto__":{"polluted":true}}}\n',
     'utf8',
   );
-  assert.throws(() => createDurableEscrowRail({ logPath: railWal }), /unsafe WAL line/);
+  assert.throws(
+    () => createDurableEscrowRail({ logPath: railWal, allowUnsignedReceipts: true }),
+    /unsafe WAL line/,
+  );
   assert.equal(Object.prototype.polluted, undefined);
 
   const nonceWal = tmpFile(t, 'deliveryproof-nonce-pollution-');

@@ -57,19 +57,40 @@ function receiptRefOf(receipt) {
  * Each adapter instance owns its own private Map of holds, keyed by holdId,
  * so multiple rails (or test cases) never share state.
  *
- * @param {{ now?: () => number, audit?: import('../operability/index.mjs').AuditSink|Function|null, logger?: Object|Function|null|false, settlementPublicKey?: string }} [opts]
+ * @param {{ now?: () => number, audit?: import('../operability/index.mjs').AuditSink|Function|null, logger?: Object|Function|null|false, settlementPublicKey?: string, allowUnsignedReceipts?: boolean, requireSignature?: boolean }} [opts]
+ *   settlementPublicKey is REQUIRED unless allowUnsignedReceipts is true.
+ *   requireSignature is a deprecated no-op: verification is now the default.
  * @returns {RailAdapter & { id: string }}
  */
-export function createMockEscrowRail(opts = {}) {
+export function createMockEscrowRail(rawOpts = {}) {
+  // Read options from a null-prototype OWN-property copy. Plain `opts.x` walks
+  // the prototype chain, so a polluted Object.prototype elsewhere in the process
+  // could inject `allowUnsignedReceipts: true` (disabling verification) or even a
+  // `settlementPublicKey` the attacker holds the private half of — without the
+  // caller passing either. Spreading own enumerable properties severs that.
+  const opts = { __proto__: null, ...rawOpts };
   const now = clockFrom(opts);
   const auditSink = normalizeAuditSink(opts.audit);
   const logger = normalizeLogger(opts.logger, console);
   const settlementPublicKey = typeof opts.settlementPublicKey === 'string' ? opts.settlementPublicKey : null;
-  // Opt-in fail-closed mode for production: when set, a settlement key MUST be
-  // configured and every terminalization verifies the receipt signature.
-  const requireSignature = opts.requireSignature === true;
-  if (requireSignature && settlementPublicKey === null) {
-    throw new TypeError('createMockEscrowRail: requireSignature is set but no settlementPublicKey was provided');
+  // FAIL-CLOSED BY DEFAULT (v0.10). A settlement key is REQUIRED so every
+  // terminalization verifies the receipt signature. Without one, the rail
+  // authenticates nothing: a hand-crafted receipt carrying verdict.ok=true,
+  // decision='release' and the six correct binding fields captures a hold with
+  // no settlement private key involved at all. That was the pre-0.10 default.
+  //
+  // `allowUnsignedReceipts: true` restores the old behaviour for demos and
+  // fixtures. It is deliberately loud: the name states the consequence.
+  //
+  // `requireSignature` is retained as a no-op alias — signature verification is
+  // now the default, so setting it changes nothing.
+  const allowUnsignedReceipts = opts.allowUnsignedReceipts === true;
+  if (settlementPublicKey === null && !allowUnsignedReceipts) {
+    throw new TypeError(
+      'createMockEscrowRail: settlementPublicKey is required so terminalization verifies receipt signatures. ' +
+        'Pass allowUnsignedReceipts: true to opt out — UNSAFE: without a key any forged receipt with matching ' +
+        'binding fields can capture a hold.',
+    );
   }
   /** @type {Map<string, Hold>} */
   const holds = new Map();
@@ -253,10 +274,16 @@ export function createMockEscrowRail(opts = {}) {
 
   function assertReceiptSignature(receipt) {
     if (settlementPublicKey === null) {
-      // requireSignature forces a key at construction, so this branch is only
-      // the back-compat demo path. Decision/verdict consistency is still
-      // enforced above; production deployments should set settlementPublicKey
-      // (+ requireSignature) so forged-but-consistent receipts are rejected too.
+      // Only reachable under an explicit allowUnsignedReceipts opt-out (the
+      // constructor throws otherwise). Decision/verdict consistency and the
+      // 7-field binding are still enforced above, but receipt AUTHENTICITY is
+      // not checked on this path — so say so, loudly, on every terminalization.
+      emitAudit(auditSink, 'rail.unsigned.accepted', {
+        railId: RAIL_ID,
+        holdId: receipt?.holdId ?? null,
+        decision: receipt?.decision ?? null,
+        reason: 'allowUnsignedReceipts is set; receipt signature was NOT verified',
+      }, { now });
       return;
     }
     if (!verifyReceipt(receipt, settlementPublicKey)) {

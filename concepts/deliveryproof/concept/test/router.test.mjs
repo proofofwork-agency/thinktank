@@ -45,6 +45,28 @@ test('router selects the deep dataset verifier for a dataset deliverable at deep
   assert.ok(rejectedNames.includes('schema'), 'schema should be rejected as too weak');
 });
 
+test('deprecated testsuite alias routes to builtin-replay with the same assurance', () => {
+  const legacyContract = {
+    id: 'legacy',
+    nonce: 'legacy-nonce',
+    predicate: { kind: 'testsuite', params: { op: 'sum', input: [1, 2] } },
+  };
+  const canonicalContract = {
+    ...legacyContract,
+    predicate: { ...legacyContract.predicate, kind: 'builtin-replay' },
+  };
+  const policy = { deliverableType: 'compute', minAssurance: 3 };
+  const legacy = routeVerifier(legacyContract, { policy });
+  const canonical = routeVerifier(canonicalContract, { policy });
+
+  assert.equal(verifiers.testsuite, verifiers['builtin-replay']);
+  assert.equal(VERIFIER_PROFILES.testsuite, VERIFIER_PROFILES['builtin-replay']);
+  assert.equal(legacy.verifier, canonical.verifier);
+  assert.equal(legacy.routeDecision.selected, 'builtin-replay');
+  assert.equal(legacy.routeDecision.selectedAssurance, canonical.routeDecision.selectedAssurance);
+  assert.equal(legacy.routeDecision.selectedAssurance, 3);
+});
+
 test('router selects dataset-merkle-sample only for explicit partial Merkle policies', () => {
   const { verifier, routeDecision } = routeVerifier(datasetMerkleSampleContract, {
     policy: { deliverableType: 'dataset-merkle-sample', minAssurance: 3 },

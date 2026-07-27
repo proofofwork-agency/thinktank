@@ -4,6 +4,19 @@ All notable local changes to `@deliveryproof/rail-erc8183-base` are summarized
 here. The package has not been publicly published; commit hashes identify the
 local development slices.
 
+## v0.2.0 — Fail closed by default (local, unpublished)
+
+Tracks `deliveryproof@0.10`. **Breaking.**
+
+- `createErc8183Rail` now REQUIRES `settlementPublicKey` and verifies the receipt
+  signature before any `complete`/`reject`. This rail moves real escrow, so an
+  unauthenticated receipt here is worse than on the reference rails. Opt out with
+  `allowUnsignedReceipts: true` (local fixtures only); `requireSignature` is a
+  retained no-op alias.
+- Options are read from a null-prototype own-property copy, so a polluted
+  `Object.prototype` cannot inject `allowUnsignedReceipts` or an attacker-held
+  `settlementPublicKey`.
+
 ## v0.1.0 — First reference adapter (local, unpublished)
 
 The first real DeliveryProof `RailAdapter`: DeliveryProof as the **ERC-8183

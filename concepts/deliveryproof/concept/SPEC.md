@@ -43,7 +43,7 @@ The agreement: what is bought, the predicate that defines "delivered", the price
 | `intent` | string | Human-readable statement of what is being bought. |
 | `deliverableType` | string | Type tag for the deliverable (e.g. `"array"`, `"json"`, `"document"`). |
 | `predicate` | object | The delivery predicate. See below. |
-| `predicate.kind` | `'schema' \| 'hash' \| 'testsuite' \| 'transcript' \| 'dataset' \| 'api-response' \| 'document' \| 'compose' \| 'signed-oracle'` | Selects the verifier. |
+| `predicate.kind` | `'schema' \| 'hash' \| 'builtin-replay' \| 'transcript' \| 'dataset' \| 'api-response' \| 'document' \| 'compose' \| 'signed-oracle'` | Selects the verifier. The legacy `'testsuite'` value is accepted as a deprecated alias for `'builtin-replay'`. |
 | `predicate.params` | object | Verifier-specific parameters. See §2. |
 | `price` | object | `{ amount: number, currency: string }`; `amount` must be positive and finite. |
 | `sla` | object | `{ deadlineMs: number }` — delivery deadline. |
@@ -118,13 +118,13 @@ Validates `evidence.output` against `predicate.params.schema`. The schema is a s
 
 `ok = true` iff the output structurally matches (recursive type check, required keys present, array items conform).
 
-This is deliberately kept as the **shallow foil**: HTTP 2xx + JSON-schema shape is exactly what shipped escrow products check, and **schema-valid is not correctness**. A wrong-but-well-formed array passes `schema` and fails `testsuite` (§2.3); a corrupt-but-well-shaped dataset passes `schema` and fails `dataset` (§2.5); a wrong-but-well-shaped API response passes `schema` and fails `api-response` (§2.6); and a valid Markdown string can pass `schema` while failing `document` (§2.7). See the money-shot demos (`examples/demo-compute.mjs` Scenario 4, `examples/demo-dataset.mjs`, `examples/demo-api.mjs`, `examples/demo-document.mjs`).
+This is deliberately kept as the **shallow foil**: HTTP 2xx + JSON-schema shape is exactly what shipped escrow products check, and **schema-valid is not correctness**. A wrong-but-well-formed array passes `schema` and fails `builtin-replay` (§2.3); a corrupt-but-well-shaped dataset passes `schema` and fails `dataset` (§2.5); a wrong-but-well-shaped API response passes `schema` and fails `api-response` (§2.6); and a valid Markdown string can pass `schema` while failing `document` (§2.7). See the money-shot demos (`examples/demo-compute.mjs` Scenario 4, `examples/demo-dataset.mjs`, `examples/demo-api.mjs`, `examples/demo-document.mjs`).
 
 ### 2.2 `hashVerifier` — `kind: 'hash'`
 
 `ok = (sha256hex(evidence.output) === predicate.params.expectedHash)`. Exact-bytes (canonical) match. Use when the buyer already knows the hash of the correct deliverable.
 
-### 2.3 `testsuiteVerifier` — `kind: 'testsuite'`  *(deep Tier A)*
+### 2.3 `builtinReplayVerifier` — `kind: 'builtin-replay'`  *(deep Tier A)*
 
 **Objective replay.** `predicate.params = { op: 'sort'|'sum'|'unique'|'reverse', input: any }`. The verifier *recomputes* the expected result from `op` + `input` and deep-equals it against `evidence.output`. Because the verifier reproduces the computation itself, a passing verdict requires **no trust in the seller** — only in the predicate.
 
@@ -229,7 +229,7 @@ truth.
 
 Every check is a pure function of `(contract, evidence)` and reuses the protocol's `canonicalize`/`sha256hex`, so buyer and verifier always agree on the bytes (Tier A: no third party, no network, no oracle, no LLM). As with all predicates, the contract author still owns whether the spec captures intent.
 
-The correctness taxonomy in the Tier-A core is therefore four complementary deep verifiers: **re-execution** (`testsuite`, §2.3) recomputes the exact answer; **structural/statistical conformance** (`dataset`, §2.5) proves tabular content matches a committed spec and can emit Merkle inclusion proofs for sampled rows; **captured API/MCP response conformance** (`api-response`, §2.6) proves a paid response satisfies a deterministic request/response predicate; and **structured-document conformance** (`document`, §2.7) proves Markdown structure/checksums. Sampling with crypto-attestation (zkML / TEE / zkTLS) remains a Tier-B extension point (§8) and is not in the core.
+The correctness taxonomy in the Tier-A core is therefore four complementary deep verifiers: **re-execution** (`builtin-replay`, §2.3) recomputes the exact answer; **structural/statistical conformance** (`dataset`, §2.5) proves tabular content matches a committed spec and can emit Merkle inclusion proofs for sampled rows; **captured API/MCP response conformance** (`api-response`, §2.6) proves a paid response satisfies a deterministic request/response predicate; and **structured-document conformance** (`document`, §2.7) proves Markdown structure/checksums. Sampling with crypto-attestation (zkML / TEE / zkTLS) remains a Tier-B extension point (§8) and is not in the core.
 
 ### 2.6 `apiResponseVerifier` — `kind: 'api-response'`  *(deep API/MCP response correctness)*
 
@@ -391,7 +391,7 @@ Built-in assurance levels are static and non-gameable:
 | `schema` | 1 shape | 1 | `*` |
 | `hash` | 2 integrity | 2 | `*` |
 | `transcript` | 2 integrity | 3 | `*` |
-| `testsuite` | 3 deep correctness | 4 | `compute` |
+| `builtin-replay` (`testsuite` deprecated alias) | 3 deep correctness | 4 | `compute` |
 | `dataset` | 3 deep correctness | 5 | `dataset` |
 | `api-response` | 3 deep correctness | 4 | `api-response` |
 | `document` | 3 deep correctness | 4 | `document` |
@@ -636,7 +636,7 @@ on-chain submission.
 | runtime schema validation | `src/protocol/schema.mjs` |
 | runtime validation helpers / errors | `src/runtime.mjs`, `src/errors.mjs` |
 | signatures / identity | `src/protocol/crypto.mjs` |
-| §2 verifiers | `src/verifiers/{schema,hash,testsuite,transcript,dataset,api-response,document,compose,index}.mjs` |
+| §2 verifiers | `src/verifiers/{schema,hash,builtin-replay,transcript,dataset,api-response,document,compose,index}.mjs` |
 | Tier-B provenance | `src/verifiers/tier-b/{interfaces,signed-oracle}.mjs` |
 | §4.2 verifier router | `src/router/policy.mjs` |
 | §4.3 rails | `src/rails/escrow-mock.mjs`, `src/rails/durable-rail.mjs` |
@@ -646,7 +646,7 @@ on-chain submission.
 | §8.3 paid-tool wrapper | `src/mcp/paidToolWithDeliveryProof.mjs` |
 | §8.4 ERC projection helpers | `src/interop/{erc8004,erc8183,abi}.mjs` |
 | runnable scenarios | `examples/demo-compute.mjs` (compute money shot), `examples/demo-dataset.mjs` (dataset money shot), `examples/demo-api.mjs` (API/MCP response money shot), `examples/demo-document.mjs` (document money shot), `examples/demo-merkle-partial.mjs` (partial Merkle money shot), `examples/demo-interop.mjs` (ERC export), `examples/demo-keyring.mjs` (verification-only key rotation), `examples/demo-audit-bundle.mjs` (dispute/audit bundle), `examples/demo-keccak-interop.mjs` (sha256 vs keccak ERC projection), `examples/demo-production-seams.mjs` (rail/replay-store conformance seams) |
-| conformance tests | `test/{protocol,protocol-schema,verifiers,testsuite-sandbox,engine,engine-lifecycle,router,compose,tier-b,mcp,interop,api-response,document,dataset-merkle-sample,milestones,durable-rail,merkle,merkle-sample,keccak,operability,package,production-hardening}.test.mjs` |
+| conformance tests | `test/{protocol,protocol-schema,verifiers,builtin-replay-sandbox,engine,engine-lifecycle,router,compose,tier-b,mcp,interop,api-response,document,dataset-merkle-sample,milestones,durable-rail,merkle,merkle-sample,keccak,operability,package,production-hardening}.test.mjs` |
 
 ---
 

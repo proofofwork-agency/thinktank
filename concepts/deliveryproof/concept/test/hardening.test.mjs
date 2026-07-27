@@ -63,7 +63,7 @@ test('interop projections reject internally contradictory receipts', () => {
 });
 
 test('mock rail refuses a forged release receipt whose verdict.ok is false', () => {
-  const rail = createMockEscrowRail({ logger: false });
+  const rail = createMockEscrowRail({ logger: false, allowUnsignedReceipts: true });
   const hold = rail.authorize({ id: 'c1', price: { amount: 5, currency: 'USD' } });
   const forged = {
     decision: 'release', verdict: { ok: false }, holdId: hold.holdId, contractId: 'c1',
@@ -74,7 +74,7 @@ test('mock rail refuses a forged release receipt whose verdict.ok is false', () 
 });
 
 test('mock rail still captures a consistent release receipt', () => {
-  const rail = createMockEscrowRail({ logger: false });
+  const rail = createMockEscrowRail({ logger: false, allowUnsignedReceipts: true });
   const hold = rail.authorize({ id: 'c2', price: { amount: 7, currency: 'USD' } });
   const ok = {
     decision: 'release', verdict: { ok: true }, holdId: hold.holdId, contractId: 'c2',
@@ -83,8 +83,8 @@ test('mock rail still captures a consistent release receipt', () => {
   assert.equal(rail.capture(hold, ok).state, 'captured');
 });
 
-test('mock rail requireSignature without a settlement key throws at construction', () => {
-  assert.throws(() => createMockEscrowRail({ requireSignature: true, logger: false }));
+test('mock rail without a settlement key or explicit opt-out throws at construction', () => {
+  assert.throws(() => createMockEscrowRail({ logger: false }));
 });
 
 test('nonce WAL replay rejects a lone mark record with no prior reservation', () => {

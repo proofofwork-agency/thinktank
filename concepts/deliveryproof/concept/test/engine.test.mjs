@@ -5,7 +5,7 @@ import { canonicalize, sha256hex, sha256utf8 } from '../src/protocol/canonical.m
 import { generateKeypair, keyId, sign } from '../src/protocol/crypto.mjs';
 import { assertReceiptMeetsPolicy, settle, verifyReceipt } from '../src/engine/deliveryproof.mjs';
 import { createMockEscrowRail } from '../src/rails/escrow-mock.mjs';
-import { testsuiteVerifier } from '../src/verifiers/testsuite.mjs';
+import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
 import { hashVerifier } from '../src/verifiers/hash.mjs';
 import { schemaVerifier } from '../src/verifiers/schema.mjs';
 import { datasetVerifier } from '../src/verifiers/dataset.mjs';
@@ -20,18 +20,19 @@ function sortContract() {
     seller: 'seller_______',
     intent: 'sort array ascending',
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 5, currency: 'USDC' },
     sla: { deadlineMs: 60000 },
     refundRule: 'full-refund-on-fail',
     railId: 'escrow-mock',
     nonce: 'nonce-sort-1',
-    createdAt: 0,
+    createdAt: Date.now(),
   };
 }
 
 function mockRailReceiptFor(hold, decision, extra = {}) {
-  return {
+  const { signingKey = settlementKey, ...receiptExtra } = extra;
+  const unsignedReceipt = {
     protocolVersion: 'deliveryproof/0.4-jcs1',
     contractId: hold.contractId,
     contractHash: hold.contractHash,
@@ -42,7 +43,7 @@ function mockRailReceiptFor(hold, decision, extra = {}) {
     verdict: {
       ok: decision === 'release',
       tier: 'A',
-      verifier: 'testsuite',
+      verifier: 'builtin-replay',
       reason: decision,
       checkedAt: 1,
     },
@@ -53,18 +54,21 @@ function mockRailReceiptFor(hold, decision, extra = {}) {
     decision,
     signerKeyId: keyId(settlementKey.publicKey),
     issuedAt: 2,
-    signature: `${decision}-signature`,
-    ...extra,
+    ...receiptExtra,
+  };
+  return {
+    ...unsignedReceipt,
+    signature: sign(signingKey.privateKey, canonicalize(unsignedReceipt)),
   };
 }
 
 test('e2e release: honest seller -> verdict ok -> escrow captured', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const contract = sortContract();
   const result = await settle({
     contract,
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -88,12 +92,12 @@ test('e2e release: honest seller -> verdict ok -> escrow captured', async () => 
 });
 
 test('e2e refund: wrong output -> verdict fail -> escrow refunded (seller NOT paid)', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const contract = sortContract();
   const result = await settle({
     contract,
     produceEvidence: () => ({ output: [9, 5, 3, 1] }), // cheating / wrong
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -106,11 +110,11 @@ test('e2e refund: wrong output -> verdict fail -> escrow refunded (seller NOT pa
 });
 
 test('receipt signature verifies under the settlement public key', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -119,11 +123,11 @@ test('receipt signature verifies under the settlement public key', async () => {
 });
 
 test('verifyReceipt fails when the receipt is tampered', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -152,11 +156,11 @@ test('verifyReceipt fails when the receipt is tampered', async () => {
 });
 
 test('verifyReceipt fails under a different public key', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -165,11 +169,11 @@ test('verifyReceipt fails under a different public key', async () => {
 });
 
 test('verifyReceipt fails when signerKeyId does not match the verification key', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -179,11 +183,11 @@ test('verifyReceipt fails when signerKeyId does not match the verification key',
 });
 
 test('verifyReceipt rejects signed receipts whose decision contradicts verdict.ok', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -198,11 +202,11 @@ test('verifyReceipt rejects signed receipts whose decision contradicts verdict.o
 });
 
 test('assertReceiptMeetsPolicy enforces optional production integration policy', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -236,7 +240,7 @@ test('settle rejects a mismatched settlement keypair before authorizing funds', 
     settle({
       contract: sortContract(),
       produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-      verifier: testsuiteVerifier,
+      verifier: builtinReplayVerifier,
       rail,
       settlementKey: { publicKey: publicHalf.publicKey, privateKey: privateHalf.privateKey },
     }),
@@ -261,7 +265,7 @@ test('settle rejects non-canonical contract extras before authorizing funds', as
     settle({
       contract: { ...sortContract(), extra: undefined },
       produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-      verifier: testsuiteVerifier,
+      verifier: builtinReplayVerifier,
       rail,
       settlementKey,
     }),
@@ -286,7 +290,7 @@ test('settle rejects rail adapter mismatch before authorizing funds', async () =
     settle({
       contract: sortContract(),
       produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-      verifier: testsuiteVerifier,
+      verifier: builtinReplayVerifier,
       rail,
       settlementKey,
     }),
@@ -313,7 +317,7 @@ test('CRITICAL: a failing verdict NEVER yields a captured hold', async () => {
   // A rail that THROWS if capture is ever attempted. If any code path tried to
   // capture (pay the seller) on a failing verdict, this test would throw.
   function guardRail() {
-    const inner = createMockEscrowRail();
+    const inner = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
     return {
       id: inner.id,
       authorize: (c) => inner.authorize(c),
@@ -328,7 +332,7 @@ test('CRITICAL: a failing verdict NEVER yields a captured hold', async () => {
   // Drive a guaranteed-fail through each objective verifier kind.
   const failCases = [
     {
-      verifier: testsuiteVerifier,
+      verifier: builtinReplayVerifier,
       contract: sortContract(),
       output: [9, 5, 3, 1], // wrong sort
     },
@@ -378,7 +382,7 @@ test('CRITICAL: a failing verdict NEVER yields a captured hold', async () => {
 test('CRITICAL: the mock rail itself refuses to capture on a refund receipt', () => {
   // Defense in depth: even if a caller mis-routed, capture() must reject a
   // receipt whose decision is not 'release'.
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const hold = rail.authorize(sortContract());
   assert.throws(
     () => rail.capture(hold, { decision: 'refund', signature: 'x'.repeat(32) }),
@@ -389,7 +393,7 @@ test('CRITICAL: the mock rail itself refuses to capture on a refund receipt', ()
 });
 
 test('mock rail refuses receipts that are not bound to the exact hold', () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const hold = rail.authorize(sortContract());
   const release = mockRailReceiptFor(hold, 'release');
 
@@ -408,10 +412,10 @@ test('mock rail refuses receipts that are not bound to the exact hold', () => {
   assert.equal(rail.status(hold.holdId).state, 'held');
 });
 
-test('mock rail can require receipt signature verification on direct terminalization', () => {
+test('mock rail verifies receipt signatures by default on direct terminalization', () => {
   const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const hold = rail.authorize(sortContract());
-  const forged = mockRailReceiptFor(hold, 'release');
+  const forged = mockRailReceiptFor(hold, 'release', { signingKey: generateKeypair() });
 
   assert.throws(
     () => rail.capture(hold, forged),
@@ -421,13 +425,13 @@ test('mock rail can require receipt signature verification on direct terminaliza
 });
 
 test('CRITICAL: produceEvidence exception after authorize becomes refund, not stranded hold', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => {
       throw new Error('seller tool crashed');
     },
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -441,7 +445,7 @@ test('CRITICAL: produceEvidence exception after authorize becomes refund, not st
 });
 
 test('CRITICAL: verifier exception after authorize becomes refund, not stranded hold', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const explodingVerifier = {
     name: 'explode',
     tier: 'A',
@@ -466,7 +470,7 @@ test('CRITICAL: verifier exception after authorize becomes refund, not stranded 
 });
 
 test('mock rail: recapture is idempotent only for the same receipt', () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const hold = rail.authorize(sortContract());
   const releaseReceipt = mockRailReceiptFor(hold, 'release');
   const refundReceipt = mockRailReceiptFor(hold, 'refund');
@@ -483,7 +487,7 @@ test('mock rail: recapture is idempotent only for the same receipt', () => {
   assert.throws(() => rail.refund(hold, refundReceipt), /conflicting terminal settlement/);
   assert.equal(rail.capture(hold, releaseReceipt).state, 'captured');
   assert.throws(
-    () => rail.capture(hold, { ...releaseReceipt, signature: 'different-signature' }),
+    () => rail.capture(hold, mockRailReceiptFor(hold, 'release', { issuedAt: 3 })),
     /conflicting terminal settlement/,
   );
   assert.throws(
@@ -496,7 +500,7 @@ test('mock rail: recapture is idempotent only for the same receipt', () => {
   );
   assert.equal(rail.status(hold.holdId).state, 'captured');
 
-  const refundFirstRail = createMockEscrowRail();
+  const refundFirstRail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const refundFirstHold = refundFirstRail.authorize(sortContract());
   const refundFirstReceipt = mockRailReceiptFor(refundFirstHold, 'refund');
   const refundFirstRelease = mockRailReceiptFor(refundFirstHold, 'release');
@@ -566,12 +570,12 @@ function datasetContract(n) {
     refundRule: 'full-refund-on-fail',
     railId: 'escrow-mock',
     nonce,
-    createdAt: 0,
+    createdAt: Date.now(),
   };
 }
 
 test('e2e dataset release: correct dataset -> verdict ok -> escrow captured', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const contract = datasetContract(30);
   const result = await settle({
     contract,
@@ -594,7 +598,7 @@ test('e2e dataset release: correct dataset -> verdict ok -> escrow captured', as
 });
 
 test('e2e dataset refund: schema-valid but corrupt dataset -> verdict fail -> refunded (capture never invoked)', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const contract = datasetContract(30);
   // Deliver a dataset that is perfectly SHAPED (right columns + types + row count)
   // but whose revenue was silently corrupted: sum(revenue) is wrong and the
@@ -647,12 +651,12 @@ test('e2e dataset refund: schema-valid but corrupt dataset -> verdict fail -> re
 // --- v0.2: routeDecision is bound into the signed receipt -------------------
 test('routeDecision is bound into the signed receipt and is tamper-evident', async () => {
   const { routeVerifier } = await import('../src/router/policy.mjs');
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const contract = sortContract();
   const { verifier, routeDecision } = routeVerifier(contract, {
     policy: { deliverableType: 'compute', minAssurance: 3 },
   });
-  assert.equal(routeDecision.selected, 'testsuite');
+  assert.equal(routeDecision.selected, 'builtin-replay');
 
   const result = await settle({
     contract,
@@ -699,17 +703,17 @@ test('settle rejects a routeDecision that does not match the injected verifier',
       settlementKey,
       routeDecision,
     }),
-    /routeDecision selected testsuite but verifier is schema/,
+    /routeDecision selected builtin-replay but verifier is schema/,
   );
   assert.equal(authorized, false);
 });
 
 test('receipt.routeDecision defaults to null and still verifies when no router is used', async () => {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });

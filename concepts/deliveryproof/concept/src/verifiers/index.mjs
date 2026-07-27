@@ -7,7 +7,7 @@
 
 import { schemaVerifier } from './schema.mjs';
 import { hashVerifier } from './hash.mjs';
-import { testsuiteVerifier } from './testsuite.mjs';
+import { builtinReplayVerifier, testsuiteVerifier } from './builtin-replay.mjs';
 import { transcriptVerifier } from './transcript.mjs';
 import { datasetVerifier } from './dataset.mjs';
 import { datasetMerkleSampleVerifier } from './dataset-merkle-sample.mjs';
@@ -20,12 +20,14 @@ import { signedOracleVerifier } from './tier-b/signed-oracle.mjs';
 
 /**
  * Registry keyed by predicate kind / verifier name.
- * @type {{ schema: Verifier, hash: Verifier, testsuite: Verifier, transcript: Verifier, dataset: Verifier, 'dataset-merkle-sample': Verifier, 'api-response': Verifier, document: Verifier, compose: Verifier, 'signed-oracle': Verifier }}
+ * `testsuite` is a deprecated compatibility alias for `builtin-replay`.
+ * @type {Record<string, Verifier>}
  */
 export const verifiers = {
   schema: schemaVerifier,
   hash: hashVerifier,
-  testsuite: testsuiteVerifier,
+  'builtin-replay': builtinReplayVerifier,
+  testsuite: builtinReplayVerifier,
   transcript: transcriptVerifier,
   dataset: datasetVerifier,
   'dataset-merkle-sample': datasetMerkleSampleVerifier,
@@ -49,4 +51,17 @@ export function getVerifier(name) {
   return v;
 }
 
-export { schemaVerifier, hashVerifier, testsuiteVerifier, transcriptVerifier, datasetVerifier, datasetMerkleSampleVerifier, apiResponseVerifier, documentVerifier, composeVerifier, signedOracleVerifier };
+export {
+  schemaVerifier,
+  hashVerifier,
+  builtinReplayVerifier,
+  /** @deprecated Use builtinReplayVerifier. */
+  testsuiteVerifier,
+  transcriptVerifier,
+  datasetVerifier,
+  datasetMerkleSampleVerifier,
+  apiResponseVerifier,
+  documentVerifier,
+  composeVerifier,
+  signedOracleVerifier,
+};

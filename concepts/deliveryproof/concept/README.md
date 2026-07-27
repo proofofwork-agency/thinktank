@@ -13,7 +13,7 @@ For byte-level protocol details, read [SPEC.md](./SPEC.md).
 
 ## Is It Live-Tested?
 
-**Yes, locally end to end.** The v0.9.1 tree runs `260/260` Node tests and eleven
+**Yes, locally end to end.** The v0.10 tree runs `288/288` Node tests and eleven
 example demos. Those tests and demos execute real canonical hashing, Ed25519
 receipt signatures, deep verifiers, replay protection, keyring verification,
 Ethereum Keccak helpers, and the money-shot flows where shallow checks release
@@ -178,12 +178,20 @@ idempotent on the reference rails; conflicting terminal attempts are rejected.
 The reference rails re-enforce the verdict at the money layer, not only inside
 `settle()`: a receipt whose `decision` disagrees with its `verdict.ok` is rejected
 before any capture or refund, so a forged "release the hold" receipt carrying a
-failing verdict cannot terminalize even on a keyless rail. That consistency gate
-does not, by itself, stop a forged-but-internally-consistent unsigned receipt;
-closing that requires signature checking, which a deployment turns on by
-constructing the rail with `settlementPublicKey` (verify if present) or
-`requireSignature: true` (mandatory — every terminalization must carry a valid
-settlement signature).
+failing verdict cannot terminalize.
+
+**Since v0.10 the rails also fail closed on authenticity.** Every rail requires a
+`settlementPublicKey` at construction and verifies the DeliveryReceipt signature
+before any terminalization. Up to v0.9.1 this was opt-in, and a rail built
+without a key verified *no* signature at all — so a receipt that was internally
+consistent (`verdict.ok: true`, `decision: 'release'`) with the correct binding
+fields could capture a hold with no settlement private key involved. Two
+independent review passes reproduced that with a working exploit. It is closed.
+
+Demos and fixtures that genuinely need the old behaviour pass
+`allowUnsignedReceipts: true`. The name is deliberately blunt, construction is
+the only place it can be set, and every terminalization taken on that path emits
+a `rail.unsigned.accepted` audit event.
 
 ## The Money Shot
 
@@ -261,7 +269,7 @@ DeliveryProof is not marketed as trustless. It names the trust points.
 
 | Tier | Meaning | Examples in this repository |
 |------|---------|-----------------------------|
-| A | Objective and independently recomputable | `hash`, `schema`, `testsuite`, `transcript`, `dataset`, `api-response`, `document`, `compose`, Merkle sample verification |
+| A | Objective and independently recomputable | `hash`, `schema`, `builtin-replay`, `transcript`, `dataset`, `api-response`, `document`, `compose`, Merkle sample verification |
 | B | Attested by another proof system or source | `signed-oracle`; interface descriptors for TEE, zkTLS, and ZK proof systems |
 | C | Subjective judgment | Documented as an extension point, not shipped as a settlement-critical verifier |
 
@@ -296,9 +304,9 @@ code to the core package.
   reference behavior, and refusal to capture on a verdict-contradicting receipt.
   See `examples/demo-production-seams.mjs`.
 - **Fail-closed rail mode:** the reference rails reject internally contradictory
-  receipts unconditionally, and accept `settlementPublicKey` (verify signatures
-  when present) plus opt-in `requireSignature: true` (a settlement key is
-  mandatory and every terminalization is signature-checked). The interop
+  receipts unconditionally, and (since v0.10) require `settlementPublicKey` at
+  construction so every terminalization is signature-checked by default. The
+  `requireSignature` flag is retained as a no-op alias. The interop
   projection helpers (`toErc8004ValidationPayload`, `toErc8183EvaluatorResult`)
   likewise refuse to project a contradictory receipt into a chain-facing
   `complete`/`release` result.
@@ -344,4 +352,11 @@ Postgres, KMS, or chain-specific code outside this core package, see
 
 ## License
 
-Apache-2.0.
+Apache-2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
+
+You may use, modify, redistribute, and build commercial or closed-source products
+on this software. In exchange, Apache-2.0 §4(d) requires that you keep the
+attribution in [NOTICE](./NOTICE) — the ProofOfWork Agency copyright line — visible
+somewhere customary in your product (source header, docs, or a third-party
+notices screen). No permission request, no fee, no obligation to open your own
+changes. Just keep the credit.

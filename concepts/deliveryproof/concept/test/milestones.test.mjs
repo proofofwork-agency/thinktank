@@ -8,7 +8,7 @@ import {
   verifyMilestoneAggregate,
 } from '../src/engine/milestones.mjs';
 import { createMockEscrowRail } from '../src/rails/escrow-mock.mjs';
-import { testsuiteVerifier } from '../src/verifiers/testsuite.mjs';
+import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
 
 const settlementKey = generateKeypair();
 
@@ -23,20 +23,20 @@ function schedule() {
     refundRule: 'per-milestone-refund-on-fail',
     railId: 'escrow-mock',
     nonce: 'schedule-nonce',
-    createdAt: 0,
+    createdAt: Date.now(),
     milestones: [
       {
         id: 'sort',
         intent: 'sort array',
         deliverableType: 'application/json',
-        predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+        predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
         price: { amount: 4, currency: 'USDC' },
       },
       {
         id: 'sum',
         intent: 'sum array',
         deliverableType: 'application/json',
-        predicate: { kind: 'testsuite', params: { op: 'sum', input: [1, 2, 3] } },
+        predicate: { kind: 'builtin-replay', params: { op: 'sum', input: [1, 2, 3] } },
         price: { amount: 6, currency: 'USDC' },
       },
     ],
@@ -57,8 +57,8 @@ test('milestone settlement releases passed children and refunds failed children'
   const aggregate = await settleMilestones({
     schedule: schedule(),
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 999 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 
@@ -74,8 +74,8 @@ test('milestone settlement can fully release when all children pass', async () =
   const aggregate = await settleMilestones({
     schedule: schedule(),
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 
@@ -89,8 +89,8 @@ test('milestone aggregate verification rejects receipt tampering', async () => {
   const aggregate = await settleMilestones({
     schedule: schedule(),
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 
@@ -102,8 +102,8 @@ test('milestone aggregate verification rejects unsigned amount tampering', async
   const aggregate = await settleMilestones({
     schedule: schedule(),
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 
@@ -118,15 +118,15 @@ test('milestone aggregate verification binds to the exact schedule', async () =>
   const aggregate = await settleMilestones({
     schedule: s,
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 
   assert.equal(verifyMilestoneAggregate(aggregate, settlementKey.publicKey, { schedule: s }), true);
 
   const different = schedule();
-  different.milestones[1].predicate = { kind: 'testsuite', params: { op: 'sum', input: [10, 20] } };
+  different.milestones[1].predicate = { kind: 'builtin-replay', params: { op: 'sum', input: [10, 20] } };
   assert.equal(verifyMilestoneAggregate(aggregate, settlementKey.publicKey, { schedule: different }), false);
 });
 
@@ -135,8 +135,8 @@ test('milestone aggregate verification rejects truncated schedule rollups', asyn
   const aggregate = await settleMilestones({
     schedule: s,
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 
@@ -153,8 +153,8 @@ test('milestone aggregate verification rejects reordered children', async () => 
   const aggregate = await settleMilestones({
     schedule: s,
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 
@@ -167,8 +167,8 @@ test('milestone aggregate verification rejects substituted child receipts', asyn
   const aggregate = await settleMilestones({
     schedule: s,
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
   const otherSchedule = schedule();
@@ -177,8 +177,8 @@ test('milestone aggregate verification rejects substituted child receipts', asyn
   const otherAggregate = await settleMilestones({
     schedule: otherSchedule,
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 
@@ -192,8 +192,8 @@ test('milestone aggregate verification rejects scheduleHash mismatch', async () 
   const aggregate = await settleMilestones({
     schedule: s,
     produceEvidence: (_contract, index) => ({ output: index === 0 ? [1, 3, 5, 9] : 6 }),
-    selectVerifier: () => testsuiteVerifier,
-    createRail: () => createMockEscrowRail(),
+    selectVerifier: () => builtinReplayVerifier,
+    createRail: () => createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 

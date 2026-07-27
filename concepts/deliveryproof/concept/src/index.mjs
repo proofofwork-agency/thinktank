@@ -23,6 +23,10 @@
 export { settle, verifyReceipt, assertReceiptMeetsPolicy } from './engine/deliveryproof.mjs';
 export { compileMilestoneContracts, settleMilestones, verifyMilestoneAggregate } from './engine/milestones.mjs';
 export { createNonceRegistry, createWalReplayStore, nonceKey, REPLAY_STORE_INTERFACE } from './engine/nonce-registry.mjs';
+// Cross-process-atomic replay store (node:sqlite). Prefer this over the WAL
+// store whenever more than one process can settle: the WAL store's uniqueness
+// check is in-process only.
+export { createSqliteReplayStore } from './engine/sqlite-replay-store.mjs';
 
 export { routeVerifier, deriveComposeProfile, VERIFIER_PROFILES, ASSURANCE_NAMES } from './router/policy.mjs';
 
@@ -31,6 +35,8 @@ export {
   getVerifier,
   schemaVerifier,
   hashVerifier,
+  builtinReplayVerifier,
+  /** @deprecated Use builtinReplayVerifier. */
   testsuiteVerifier,
   transcriptVerifier,
   datasetVerifier,
@@ -42,7 +48,14 @@ export {
 } from './verifiers/index.mjs';
 export { verifyInclusionSample } from './verifiers/dataset-merkle-sample.mjs';
 export { verifyComposition } from './verifiers/compose.mjs';
-export { runTestsuiteReplay, defaultTestsuiteWorkerPath } from './verifiers/testsuite-runner.mjs';
+export {
+  runBuiltinReplay,
+  defaultBuiltinReplayWorkerPath,
+  /** @deprecated Use runBuiltinReplay. */
+  runTestsuiteReplay,
+  /** @deprecated Use defaultBuiltinReplayWorkerPath. */
+  defaultTestsuiteWorkerPath,
+} from './verifiers/builtin-replay-runner.mjs';
 export { buildSignedOracleAttestation, TIER_B_INTERFACE_DESCRIPTORS, getTierBInterface } from './verifiers/tier-b/index.mjs';
 
 export { createMockEscrowRail } from './rails/escrow-mock.mjs';

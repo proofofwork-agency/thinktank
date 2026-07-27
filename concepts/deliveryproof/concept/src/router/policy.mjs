@@ -19,32 +19,13 @@ import { sha256hex } from '../protocol/canonical.mjs';
 import { verifiers as defaultRegistry } from '../verifiers/index.mjs';
 import { emitAudit, normalizeAuditSink } from '../operability/index.mjs';
 
-// Static, non-gameable capability profiles for the built-in verifiers. These are
-// declared HERE (not supplied by the verifier or the seller) so a verifier cannot
-// advertise a stronger assurance or cheaper cost than it actually provides.
-//   assurance: how strong the objective guarantee is
-//     1 = shape only (structural / JSON-schema — the shallow foil)
-//     2 = integrity (content hash / signed nonce-bound transcript)
-//     3 = deep objective correctness (deterministic re-execution / dataset content / document structure)
-//   cost: relative cost to run (cheaper preferred when sufficient)
-//   kinds: deliverable kinds the verifier applies to ('*' = any)
-export const VERIFIER_PROFILES = {
-  schema: { assurance: 1, cost: 1, kinds: ['*'] },
-  hash: { assurance: 2, cost: 2, kinds: ['*'] },
-  transcript: { assurance: 2, cost: 3, kinds: ['*'] },
-  testsuite: { assurance: 3, cost: 4, kinds: ['compute'] },
-  dataset: { assurance: 3, cost: 5, kinds: ['dataset'] },
-  'dataset-merkle-sample': { assurance: 3, cost: 2, kinds: ['dataset-merkle-sample'] },
-  'api-response': { assurance: 3, cost: 4, kinds: ['api-response'] },
-  document: { assurance: 3, cost: 4, kinds: ['document'] },
-  // Placeholder; routeVerifier derives compose assurance/cost from children for
-  // an explicit predicate.kind === 'compose' contract.
-  compose: { assurance: 1, cost: 6, kinds: ['composite'] },
-  'signed-oracle': { assurance: 2, cost: 3, kinds: ['provenance', 'api-response', '*'] },
-};
+// The trusted capability table now lives in ./profiles.mjs — a leaf module, so
+// the engine can re-derive a routeDecision from the same numbers without taking
+// a dependency on the router. Imported for local use AND re-exported so the
+// public API (src/index.mjs) is unchanged.
+import { VERIFIER_PROFILES, ASSURANCE_NAMES, deriveComposeProfile } from './profiles.mjs';
 
-// Human-readable names for assurance levels (for routeDecision/readability).
-export const ASSURANCE_NAMES = { 1: 'shape', 2: 'integrity', 3: 'deep-correctness' };
+export { VERIFIER_PROFILES, ASSURANCE_NAMES, deriveComposeProfile };
 
 const NON_BYPASSABLE_PREDICATE_KINDS = new Set(['compose', 'signed-oracle', 'dataset-merkle-sample']);
 
@@ -218,51 +199,4 @@ export function routeVerifier(contract, { policy, registry = defaultRegistry, pr
   }, { now });
 
   return { verifier: registry[selected], routeDecision };
-}
-
-/**
- * Derive compose assurance from child verifier profiles so the router reports
- * the guarantee actually implied by the predicate algebra.
- *
- * Per the v0.4 design:
- *   all       -> max child assurance (all predicates must pass, so the strongest
- *                child guarantee is included in the composite result)
- *   any       -> min child assurance (only one child must pass)
- *   threshold -> kth-lowest child assurance, where k = threshold
- *
- * @param {import('../protocol/types.mjs').DeliveryContract} contract
- * @param {Object} profiles
- * @returns {{ assurance: number, cost: number, kinds: string[] }}
- */
-export function deriveComposeProfile(contract, profiles = VERIFIER_PROFILES) {
-  const params = contract?.predicate?.params;
-  if (!params || typeof params !== 'object' || !Array.isArray(params.verifiers) || params.verifiers.length === 0) {
-    return { assurance: 1, cost: VERIFIER_PROFILES.compose.cost, kinds: ['composite'] };
-  }
-  const children = params.verifiers;
-  const assurances = [];
-  let cost = 1;
-  for (const child of children) {
-    if (!child || typeof child.kind !== 'string' || child.kind === 'compose') {
-      return { assurance: 1, cost: VERIFIER_PROFILES.compose.cost, kinds: ['composite'] };
-    }
-    const profile = profiles[child.kind];
-    if (!profile) {
-      return { assurance: 1, cost: VERIFIER_PROFILES.compose.cost, kinds: ['composite'] };
-    }
-    assurances.push(profile.assurance);
-    cost += profile.cost;
-  }
-  assurances.sort((a, b) => a - b);
-  const mode = params.mode ?? 'all';
-  let assurance;
-  if (mode === 'any') {
-    assurance = assurances[0];
-  } else if (mode === 'threshold') {
-    const threshold = Number.isInteger(params.threshold) ? params.threshold : 1;
-    assurance = assurances[Math.max(0, Math.min(assurances.length - 1, threshold - 1))];
-  } else {
-    assurance = assurances[assurances.length - 1];
-  }
-  return { assurance, cost, kinds: ['composite'] };
 }

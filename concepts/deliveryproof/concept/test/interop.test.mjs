@@ -8,7 +8,7 @@ import { keccak256 } from '../src/protocol/keccak.mjs';
 import { generateKeypair } from '../src/protocol/crypto.mjs';
 import { settle } from '../src/engine/deliveryproof.mjs';
 import { createMockEscrowRail } from '../src/rails/escrow-mock.mjs';
-import { testsuiteVerifier } from '../src/verifiers/testsuite.mjs';
+import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
 import {
   encodeErc8004ValidationAbi,
   encodeErc8183EvaluatorAbi,
@@ -25,13 +25,13 @@ function sortContract() {
     seller: 'seller_______',
     intent: 'sort array ascending',
     deliverableType: 'compute',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 5, currency: 'USDC' },
     sla: { deadlineMs: 60000 },
     refundRule: 'full-refund-on-fail',
     railId: 'escrow-mock',
     nonce: 'nonce-interop-1',
-    createdAt: 0,
+    createdAt: Date.now(),
   };
 }
 
@@ -39,8 +39,8 @@ async function settleWith(output) {
   return settle({
     contract: sortContract(),
     produceEvidence: () => ({ output }),
-    verifier: testsuiteVerifier,
-    rail: createMockEscrowRail(),
+    verifier: builtinReplayVerifier,
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 }
@@ -51,7 +51,7 @@ test('ERC-8004: a passing receipt maps to response=100 with bound hashes', async
   assert.equal(payload.response, 100);
   assert.equal(payload.requestHash, `0x${receipt.contractHash}`);
   assert.equal(payload.responseHash, `0x${sha256hex(receipt)}`);
-  assert.equal(payload.tag, 'deliveryproof/testsuite/tier-A');
+  assert.equal(payload.tag, 'deliveryproof/builtin-replay/tier-A');
   assert.equal(payload.hashAlg, 'sha256');
   assert.equal(payload.responseURI, '');
 });

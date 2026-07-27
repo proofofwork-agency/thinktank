@@ -87,7 +87,7 @@ kv('seller(cheat)', keyId(seller.publicKey));
 
 // --- Shallow path: schema verifier (shape only) -> RELEASE -------------------
 {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const shapeContract = {
     ...contract(),
     predicate: { kind: 'schema', params: { schema: { type: 'object',
@@ -112,7 +112,7 @@ kv('seller(cheat)', keyId(seller.publicKey));
 
 // --- Deep path: router selects api-response -> REFUND ------------------------
 {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const c = contract();
   const { verifier, routeDecision } = routeVerifier(c, {
     policy: { deliverableType: 'api-response', minAssurance: 3 },

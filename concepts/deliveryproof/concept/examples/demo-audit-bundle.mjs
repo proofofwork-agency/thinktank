@@ -13,7 +13,7 @@ import {
   keyId,
   settle,
   sha256hex,
-  testsuiteVerifier,
+  builtinReplayVerifier,
 } from '../src/index.mjs';
 
 const HEAVY = '='.repeat(74);
@@ -33,13 +33,13 @@ const contract = {
   seller: keyId(seller.publicKey),
   intent: 'sort array ascending',
   deliverableType: 'application/json',
-  predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+  predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
   price: { amount: 5, currency: 'USDC' },
   sla: { deadlineMs: 60000 },
   refundRule: 'full-refund-on-fail',
   railId: 'escrow-mock',
   nonce: 'nonce-audit-bundle-demo',
-  createdAt: 0,
+  createdAt: Date.now(), // real timestamp: an epoch-0 contract is long past its SLA deadline
 };
 
 console.log('\n' + HEAVY);
@@ -52,11 +52,11 @@ console.log(`
   contact a telemetry backend, or move money.
 `);
 
-const rail = createMockEscrowRail();
+const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
 const result = await settle({
   contract,
   produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-  verifier: testsuiteVerifier,
+  verifier: builtinReplayVerifier,
   rail,
   settlementKey,
 });

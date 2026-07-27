@@ -36,13 +36,15 @@ does not certify that a human intent was well specified.
   implementations reproduce the same hashes and signatures.
 - Reference rails and the ERC-8004/8183 projection helpers re-enforce the verdict at
   the money/interop boundary: a receipt whose `decision` contradicts `verdict.ok` is
-  rejected before terminalization or chain-facing projection, and rails accept opt-in
-  `requireSignature` for mandatory settlement-signature checks.
+  rejected before terminalization or chain-facing projection. Since v0.10 rails also
+  require a `settlementPublicKey` and verify the settlement signature on every
+  terminalization, closing the forged-but-internally-consistent receipt path that the
+  consistency gate alone cannot see.
 - The nonce-registry WAL validates replay records and rejects a lone or forged `mark`
   (mark-before-reserve or fingerprint mismatch).
 - Standalone `schema` and `api-response` verifiers reject non-finite numbers; contract
   and receipt amounts must be positive and finite.
-- Dataset, document, API-response, testsuite, and Merkle paths have explicit size,
+- Dataset, document, API-response, builtin-replay, and Merkle paths have explicit size,
   count, depth, or time bounds.
 - Durable local rail operations are WAL-backed and idempotent.
 - Audit hooks are best-effort and run outside the signed receipt body.
