@@ -1,0 +1,33 @@
+{
+  "name": "vouch",
+  "version": "0.1.0",
+  "description": "Permissionless surety: anyone can underwrite anyone's promise, settled by a deterministic verifier over a receipt instead of by a claims process or a vote. Node built-ins only.",
+  "author": "danillo felixdaal",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/proofofwork-agency/thinktank.git",
+    "directory": "concepts/vouch"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "src/",
+    "examples/",
+    "docs/",
+    "README.md",
+    "SPEC.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "demo": "node examples/demo-underwrite.mjs",
+    "demo:composition": "node examples/demo-deliveryproof.mjs",
+    "demo:all": "npm run demo && npm run demo:composition"
+  },
+  "license": "MIT",
+  "private": true
+}
