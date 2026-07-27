@@ -8,7 +8,7 @@ published; commit hashes identify the local development slices.
 **Breaking.** Two independent adversarial passes (Claude + Codex), each with a
 working proof-of-concept, showed that the two headline safety claims held inside
 `settle()` but were not enforced at the boundaries. Both are now enforced.
-Suite went 260 -> 282, all green.
+Suite went 260 -> 310, all green.
 
 - **Rails require a settlement key.** `createMockEscrowRail`,
   `createDurableEscrowRail`, and `createErc8183Rail` now throw at construction
@@ -79,11 +79,60 @@ regression test derived from its proof-of-concept.
   *wrong* key. All three rails now read options from a null-prototype
   own-property copy.
 
-Known and documented rather than changed: `mark()` on both replay stores
-authenticates only the key, so any holder of a replay key can advance or regress
-that row's state. This is a property of the shared `ReplayStore` interface
-contract, not of either implementation, and changing it would break the
-conformance suite both stores are held to.
+(Superseded in the third round below: the regression and flip transitions were
+closed after all, by making transitions monotonic and extending the conformance
+suite rather than leaving the interface as found.)
+
+### Third review round — the round-2 fixes were themselves attacked
+
+Same discipline again: the fixes above were adversarially reviewed, which found
+six more issues. Suite 288 -> 310.
+
+- **The verifier identity check compared against mutable state.** Granting
+  assurance on `builtInVerifiers[selected] === verifier` is worthless if the
+  registry entry can be replaced (`verifiers.dataset = impostor`) or the object
+  rewritten (`datasetVerifier.verify = evil`). Worse, `verify` was resolved
+  *after* the producer ran, so a seller passed the identity check with the real
+  verifier and then rewrote its method from inside its own `produceEvidence`.
+  Observed: signed assurance-3 receipt, valid signature, escrow captured. Now the
+  registry and every built-in verifier are frozen, and `settle()` binds the
+  verify callable before any seller code runs — which protects custom verifiers
+  too, rather than relying on anyone remembering to freeze.
+- **`VERIFIER_PROFILES` rows were mutable.** A frozen table with mutable rows is
+  not a trusted table: `VERIFIER_PROFILES.schema.assurance = 3` would have made
+  the engine re-derive and then *sign* assurance 3 for the shallow foil. Table,
+  rows, and `kinds` arrays are now frozen.
+- **A non-canonicalizable `routeDecision` stranded a held escrow.**
+  `structuredClone` preserves values JCS rejects (Map, Date, BigInt, Infinity,
+  cycles). Validation passed, the rail authorized a hold, the seller delivered,
+  and canonicalization then threw during receipt signing — outside the delivery
+  try/catch. Result: funds held with no receipt, no capture, no refund. The
+  decision is now proved canonicalizable before anything is authorized.
+- **Prototype pollution defeated the downstream policy checks.** A receipt whose
+  *signed* `routeDecision` was `{}` — carrying no assurance claim at all — passed
+  `minAssurance: 99` and an `expectedPolicyHash` pin, because policy read through
+  the prototype chain while canonicalization signs own properties only. All
+  policy reads are now own-property.
+- **A custom verifier could still sign `selectedAssuranceName`.** The numeric
+  claim was guarded; the prose one was not.
+- **Compat regression from the rename, caught and fixed:** a legacy route
+  selecting `testsuite` was rejected because the aliased object's own name is
+  `builtin-replay`. Name equality now falls back to registry identity.
+
+Confirmed solid under attack: the contract deep-freeze (sloppy assignment
+no-ops, `Reflect.set` returns false, `defineProperty` and array mutation throw;
+exotic inputs fail before authorization), and the getter/prototype divergence fix
+on `routeDecision` (getters materialize exactly once; validated own canonical
+data is byte-identical to the signed data).
+
+Also in this round: replay-key transitions are now monotonic across BOTH stores
+and the WAL replay path — a reservation cannot be born settled, a terminal cannot
+regress to `reserved` (which would free a spent nonce), and terminals cannot
+flip. Four cases added to the exported replay-store conformance suite. The
+residual risk is stated plainly in `replay-transitions.mjs`: `mark()` still
+cannot authenticate its caller, so whoever knows a key can drive the first
+`reserved -> terminal` transition. Closing that needs a token the interface has
+no room for.
 
 - **`testsuite` verifier renamed to `builtin-replay`.** It supports four
   deterministic ops (`sort`, `sum`, `unique`, `reverse`); recomputing those is

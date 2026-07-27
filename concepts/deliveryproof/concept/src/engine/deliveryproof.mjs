@@ -80,6 +80,15 @@ export async function settle({ contract, produceEvidence, verifier, rail, settle
   if (!settlementKey || !settlementKey.publicKey || !settlementKey.privateKey) {
     throw new DeliveryProofConfigurationError('settle: settlementKey { publicKey, privateKey } (PEM) is required');
   }
+  // Bind the verifier's method NOW, before any seller code has run.
+  //
+  // `verifier.verify` was previously resolved at call time — after
+  // produceEvidence(). A seller could therefore pass the identity check with the
+  // real verifier and then, from inside its own producer, assign
+  // `datasetVerifier.verify = () => ({ ok: true })` before the lookup happened.
+  // The built-ins are frozen, which closes that for them; binding here closes it
+  // for CUSTOM verifiers too, and does not depend on anyone remembering to freeze.
+  const boundVerify = verifier.verify.bind(verifier);
 
   // Deep-CLONE then deep-FREEZE. The same object reference is handed to
   // rail.authorize(), then to produceEvidence() (the SELLER'S code), and only
@@ -173,7 +182,7 @@ export async function settle({ contract, produceEvidence, verifier, rail, settle
     // 3) Verify delivery against the contract predicate. The verifier is injected;
     //    the engine never reaches into ./verifiers directly.
     mark('verification-started');
-    verdict = await verifier.verify(normalizedContract, evidence, { now: readNow });
+    verdict = await boundVerify(normalizedContract, evidence, { now: readNow });
     if (!verdict || typeof verdict.ok !== 'boolean') {
       throw new DeliveryProofValidationError('settle: verifier.verify must return a Verdict with a boolean ok');
     }
@@ -425,7 +434,7 @@ export function assertReceiptMeetsPolicy(receipt, policy = {}) {
   if (policy.requireRouteDecision === true && (receipt.routeDecision === null || typeof receipt.routeDecision !== 'object')) {
     throw new DeliveryProofValidationError('receipt policy requires a signed routeDecision');
   }
-  if (policy.allowFallback === false && receipt.routeDecision?.fallbackUsed === true) {
+  if (policy.allowFallback === false && ownProp(receipt.routeDecision, 'fallbackUsed') === true) {
     throw new DeliveryProofValidationError('receipt policy disallows verifier fallback');
   }
   if (Number.isSafeInteger(policy.minAssurance)) {
@@ -438,7 +447,7 @@ export function assertReceiptMeetsPolicy(receipt, policy = {}) {
         `receipt policy requires assurance >= ${policy.minAssurance} but the receipt carries no routeDecision`,
       );
     }
-    const selectedAssurance = receipt.routeDecision.selectedAssurance;
+    const selectedAssurance = ownProp(receipt.routeDecision, 'selectedAssurance');
     if (!Number.isSafeInteger(selectedAssurance) || selectedAssurance < policy.minAssurance) {
       throw new DeliveryProofValidationError(`receipt policy requires assurance >= ${policy.minAssurance}`);
     }
@@ -447,10 +456,11 @@ export function assertReceiptMeetsPolicy(receipt, policy = {}) {
     // Pin the exact router policy that produced this decision. Without this, a
     // receipt routed under a permissive policy is indistinguishable from one
     // routed under the strict policy the consumer believes was in force.
-    if (receipt.routeDecision?.policyHash !== policy.expectedPolicyHash) {
+    const carried = ownProp(receipt.routeDecision, 'policyHash');
+    if (carried !== policy.expectedPolicyHash) {
       throw new DeliveryProofValidationError(
         `receipt policy expected policyHash ${policy.expectedPolicyHash} but receipt carries ` +
-          `${receipt.routeDecision?.policyHash ?? 'none'}`,
+          `${carried ?? 'none'}`,
       );
     }
   }
@@ -464,6 +474,24 @@ export function assertReceiptMeetsPolicy(receipt, policy = {}) {
     throw new DeliveryProofValidationError('receipt policy requires nonceRegistryKey');
   }
   return true;
+}
+
+/**
+ * Read an OWN data property, ignoring the prototype chain.
+ *
+ * Policy decisions must be made from what the receipt actually SIGNED.
+ * canonicalize() serializes own enumerable properties, so anything reached
+ * through the prototype chain is, by definition, not in the signed bytes. A
+ * polluted Object.prototype otherwise let a receipt whose signed routeDecision
+ * was `{}` — carrying no assurance claim at all — satisfy `minAssurance: 3`.
+ *
+ * @param {*} obj
+ * @param {string} key
+ * @returns {*} the own value, or undefined
+ */
+function ownProp(obj, key) {
+  if (obj === null || typeof obj !== 'object') return undefined;
+  return Object.hasOwn(obj, key) ? obj[key] : undefined;
 }
 
 function receiptDecisionMatchesVerdict(receipt) {
@@ -515,13 +543,31 @@ function normalizeRouteDecision(routeDecision) {
   if (typeof routeDecision !== 'object' || Array.isArray(routeDecision)) {
     throw new DeliveryProofConfigurationError('settle: routeDecision must be an object or null');
   }
+  let normalized;
   try {
-    return structuredClone({ ...routeDecision });
+    normalized = structuredClone({ ...routeDecision });
   } catch (err) {
     throw new DeliveryProofConfigurationError(
       `settle: routeDecision must be plain cloneable data: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  // Prove it can be SIGNED, here, before any money moves.
+  //
+  // structuredClone happily preserves values canonicalize() rejects — Infinity,
+  // BigInt, Date, Map. Without this check such a routeDecision passed validation,
+  // the rail authorized a hold, the seller delivered, and canonicalize() then threw
+  // during receipt signing — which happens AFTER the delivery try/catch. The
+  // result was a stranded hold: buyer's funds locked, no receipt, no capture, no
+  // refund. Failing here costs the caller an error; failing there costs them money.
+  try {
+    canonicalize(normalized);
+  } catch (err) {
+    throw new DeliveryProofConfigurationError(
+      `settle: routeDecision must be canonicalizable protocol JSON (it is signed into the receipt): ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return normalized;
 }
 
 function assertRouteDecisionMatchesVerifier(routeDecision, verifier, contract) {
@@ -532,9 +578,15 @@ function assertRouteDecisionMatchesVerifier(routeDecision, verifier, contract) {
   if (typeof routeDecision.selected !== 'string' || routeDecision.selected.length === 0) {
     throw new DeliveryProofConfigurationError('settle: routeDecision.selected must be a non-empty string');
   }
-  if (routeDecision.selected !== verifier.name) {
+  const selected = ownProp(routeDecision, 'selected');
+  // Name equality OR registry identity. The identity arm exists for deprecated
+  // aliases: `testsuite` and `builtin-replay` are the same frozen object, so a
+  // legacy route selecting `testsuite` is legitimate even though the object's
+  // own name is `builtin-replay`. Identity is the stronger claim anyway — if the
+  // registry maps this key to exactly this object, the key names this verifier.
+  if (selected !== verifier.name && builtInVerifiers[selected] !== verifier) {
     throw new DeliveryProofConfigurationError(
-      `settle: routeDecision selected ${routeDecision.selected} but verifier is ${verifier.name ?? 'unknown'}`,
+      `settle: routeDecision selected ${selected} but verifier is ${verifier.name ?? 'unknown'}`,
     );
   }
   // The engine SIGNS this routeDecision into the receipt, and downstream policy
@@ -546,7 +598,8 @@ function assertRouteDecisionMatchesVerifier(routeDecision, verifier, contract) {
   // `compose` is special: the router derives its assurance from the child
   // verifiers named in the contract predicate, not from the placeholder row in
   // the table. Re-derive it the same way rather than exempting it from checking.
-  const profile = routeDecision.selected === 'compose'
+  // Own-property reads here too: the validated value must be the signed value.
+  const profile = ownProp(routeDecision, 'selected') === 'compose'
     ? deriveComposeProfile(contract)
     : VERIFIER_PROFILES[routeDecision.selected];
   // The profile table is keyed by NAME, so name equality alone lets any injected
@@ -558,7 +611,8 @@ function assertRouteDecisionMatchesVerifier(routeDecision, verifier, contract) {
   if (profile && isBuiltIn) {
     assertClaimMatchesProfile(routeDecision, 'selectedAssurance', profile.assurance);
     assertClaimMatchesProfile(routeDecision, 'selectedAssuranceName', ASSURANCE_NAMES[profile.assurance]);
-  } else if (routeDecision.selectedAssurance !== undefined) {
+  } else if (ownProp(routeDecision, 'selectedAssurance') !== undefined
+             || ownProp(routeDecision, 'selectedAssuranceName') !== undefined) {
     // Either no trusted profile exists for this kind, or one does but the
     // verifier is not the built-in that earned it. Both are unverifiable
     // assurance claims, and the engine will not sign one.
@@ -571,7 +625,8 @@ function assertRouteDecisionMatchesVerifier(routeDecision, verifier, contract) {
           'no trusted verifier profile exists. Pass a routeDecision produced by routeVerifier(), or omit selectedAssurance.',
     );
   }
-  if (routeDecision.fallbackUsed !== undefined && typeof routeDecision.fallbackUsed !== 'boolean') {
+  const fallbackUsed = ownProp(routeDecision, 'fallbackUsed');
+  if (fallbackUsed !== undefined && typeof fallbackUsed !== 'boolean') {
     throw new DeliveryProofConfigurationError('settle: routeDecision.fallbackUsed must be a boolean when present');
   }
 }
@@ -582,7 +637,7 @@ function assertRouteDecisionMatchesVerifier(routeDecision, verifier, contract) {
  * @param {*} trusted
  */
 function assertClaimMatchesProfile(routeDecision, field, trusted) {
-  const claimed = routeDecision[field];
+  const claimed = ownProp(routeDecision, field);
   if (claimed === undefined) return;
   if (claimed !== trusted) {
     throw new DeliveryProofConfigurationError(

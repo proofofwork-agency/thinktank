@@ -73,10 +73,29 @@ nothing about a claim that was false, or a term that changed, before signing. A
 verification system is exactly as good as the weakest thing it neglects to
 re-derive — and the thing it neglects is rarely the thing it documents.
 
-**The second lesson:** the review that found the most severe defect was the review
-*of the fixes*, not the review of the original code. Fix rounds deserve the same
-adversarial pressure as the code they fix, and neither round would have found
-these by reading alone — every finding here required a running exploit.
+**Then the round-2 fixes were attacked, and that found six more.** The verifier
+identity check compared against a *mutable* registry, and resolved `verify` only
+after seller code had run — so a seller passed the check with the real verifier
+and then rewrote its method from inside its own producer. The profile table's
+rows were mutable. A `routeDecision` containing a `Map` passed validation, got a
+hold authorized, and then failed at signing — stranding the buyer's funds with no
+receipt and no refund. And prototype pollution let a receipt whose *signed* route
+decision was `{}` satisfy `minAssurance: 99`. All closed.
+
+**The lesson that actually generalizes:** every round of fixes introduced or
+exposed defects of the same shape as the ones it fixed, and each round was found
+only by attacking the previous round's work. Three rounds in, the rate had not
+obviously converged. The honest reading is not "it is now secure" — it is that
+adversarial review finds things proportional to how hard you attack, and we
+stopped because we ran out of session, not because we ran out of findings.
+
+**The mechanical lesson:** trusted state must be immutable, and a check is only
+as good as the moment it is taken. Identity checked at T1 means nothing if the
+object is mutable at T2. Validated at T1 means nothing if the value is re-read
+through a getter at T2. Both bugs are the same bug.
+
+Nothing here was found by reading. Every single finding required a running
+exploit.
 
 ## What it's worth
 

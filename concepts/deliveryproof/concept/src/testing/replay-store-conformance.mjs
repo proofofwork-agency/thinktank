@@ -6,6 +6,10 @@ export const REPLAY_STORE_CONFORMANCE_CASES = Object.freeze([
   'get-unknown-returns-null',
   'survive-restart',
   'reject-concurrent-double-reserve',
+  'reject-reserve-into-terminal-state',
+  'reject-terminal-regression',
+  'reject-terminal-flip',
+  'idempotent-same-terminal-mark',
 ]);
 
 /**
@@ -33,6 +37,10 @@ export async function runReplayStoreConformance({ createStore, supportsRestart =
     ['get-unknown-returns-null', getUnknownReturnsNull],
     ['survive-restart', surviveRestart],
     ['reject-concurrent-double-reserve', rejectConcurrentDoubleReserve],
+    ['reject-reserve-into-terminal-state', rejectReserveIntoTerminalState],
+    ['reject-terminal-regression', rejectTerminalRegression],
+    ['reject-terminal-flip', rejectTerminalFlip],
+    ['idempotent-same-terminal-mark', idempotentSameTerminalMark],
   ]);
 
   const cases = [];
@@ -137,6 +145,54 @@ async function rejectConcurrentDoubleReserve(ctx) {
   if (fulfilled !== 1 || rejected !== 1) {
     throw new Error(`concurrent double reserve must produce exactly one success and one rejection, got ${fulfilled} success/${rejected} rejection`);
   }
+}
+
+// The replay-key state machine. `mark()` authenticates only the key, so any
+// caller who knows it can drive a transition. Monotonic transitions remove the
+// ones an attacker wants: a store must not let a reservation be born settled, a
+// terminal be regressed (which would free a spent nonce), or one terminal flip
+// to the other. Added after adversarial review demonstrated all three.
+
+async function rejectReserveIntoTerminalState(ctx) {
+  const store = await makeStore(ctx, 'reject-reserve-into-terminal-state');
+  const first = record('reject-reserve-into-terminal-state');
+  await assertRejects(
+    () => reserve(store, { ...first, state: 'captured' }),
+    'reserve must refuse to create a reservation already in a terminal state',
+  );
+}
+
+async function rejectTerminalRegression(ctx) {
+  const store = await makeStore(ctx, 'reject-terminal-regression');
+  const first = record('reject-terminal-regression');
+  await reserve(store, first);
+  await store.mark(first.key, 'captured', 2);
+  await assertRejects(
+    () => store.mark(first.key, 'reserved', 3),
+    'mark must refuse to regress a terminal state back to reserved',
+  );
+  assertEntry(await store.get(first.key), first.fingerprint, 'captured', 'state must survive a rejected regression');
+}
+
+async function rejectTerminalFlip(ctx) {
+  const store = await makeStore(ctx, 'reject-terminal-flip');
+  const first = record('reject-terminal-flip');
+  await reserve(store, first);
+  await store.mark(first.key, 'captured', 2);
+  await assertRejects(
+    () => store.mark(first.key, 'refunded', 3),
+    'mark must refuse to flip one terminal state to the other',
+  );
+}
+
+async function idempotentSameTerminalMark(ctx) {
+  const store = await makeStore(ctx, 'idempotent-same-terminal-mark');
+  const first = record('idempotent-same-terminal-mark');
+  await reserve(store, first);
+  await store.mark(first.key, 'refunded', 2);
+  // Retry safety: a settlement re-marking its OWN terminal must not throw.
+  await store.mark(first.key, 'refunded', 3);
+  assertEntry(await store.get(first.key), first.fingerprint, 'refunded', 'same-terminal re-mark must be idempotent');
 }
 
 async function makeStore(ctx, caseName, extra = {}) {

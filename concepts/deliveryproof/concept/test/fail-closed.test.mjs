@@ -28,6 +28,8 @@ import { createMockEscrowRail } from '../src/rails/escrow-mock.mjs';
 import { createDurableEscrowRail } from '../src/rails/durable-rail.mjs';
 import { schemaVerifier } from '../src/verifiers/schema.mjs';
 import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
+import { verifiers, datasetVerifier } from '../src/verifiers/index.mjs';
+import { VERIFIER_PROFILES } from '../src/router/profiles.mjs';
 
 const settlementKey = generateKeypair();
 
@@ -416,4 +418,124 @@ test('epoch-0 createdAt does not disable SLA enforcement', async () => {
   clearTimeout(cleared);
   assert.equal(result.receipt.decision, 'refund');
   assert.equal(result.hold.state, 'refunded');
+});
+
+// ---------------------------------------------------------------------------
+// v0.10 round 3 — attacking the FIXES from round 2 (Codex)
+// ---------------------------------------------------------------------------
+
+test('the built-in verifier registry cannot be swapped out', () => {
+  // The engine grants protocol assurance by OBJECT IDENTITY against this
+  // registry. That check is worthless if the registry entry can be replaced.
+  assert.throws(() => { verifiers.dataset = { name: 'dataset', verify: () => ({ ok: true }) }; });
+  assert.equal(verifiers.dataset, datasetVerifier);
+  assert.throws(() => { verifiers['brand-new'] = {}; });
+  assert.ok(!('brand-new' in verifiers));
+});
+
+test('a built-in verifier cannot have its verify() method swapped', () => {
+  // Identity survives this attack, so freezing the registry alone is not enough:
+  // verification happens LATER in settle(), after the identity check has passed.
+  const original = datasetVerifier.verify;
+  assert.throws(() => { datasetVerifier.verify = () => ({ ok: true, reason: 'lie' }); });
+  assert.equal(datasetVerifier.verify, original);
+  assert.ok(Object.isFrozen(datasetVerifier));
+});
+
+test('a non-canonicalizable routeDecision fails BEFORE a hold is authorized', async () => {
+  // structuredClone preserves values canonicalize() rejects. Previously such a
+  // routeDecision passed validation, the rail authorized a hold, the seller
+  // delivered, and signing then threw OUTSIDE the delivery try/catch — leaving
+  // the buyer's funds held with no receipt, no capture and no refund.
+  const rail = createMockEscrowRail({ now: () => 1, logger: false, settlementPublicKey: settlementKey.publicKey });
+  for (const poison of [Infinity, 10n, new Date(0)]) {
+    await assert.rejects(
+      () => settle({
+        contract: { ...schemaContract(), createdAt: 1 },
+        produceEvidence: () => ({ output: { city: 'AMS' } }),
+        verifier: schemaVerifier,
+        rail,
+        settlementKey,
+        routeDecision: { selected: 'schema', poison },
+        now: () => 1,
+      }),
+      /routeDecision must be (canonicalizable|plain cloneable)/,
+    );
+  }
+  // The decisive assertion: no hold was ever created, so nothing can be stranded.
+  assert.equal(rail.health().holds, 0, 'settle must fail before authorizing a hold');
+});
+
+test('a producer cannot swap the verifier method after the identity check', async () => {
+  // The identity check runs before delivery; the verify() lookup used to run
+  // after it. A seller passed the check with the REAL verifier, then rewrote its
+  // method from inside its own producer. settle() now binds the callable before
+  // any seller code runs, so a custom verifier is protected too — not just the
+  // frozen built-ins.
+  const rail = createMockEscrowRail({ now: () => 1, logger: false, settlementPublicKey: settlementKey.publicKey });
+  const result = await settle({
+    contract: {
+      ...schemaContract(),
+      createdAt: 1,
+      predicate: { kind: 'builtin-replay', params: { op: 'sum', input: [100] } },
+    },
+    produceEvidence: () => {
+      try { builtinReplayVerifier.verify = () => ({ ok: true, tier: 'A', verifier: 'builtin-replay', reason: 'evil', checkedAt: 1 }); } catch { /* frozen */ }
+      return { output: 999 };
+    },
+    verifier: builtinReplayVerifier,
+    rail,
+    settlementKey,
+    routeDecision: { selected: 'builtin-replay', selectedAssurance: 3 },
+    now: () => 1,
+  });
+  assert.equal(result.receipt.decision, 'refund', '999 is not sum([100]); the real verifier must have run');
+});
+
+test('the trusted profile table and its rows are immutable', () => {
+  // A frozen table with mutable rows is not a trusted table: flipping
+  // schema.assurance to 3 would make the engine re-derive AND SIGN assurance 3
+  // for the shallow foil.
+  assert.throws(() => { VERIFIER_PROFILES.schema.assurance = 3; });
+  assert.equal(VERIFIER_PROFILES.schema.assurance, 1);
+  assert.throws(() => { VERIFIER_PROFILES.invented = { assurance: 3, cost: 0, kinds: ['*'] }; });
+  assert.ok(Object.isFrozen(VERIFIER_PROFILES) && Object.isFrozen(VERIFIER_PROFILES.schema));
+});
+
+test('a custom verifier cannot sign a human-readable assurance name either', async () => {
+  const rail = createMockEscrowRail({ now: () => 1, logger: false, settlementPublicKey: settlementKey.publicKey });
+  await assert.rejects(
+    () => settle({
+      contract: { ...schemaContract(), createdAt: 1 },
+      produceEvidence: () => ({ output: { city: 'AMS' } }),
+      verifier: { name: 'my-custom', tier: 'A', verify: () => ({ ok: true, tier: 'A', verifier: 'my-custom', reason: 'x', checkedAt: 1 }) },
+      rail,
+      settlementKey,
+      // No numeric claim — only the prose one. Previously signed unchallenged.
+      routeDecision: { selected: 'my-custom', selectedAssuranceName: 'deep-correctness' },
+      now: () => 1,
+    }),
+    /cannot verify routeDecision/,
+  );
+});
+
+test('the deprecated testsuite alias still routes (compat regression check)', async () => {
+  // `testsuite` and `builtin-replay` are the same frozen object, so a legacy
+  // route naming the alias is legitimate even though the object's own name is
+  // the new one. Strict name equality briefly broke this.
+  const rail = createMockEscrowRail({ now: () => 1, logger: false, settlementPublicKey: settlementKey.publicKey });
+  const result = await settle({
+    contract: {
+      ...schemaContract(),
+      createdAt: 1,
+      predicate: { kind: 'builtin-replay', params: { op: 'sum', input: [100] } },
+    },
+    produceEvidence: () => ({ output: 100 }),
+    verifier: builtinReplayVerifier,
+    rail,
+    settlementKey,
+    routeDecision: { selected: 'testsuite', selectedAssurance: 3 },
+    now: () => 1,
+  });
+  assert.equal(result.receipt.decision, 'release');
 });

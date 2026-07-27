@@ -20,7 +20,7 @@
 
 const BUILTIN_REPLAY_PROFILE = { assurance: 3, cost: 4, kinds: ['compute'] };
 
-export const VERIFIER_PROFILES = {
+export const VERIFIER_PROFILES = Object.freeze({
   schema: { assurance: 1, cost: 1, kinds: ['*'] },
   hash: { assurance: 2, cost: 2, kinds: ['*'] },
   transcript: { assurance: 2, cost: 3, kinds: ['*'] },
@@ -35,10 +35,19 @@ export const VERIFIER_PROFILES = {
   // an explicit predicate.kind === 'compose' contract.
   compose: { assurance: 1, cost: 6, kinds: ['composite'] },
   'signed-oracle': { assurance: 2, cost: 3, kinds: ['provenance', 'api-response', '*'] },
-};
+});
+
+// Freeze each profile and its kinds list too. A frozen table whose ROWS are
+// mutable is not a trusted table: `VERIFIER_PROFILES.schema.assurance = 3` would
+// otherwise make the engine re-derive — and then sign — an assurance of 3 for the
+// shallow foil. Same class of defect as a mutable verifier registry.
+for (const profile of Object.values(VERIFIER_PROFILES)) {
+  Object.freeze(profile);
+  Object.freeze(profile.kinds);
+}
 
 /** Human-readable names for assurance levels (for routeDecision/readability). */
-export const ASSURANCE_NAMES = { 1: 'shape', 2: 'integrity', 3: 'deep-correctness' };
+export const ASSURANCE_NAMES = Object.freeze({ 1: 'shape', 2: 'integrity', 3: 'deep-correctness' });
 
 /**
  * Derive compose assurance from child verifier profiles so the router reports
