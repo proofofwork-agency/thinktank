@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 ProofOfWork Agency (https://github.com/proofofwork-agency)
 """qualify — the COG-1 qualifying exam. Administers the capability keuring.
 
 Replaces fixerd's *assumed* allowlist with an *administered* one: each candidate
 model sits the frozen COG1-CORE exam; only models scoring >= threshold qualify
 to set the fix. Every exam run is receipted (request/response hashes, usage,
-cost). The exam fingerprint (sha256 of the canonical item set) is published with
-the results, so everyone knows exactly which exam version gated the fix.
+cost). The exam fingerprint (sha256 of the canonical items *and* the meta fields
+that define the gate — threshold, answer instruction, token budget, version) is
+published with the results, so everyone knows exactly which exam, at which pass
+mark, gated the fix.
 
 Modes:
   --self-test   free: validate exam integrity (ids, answers, stable fingerprint)
@@ -35,17 +39,30 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "cogfix"))
 import cogfix  # noqa: E402
+from contracts.canon import canon_sha256  # noqa: E402
 
 OPENROUTER = "https://openrouter.ai/api/v1"
 EXAM = json.loads((HERE / "exam_core.json").read_text())
 
 
+# Everything that changes what "passing" MEANS must be inside the fingerprint.
+# Hashing items alone was not enough: meta.threshold could move 0.8 -> 0.05 while
+# every published fix still cited a byte-identical "frozen" exam hash.
+FINGERPRINT_META = ("name", "version", "threshold", "answer_instruction", "max_answer_tokens")
+
+
 def fingerprint():
-    """sha256 over the canonical item set — the exam's frozen identity."""
-    canon = json.dumps(EXAM["items"], sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canon.encode()).hexdigest()
+    """sha256 over the canonical exam — the items AND the meta that defines the gate."""
+    return canon_sha256(
+        {
+            "items": EXAM["items"],
+            "meta": {k: EXAM["meta"][k] for k in FINGERPRINT_META},
+        },
+        exclude_keys=(),
+    )
 
 
 def normalize(s: str) -> str:
@@ -86,19 +103,63 @@ def ask_model(model_id: str, prompt: str, api_key: str):
     return text, usage, hashlib.sha256(body).hexdigest(), hashlib.sha256(raw).hexdigest()
 
 
-def examine(model_id: str, asker):
-    """Sit the full exam; asker(model_id, prompt) -> (text, usage, req_sha, resp_sha)."""
+class Budget:
+    """A spend ceiling enforced BEFORE each paid call.
+
+    The old cap was checked only between whole models, so any positive cap still
+    funded all 40 calls of the next model. This projects the cost of the next
+    single call and refuses it if that would breach the cap.
+    """
+
+    RATE_USD_PER_M = 1.0  # conservative blended ceiling; posted prices are provider-specific
+
+    def __init__(self, cap_usd: float):
+        self.cap = cap_usd
+        self.spent = 0.0
+
+    def _usd(self, tokens: int) -> float:
+        return tokens / 1e6 * self.RATE_USD_PER_M
+
+    def can_afford(self, projected_tokens: int) -> bool:
+        return self.spent + self._usd(projected_tokens) <= self.cap
+
+    def charge(self, tokens: int) -> None:
+        # A missing usage block must never charge 0, or the cap never advances.
+        self.spent += self._usd(tokens if tokens else self.projected_item_tokens())
+
+    @staticmethod
+    def projected_item_tokens() -> int:
+        longest = max(len(it["prompt"]) for it in EXAM["items"])
+        return longest // 3 + EXAM["meta"]["max_answer_tokens"]  # ~3 chars/token, worst case
+
+
+def examine(model_id: str, asker, budget: "Budget | None" = None):
+    """Sit the full exam; asker(model_id, prompt) -> (text, usage, req_sha, resp_sha).
+
+    An exam cut short by the spend cap CANNOT pass: a partial score is not a
+    qualification, and letting one through would put an unexamined model in the fix.
+    """
     correct, receipts, tokens = 0, [], 0
+    aborted = False
     for item in EXAM["items"]:
+        if budget is not None and not budget.can_afford(Budget.projected_item_tokens()):
+            aborted = True
+            break
         text, usage, req_sha, resp_sha = asker(model_id, item["prompt"])
+        used = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+        if budget is not None:
+            budget.charge(used)
         ok = grade(text, item["answer"])
         correct += ok
-        tokens += usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+        tokens += used
         receipts.append({"item": item["id"], "ok": ok, "req_sha256": req_sha[:16],
                          "resp_sha256": resp_sha[:16]})
-    score = correct / len(EXAM["items"])
+    total = len(EXAM["items"])
+    score = correct / total
     return {"model": model_id, "score": round(score, 4), "correct": correct,
-            "total": len(EXAM["items"]), "passed": score >= EXAM["meta"]["threshold"],
+            "total": total, "administered": len(receipts), "aborted": aborted,
+            "passed": (not aborted) and len(receipts) == total
+                      and score >= EXAM["meta"]["threshold"],
             "tokens_used": tokens, "item_receipts": receipts}
 
 
@@ -164,27 +225,39 @@ def main(argv):
     if not api_key:
         sys.exit("real exam runs need OPENROUTER_API_KEY (this spends real money); "
                  "use --dry-run or --self-test for the free paths")
-    arg = lambda flag, default: (argv[argv.index(flag) + 1] if flag in argv else default)  # noqa: E731
+    def arg(flag, default):
+        i = argv.index(flag) + 1 if flag in argv else -1
+        if i > 0 and i >= len(argv):
+            sys.exit(f"{flag} needs a value")
+        return argv[i] if i > 0 else default
+
     max_spend = float(arg("--max-spend-usd", "0.25"))
+    if max_spend <= 0:
+        sys.exit("--max-spend-usd must be positive")
     models = (arg("--models", "") or ",".join(cogfix.DATA["live_fix_allowlist"])).split(",")
 
-    print(f"qualify — REAL exam ({exam_id}) for {len(models)} models, cap ${max_spend}")
-    results, spent = [], 0.0
+    budget = Budget(max_spend)
+    per_model = Budget.projected_item_tokens() * len(EXAM["items"])
+    print(f"qualify — REAL exam ({exam_id}) for {len(models)} models, cap ${max_spend} "
+          f"(worst case ~${budget._usd(per_model):.3f}/model)")
+    results = []
     for mid in models:
-        # rough pre-check: ~40 items x ~150 tokens; abort before starting a model we can't afford
-        if spent >= max_spend:
-            print(f"  spend cap reached; skipping remaining models")
+        # Refuse to start a model we cannot afford to finish — a half-sat exam is
+        # worthless (it can never pass) and paying for one is pure waste.
+        if not budget.can_afford(per_model):
+            print(f"  spend cap ${max_spend} reached (${budget.spent:.4f} used); "
+                  f"skipping {mid.strip()} and remaining models")
             break
         asker = lambda m, p: ask_model(m, p, api_key)  # noqa: E731
-        r = examine(mid.strip(), asker)
-        # cost estimate from posted prices is provider-specific; report tokens, not $ certainty
-        spent += r["tokens_used"] / 1e6 * 1.0  # conservative $1/M blended ceiling for capping
+        r = examine(mid.strip(), asker, budget=budget)
         results.append(r)
+        note = "  ABORTED mid-exam (spend cap)" if r["aborted"] else ""
         print(f"  {r['model']:<36} {r['correct']}/{r['total']} ({r['score']:.0%})  "
-              f"{'PASS' if r['passed'] else 'FAIL'}")
+              f"{'PASS' if r['passed'] else 'FAIL'}{note}")
 
     payload = {"date": today, "mode": "live", "exam": exam_id,
                "exam_sha256": fingerprint(), "threshold": EXAM["meta"]["threshold"],
+               "spend_cap_usd": max_spend, "spend_usd_est": round(budget.spent, 6),
                "results": [{k: v for k, v in r.items() if k != "item_receipts"} for r in results],
                "receipts": {r["model"]: r["item_receipts"] for r in results},
                "qualified": [r["model"] for r in results if r["passed"]]}

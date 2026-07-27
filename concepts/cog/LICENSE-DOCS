@@ -1,0 +1,83 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright 2026 ProofOfWork Agency (https://github.com/proofofwork-agency)
+
+WHAT THIS COVERS
+----------------
+This license applies to the prose and normative specification in this
+directory:
+
+    WHITEPAPER.md
+    README.md
+    spec/**            (COG-1, COG-SETTLE-1, COG-DENOM-EXT, and the schemas)
+    contracts/riders/**  (the contract rider templates)
+    fixer/PROVENANCE.md
+    anchor/snapshot/SOURCE.md
+
+All executable code — cogfix/, fixer/, harness/, mcp/, anchor/, contracts/
+(excluding riders/), tests/, and demo/ — is licensed under the Apache License,
+Version 2.0 instead. See LICENSE and NOTICE.
+
+Where a file could arguably fall under both, the Apache-2.0 grant applies to it
+as software and this grant applies to it as documentation. Neither is narrower
+in a way that could leave a file unlicensed.
+
+THE GRANT
+---------
+You are free to:
+
+  SHARE   — copy and redistribute the material in any medium or format
+  ADAPT   — remix, transform, and build upon the material for any purpose,
+            including commercially
+
+The licensor cannot revoke these freedoms as long as you follow the license
+terms.
+
+Under the following term:
+
+  ATTRIBUTION — You must give appropriate credit to ProofOfWork Agency,
+  provide a link to this license, and indicate if changes were made. You may
+  do so in any reasonable manner, but not in any way that suggests ProofOfWork
+  Agency endorses you or your use.
+
+No additional restrictions: you may not apply legal terms or technological
+measures that legally restrict others from doing anything the license permits.
+
+The full legal code is at:
+
+    https://creativecommons.org/licenses/by/4.0/legalcode
+
+A human-readable summary (not a substitute for the license) is at:
+
+    https://creativecommons.org/licenses/by/4.0/
+
+WHAT ATTRIBUTION LOOKS LIKE IN PRACTICE
+---------------------------------------
+If you write a derivative specification, quote the whitepaper's argument, or
+adapt a contract rider, a line of this shape satisfies the requirement:
+
+    Based on "The Cog: A Capability-Indexed Unit of Account for the
+    Intelligence Economy" by ProofOfWork Agency, licensed CC BY 4.0.
+    https://github.com/proofofwork-agency/thinktank — modified.
+
+Drop "— modified" if you did not change it.
+
+You do not need permission. You do not owe anything. Keep the credit and say
+what you changed.
+
+DERIVATIVE SPECIFICATIONS
+-------------------------
+You may fork COG-1 into your own basket definition. If you do, give it your own
+name. See the TRADEMARK section of NOTICE: implementing COG-1 faithfully and
+calling it COG-1 is encouraged; publishing something else under that name
+misdescribes where it came from.
+
+THIRD-PARTY MATERIAL
+--------------------
+Figures and price series derived from Epoch AI's published data carry Epoch
+AI's own CC BY 4.0 attribution requirement in addition to this one. See
+anchor/snapshot/SOURCE.md. Attribution to ProofOfWork Agency does not
+substitute for attribution to Epoch AI, and vice versa.
+
+Price points in cogfix/data.json cite their own sources per-entry. Those
+citations are factual references, not licensed material.

@@ -1,0 +1,68 @@
+{
+  "invoice_version": "0.1",
+  "invoice_id": "urn:cog:invoice:9e2dd0e72a697ec2d1d688b256b995d9a33415a212c42afc2c3bb1b7d793d6cf",
+  "obligation_id": "urn:cog:cdo:14e8c009dee1f2cf1fe0f123a4f025bdfdb5fa94368c19ff0f985091e0b7e432",
+  "period": {
+    "start": "2026-06-01",
+    "end": "2026-06-30"
+  },
+  "unit": {
+    "basket": "COG-1",
+    "spec_sha256": "c496199c015463c2979dad298b6054c1a07a3c64acea6efaec68bad637649fb2"
+  },
+  "settlement": {
+    "usd_per_cog": "0.144000",
+    "status": "carry-forward",
+    "provisional": false,
+    "payable": true,
+    "true_up_required": false,
+    "ack_required": true,
+    "window": {
+      "start": "2026-06-17",
+      "end": "2026-06-30",
+      "days": 14,
+      "anchor": "period.end"
+    },
+    "fixes_used": [
+      {
+        "date": "2026-06-10",
+        "usd_per_cog": "0.144000",
+        "tier": "venue-quote",
+        "publisher": "proofofwork-agency/cog fixerd v0.1",
+        "sig_ok": true,
+        "archive_sha256": "48e45c5a5d97f8c32d3723a0fcd8053889f9cdfe0fa217fee1b9eb9271e8cbf6"
+      }
+    ],
+    "n_used": 1,
+    "n_expected": 7,
+    "min_tier_required": "venue-quote",
+    "outage_days": 20,
+    "uncollared_usd_per_cog": "0.144000",
+    "collar_operations": []
+  },
+  "lines": [
+    {
+      "kind": "fixed",
+      "amount_usd": "3000.00"
+    },
+    {
+      "kind": "indexed",
+      "quantity_cog": "1000",
+      "usd_per_cog": "0.144000",
+      "amount_usd": "144.00"
+    }
+  ],
+  "subtotal_usd": "3144.00",
+  "amount_due_usd": "3144.00",
+  "archive_evidence": [
+    {
+      "date": "2026-06-10",
+      "archive_sha256": "48e45c5a5d97f8c32d3723a0fcd8053889f9cdfe0fa217fee1b9eb9271e8cbf6",
+      "sig_ok": true,
+      "publisher": "proofofwork-agency/cog fixerd v0.1",
+      "tier": "venue-quote"
+    }
+  ],
+  "recompute": "python3 contracts/settle.py --verify contracts/examples/reference-invoice.json --archive fixer/archive --allowed-signers contracts/examples/demo_allowed_signers",
+  "signatures": []
+}

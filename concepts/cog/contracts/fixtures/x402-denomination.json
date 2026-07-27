@@ -1,0 +1,25 @@
+{
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:8453",
+      "asset": "USDC",
+      "amount": "1234500",
+      "extra": {
+        "denomination": {
+          "unit": "cog",
+          "basket": "COG-1",
+          "spec_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "quantity": "1000",
+          "resolved": {
+            "usd_per_cog": "0.123456",
+            "rule": "normal",
+            "publisher": "example/publisher",
+            "fix_window_end": "2026-06-30",
+            "invoice_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        }
+      }
+    }
+  ]
+}

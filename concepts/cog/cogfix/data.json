@@ -12,10 +12,21 @@
     { "date": "2023-11", "model": "GPT-4 Turbo", "input_usd_per_M": 10.0, "output_usd_per_M": 30.0, "blended_usd_per_M": 14.0, "status": "documented", "source": "OpenAI DevDay pricing, Nov 2023" },
     { "date": "2024-05", "model": "GPT-4o", "input_usd_per_M": 5.0, "output_usd_per_M": 15.0, "blended_usd_per_M": 7.0, "status": "documented", "source": "OpenAI GPT-4o launch pricing, May 2024" },
     { "date": "2024-08", "model": "GPT-4o (2024-08-06)", "input_usd_per_M": 2.5, "output_usd_per_M": 10.0, "blended_usd_per_M": 4.0, "status": "documented", "source": "OpenAI pricing update, Aug 2024" },
-    { "date": "2024-12", "model": "DeepSeek-V3", "input_usd_per_M": 0.27, "output_usd_per_M": 1.10, "blended_usd_per_M": 0.436, "status": "documented", "source": "DeepSeek-V3 list pricing, Dec 2024" },
-    { "date": "2025-09", "model": "Grok 4 Fast", "input_usd_per_M": 0.20, "output_usd_per_M": 0.50, "blended_usd_per_M": 0.26, "status": "documented", "source": "Artificial Analysis: cheapest model at Intelligence Index > 60, Sep 2025" },
-    { "date": "2026-06", "model": "DeepSeek V3.2", "input_usd_per_M": 0.2288, "output_usd_per_M": 0.3432, "blended_usd_per_M": 0.2517, "status": "live-quote", "source": "OpenRouter API, fetched 2026-06-10" },
-    { "date": "2026-06", "model": "DeepSeek V4 Flash", "input_usd_per_M": 0.0983, "output_usd_per_M": 0.1966, "blended_usd_per_M": 0.1180, "status": "provisional", "source": "OpenRouter API, fetched 2026-06-10; pending qualifying basket run" }
+    { "date": "2024-12", "model": "DeepSeek-V3", "input_usd_per_M": 0.27, "output_usd_per_M": 1.10, "blended_usd_per_M": 0.436, "status": "documented", "source": "DeepSeek-V3 list pricing, Dec 2024",
+      "price_provenance": { "venue": "provider-direct", "rate_basis": "provider list price", "promotional": false,
+        "dating_caveat": "$0.27/$1.10 is the STANDARD rate, which took effect around 2025-02-08. The rate in force at the 2024-12-26 launch was a promotional ~$0.14/$0.28. This point is labeled Dec-2024 but carries the post-promotional tariff, so it understates the deflation over the Dec-2024 to Feb-2025 window." } },
+    { "date": "2025-09", "model": "Grok 4 Fast", "input_usd_per_M": 0.20, "output_usd_per_M": 0.50, "blended_usd_per_M": 0.26, "status": "documented", "source": "Artificial Analysis: cheapest model at Intelligence Index > 60, Sep 2025",
+      "price_provenance": { "venue": "provider-direct", "rate_basis": "provider list price", "promotional": false,
+        "endpoint_status": "This endpoint was deprecated 2026-05-15 and retires 2026-08-15; see retired_from_allowlist. The historical price point remains valid as of its date.",
+        "tier_caveat": "The >60 Intelligence Index claim was against the Sep-2025 index version and applied to the reasoning variant. Under the July-2026 index (v4.1) the non-reasoning variant scores far lower. Benchmark versioning drift, not a pricing error — and a live example of why WHITEPAPER.md §5 versions the basket." } },
+    { "date": "2026-06", "model": "DeepSeek V3.2", "input_usd_per_M": 0.2288, "output_usd_per_M": 0.3432, "blended_usd_per_M": 0.2517, "status": "live-quote", "source": "OpenRouter API, fetched 2026-06-10",
+      "price_provenance": { "venue": "openrouter", "rate_basis": "venue posted rate, denominated in OpenRouter credits", "venue_credit_fee_pct": 5.5, "promotional": false,
+        "note": "See fixer/PROVENANCE.md — the 5.5% is a credit-purchase fee, not a markup on this rate." } },
+    { "date": "2026-06", "model": "DeepSeek V4 Flash", "input_usd_per_M": 0.0983, "output_usd_per_M": 0.1966, "blended_usd_per_M": 0.1180, "status": "provisional", "source": "OpenRouter API, fetched 2026-06-10; pending qualifying basket run",
+      "price_provenance": { "venue": "openrouter", "rate_basis": "venue posted rate, denominated in OpenRouter credits", "venue_credit_fee_pct": 5.5, "promotional": true,
+        "list_usd_per_M": { "in": 0.14, "out": 0.28, "blended": 0.168 },
+        "list_price_source": "DeepSeek published API pricing (cache-miss)",
+        "note": "This is a venue promotional rate roughly 30% below DeepSeek's own list price, not the provider's price. It is excluded from the official fix (status: provisional) and must survive a full K-buy window at depth before it can set one. A promotional reseller rate setting the index is exactly the loss-leader failure WHITEPAPER.md §6 describes." } }
   ],
   "mmlu42_tier_series": [
     { "date": "2021-11", "model": "GPT-3 davinci", "blended_usd_per_M": 60.0, "status": "documented", "source": "a16z LLMflation: GPT-3 at MMLU ~42, $60/M tokens, Nov 2021" },
@@ -26,10 +37,26 @@
     "deepseek/deepseek-v4-flash",
     "deepseek/deepseek-v4-pro",
     "openai/gpt-4o-mini",
-    "google/gemini-2.0-flash-001",
-    "x-ai/grok-4-fast",
     "meta-llama/llama-3.3-70b-instruct",
     "qwen/qwen-2.5-72b-instruct"
   ],
-  "live_fix_allowlist_note": "Models assumed to clear the COG-1 (GPT-4-class) threshold for the purpose of the provisional live fix. A real fixer replaces this assumption with receipted basket runs."
+  "live_fix_allowlist_note": "Models assumed to clear the COG-1 (GPT-4-class) threshold for the purpose of the provisional live fix. A real fixer replaces this assumption with receipted basket runs.",
+  "retired_from_allowlist": [
+    {
+      "id": "google/gemini-2.0-flash-001",
+      "retired": "2026-06-01",
+      "reason": "endpoint shut down by the provider",
+      "last_resolved_in_feed": "never — absent from both the 2026-06-09 and 2026-06-10 archives",
+      "source": "Google Gemini API deprecations schedule"
+    },
+    {
+      "id": "x-ai/grok-4-fast",
+      "retired": "2026-05-15",
+      "reason": "deprecated 2026-05-15, endpoint retires 2026-08-15",
+      "last_resolved_in_feed": "never — absent from both the 2026-06-09 and 2026-06-10 archives",
+      "source": "xAI migration notice, May 2026",
+      "integrity_note": "Calls to the retired alias do not fail — they silently redirect and rebill at grok-4.3 rates ($1.25/$2.50), 5.8x the $0.20/$0.50 this allowlist assumed. This is a real, observed instance of the model you examined not being the model that bills you, and is the motivating case for endpoint pinning and fingerprinting. See WHITEPAPER.md §6."
+    }
+  ],
+  "retired_from_allowlist_note": "Retired entries are kept rather than deleted so the roster's history is auditable. A model leaving the allowlist is a fact about the market, not a typo to erase."
 }

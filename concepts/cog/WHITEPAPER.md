@@ -2,13 +2,20 @@
 
 ## A Capability-Indexed Unit of Account for the Intelligence Economy
 
-*Draft 0.2 — June 2026 — ProofOfWorks*
+*Draft 0.3 — July 2026 — ProofOfWorks*
+
+*Changes from 0.2: the novelty claim is narrowed (§7) after finding that capability-normalized
+price observation and receipt-verified indexing were already built by others; §2 is demoted from
+novelty to premise; §6 gains endpoint substitution as a documented, observed failure mode; the
+contracting layer moves ahead of index work in the roadmap. Licensed CC BY 4.0 — see
+LICENSE-DOCS.*
 
 ---
 
 ## Abstract
 
-The price of cognition falls roughly an order of magnitude per year. Every AI contract
+The price of cognition falls roughly 5× per year at the frontier tier and up to an order of
+magnitude per year at the commodity tier (§1, Appendix C). Every AI contract
 denominated in dollars is therefore mispriced within months of signature: the buyer is
 unknowingly **short AI progress**, the seller is unknowingly long it, and neither party chose
 that bet. The result is a market-wide failure: buyers refuse long-term AI contracts, sellers
@@ -22,8 +29,18 @@ consensus mechanism and violates no trilemma. It is a measuring stick — the me
 intelligence economy — modeled on the one indexed unit of account with a 60-year production
 track record: Chile's Unidad de Fomento, in which an entire national mortgage market is
 denominated. The UF protects contracts from the *inflation of money*. The cog protects
-contracts from the *deflation of intelligence*. It is, as far as we can determine, the first
-deflation-native unit of account ever proposed.
+contracts from the *deflation of intelligence*.
+
+**What is new here is the denomination layer, not the measurement.** Capability-normalized
+price observation is already built and open (Epoch AI); receipt-verified token indexing is
+already built and better funded (Ornn); a frozen-capability token unit has already been
+proposed for derivatives (arXiv 2603.21690). §7 maps all of it and narrows the claim
+accordingly. What nobody has specified is how an *obligation* settles against such a number:
+the settlement fix, what happens when publication fails, how a contract survives the basket
+being replaced, and what unit an autonomous agent's standing mandate is denominated in. Agent
+payment rails now carry millions of recurring obligations and every one of them freezes a fiat
+amount at signing — which is precisely the bet this paper argues nobody chose. That gap is the
+contribution.
 
 ---
 
@@ -47,8 +64,12 @@ price points:
 \* *Blended = 0.8 × input + 0.2 × output price per million tokens (4:1 ratio). See Appendix C
 for the full table with caveats.*
 
-That is a **1,000× decline in three years** at the lower tier (a16z's measurement) and roughly
-**300× in 39 months** at the frontier tier (ours). Call it 5–10× per year depending on tier.
+That is a **1,000× decline in three years** at the lower tier (a16z's measurement — exactly
+10×/yr) and **143× in 39 months** at the frontier tier (ours — 4.6×/yr, computed by
+`cogfix/cogfix.py` over the non-provisional series). Counting the provisional June-2026 point
+the frontier figure is 305× (5.8×/yr), but that point is excluded from the official fix until
+it clears a qualifying basket run, so the conservative number is the one to quote.
+Call it **4.6–10× per year depending on tier**.
 This is faster than transistor prices fell during Moore's Law, faster than bandwidth fell
 during the dot-com buildout.
 
@@ -107,11 +128,21 @@ into each token is itself rising. Tokens are an input. Nobody wants tokens; they
 done.
 
 The cog prices cognition in **lumens**: the cost of achieving a *fixed capability outcome*,
-regardless of which model, provider, or architecture delivers it. The a16z LLMflation
-analysis and Artificial Analysis's "cheapest model above intelligence tier X" tracking both
-already measure in lumens — but as observations, charts, leaderboards. Nobody has turned the
-lumen of intelligence into a *unit you can write a contract in*. That is the entire gap, and
-it is the entire idea.
+regardless of which model, provider, or architecture delivers it.
+
+**This argument is now settled, and it was won by other people.** a16z's LLMflation observed
+it; Artificial Analysis tracks the tiers; and Epoch AI has *instrumented* it — publishing, as
+open CC-BY data, the price of the cheapest model clearing a fixed benchmark score, over time,
+across six benchmarks. The lumen layer exists. An earlier draft of this paper claimed it did
+not, and that claim is withdrawn (§7).
+
+So this section is no longer the novelty. It is the **premise**. We adopt Epoch's lumens rather
+than mint our own worse ones, and the anchor is cited in every fix we publish.
+
+What is still missing is one step further on: those are all *observations* — charts, leaderboards,
+research datasets. None of them is a number you can write into a contract and settle an invoice
+against, and none of them says what happens when publication stops or the basket changes. Turning
+the lumen of intelligence into a *unit you can owe in* is the gap, and it is the entire idea.
 
 ---
 
@@ -245,8 +276,12 @@ cost keeps every basis point of its efficiency edge).
   USD is underwriting an unknown deflation curve. In cogs, exposure is constant in real
   cognition terms.
 - **Compute take-or-pay and capacity deals.** The spread between cogs (outcome) and
-  GPU-hours (input) is the *algorithmic-efficiency premium* — currently unpriceable,
-  instantly priceable once both legs have units. A 2026 arXiv line of work on AI token
+  GPU-hours (input) is the *algorithmic-efficiency premium*. An earlier draft called this
+  "currently unpriceable"; that was wrong — arXiv 2511.23455 measured it in 2025 by dividing
+  price decline by hardware price decline, putting the pure algorithmic component near 3×/yr.
+  What does not exist is the premium as an *ongoing tracked quantity* with both legs
+  denominated: the input leg now has credible transaction-based indices (several, competing),
+  and the outcome leg is what the cog denominates. A 2026 arXiv line of work on AI token
   futures already gropes toward quality-standardized contracts the way crude oil
   standardized on API gravity and sulfur content; the cog is the missing settlement index
   under such derivatives.
@@ -289,6 +324,40 @@ move the fix); and **volume-weighting**, which caps how far any single cheap end
 pull the median. Multi-fixer procurement hits production endpoints, not demo endpoints.
 Residual risk: real, managed, versioned away when detected — same as CPI substitution bias,
 a managed nuisance rather than a refutation.
+
+**Endpoint substitution — the model you examined is not the model that bills you.** This is the
+failure mode that makes every other mitigation cosmetic, and it is not hypothetical. Two
+observed instances:
+
+- **Silent realiasing.** `x-ai/grok-4-fast` sat in this repository's own allowlist while being
+  deprecated. Calls to it do not fail — they redirect and rebill at grok-4.3 rates, $1.25/$2.50
+  against the $0.20/$0.50 the allowlist assumed. A 5.8× price error, served without an error
+  code, to an index that thought it was measuring a cheap model.
+- **Backend routing.** A single aggregator model ID routes to several backends at different
+  quantizations. The artifact that sits a capability exam and the artifact that later sells
+  tokens under the same ID are not provably the same thing, absent any malice at all.
+
+Worse, the defence most people reach for does not work: published work on auditing model
+substitution in LLM APIs (arXiv 2504.04715) finds that identity prompting, output classifiers,
+distributional tests, and benchmark-score comparison all fail in production — quantization
+differences fall inside one standard deviation of ordinary serving nondeterminism. And a
+provider can detect audit traffic by hashing or embedding the query, serving full quality to
+the auditor and a cheaper substitute to everyone else. A fixer that sends the same reference
+prompt every day is trivially fingerprinted, which is precisely what our own first
+implementation did.
+
+Mitigations, layered and honestly partial: **endpoint pinning** (`{model, provider,
+quantization}`, failing closed rather than rerouting, with the served backend recorded on the
+receipt and a mismatch voiding it); **commit-reveal paraphrase rotation** (a nonce committed
+today and revealed tomorrow selects among many semantically-equivalent renderings, so selection
+is unpredictable before the buy and reproducible after); and **single-token endpoint
+fingerprinting** (arXiv 2607.10252 — a few trivial probes yield a stable behavioural signature,
+enrolled at qualification and re-verified on each fix day, for cents). None of this is a
+cryptographic guarantee. Rotation defeats string matching, not semantic clustering.
+Fingerprinting is a statistical test a well-resourced adversary can fine-tune against. Hardware
+attestation via TEEs would close the hole properly and requires the provider's cooperation,
+which most will not give. The honest claim is that these raise the cost of substitution and
+make it detectable after the fact — not that they prevent it.
 
 **"Capability isn't a scalar."** Correct, and the cog doesn't claim it is. The cog prices
 *one frozen tier of general capability* — deliberately the commodity tier, where competition
@@ -343,15 +412,56 @@ to start.
 | **SDR, inflation-linked bonds, chained CPI** | Indexed-unit machinery, chain-linking practice | Same — wrong underlying |
 | **The lumen (1924 CIE)** | Output-unit replacing input-pricing of light | Not money infrastructure; the metaphor and the precedent |
 | **a16z "LLMflation" (2024)** | Constant-quality price observation, ~10×/yr decline | A chart, not a unit; no fix, no methodology, no contracts |
-| **Artificial Analysis tier tracking** | "Cheapest model above intelligence X" time series | A leaderboard; posted prices; not contractable |
-| **compute.finance SCU (2025)** | Token-price index, on-chain oracle | Prices watts (tokens), not lumens (capability); explicitly not quality-adjusted; not a unit of account |
-| **AI token futures / "Standard Inference Token" (arXiv 2026)** | Academic futures design — contract specs, margins, settlement — around a standardized token unit (SIT) | A derivatives blueprint on paper: the SIT is a contract-spec unit, not an operating index — no fix, no receipts, no published number, no service-contract layer. Nearest conceptual neighbor; validates the need |
+| **Epoch AI — capability-normalized price series** | The lowest-priced model matching or exceeding a fixed benchmark score, tracked over time across six benchmarks. Open data, open code, CC BY 4.0 | **Does what §2 of an earlier draft called unbuilt.** The lumen layer exists and is instrumented. Its rows are event-driven rather than daily, its threshold is *relative* (beat GPT-3, beat GPT-4o) rather than a frozen absolute bar, it is research-lagged, and it uses its own input/output mix. A series, not a settleable fix. **The cog now consumes it as an anchor rather than competing with it** |
+| **Artificial Analysis tier tracking** | "Cheapest model above intelligence X" time series; Intelligence Index | A leaderboard; posted prices; not contractable. Its composition has already changed at least once (IFBench dropped for saturation, v4.1), which disqualifies it as a *frozen* threshold however good it is as a signal |
+| **compute.finance SCU (2025)** | Token-price index, on-chain oracle | Prices watts (tokens), not lumens (capability); explicitly not quality-adjusted; equal-weighted across tiers; posted prices; not a unit of account |
+| **Ornn OTPI (launched June 2026)** | Receipt-verified token price index built from realized transactions, not posted rate cards. $33M seed, Bloomberg Terminal distribution; sibling GPU index already settles listed derivatives | **Receipt verification is neither novel nor ours to win.** It is now the standard positioning of every serious entrant (Ornn, Silicon Data, Compute Desk), and this one is far better funded and distributed than we are. Prices tokens rather than capability-normalized outcomes, and specifies nothing about how an obligation settles |
+| **"Standard Inference Token" (arXiv 2603.21690, Mar 2026)** | Futures contract design around a token unit anchored to a frozen GPT-4-Turbo Jan-2024 threshold (MMLU ≥ 86, HumanEval ≥ 67, GSM8K ≥ 92) | **Near-exact structural match to COG-1's threshold mechanic**, independently arrived at, and it has priority on the idea of a frozen-capability-anchored token unit. Built for derivatives settlement, not service contracts: no fix, no receipts, no published number, no contracting layer, and no verification protocol for the price it settles against. The nearest neighbour, and it validates the need |
+| **"The Price of Progress" (arXiv 2511.23455)** | Isolates algorithmic efficiency from hardware cost decline; estimates the pure algorithmic component at ~3×/yr | Already computed the "algorithmic-efficiency premium" an earlier draft of §4 called *currently unpriceable*. It was measured before we wrote that. Not turned into a tracked or tradable index — but the number exists and the claim of ignorance does not survive |
+| **x402 (Coinbase), AP2 (Google, FIDO Alliance)** | Live agent payment rails. x402 at 165M+ transactions across 69k agents; AP2 mandates support recurring and subscription billing, with human-not-present authorization | **The rails work and the standing-obligation primitive exists.** Neither specifies what unit a standing obligation is denominated in — every mandate freezes a fiat or stablecoin amount at signing. That is §1's time bomb, now shipping in production. **This is the gap** |
 | **Proof-of-useful-work coins, compute-backed tokens** | Currencies backed by computation | Currencies — they fight the trilemma; the cog deliberately isn't one |
 
-**The claim of novelty, precisely:** the *fusion* is new — (capability-normalized outcome
-pricing) × (execution-receipt-verified daily fix) × (unit-of-account contracting layer).
-Each ancestor has one leg. Nothing we could find has two, let alone three, and the term
-"deflation-native unit of account" appears to be unclaimed entirely.
+*Landscape surveyed July 2026. This field is adding entrants at roughly one per month; treat
+the table as dated, and assume anything below is narrower than it was when written.*
+
+### The claim of novelty, precisely
+
+An earlier draft claimed a three-way fusion — capability-normalized outcome pricing ×
+receipt-verified daily fix × unit-of-account contracting layer — and asserted that no ancestor
+had two of the three legs. That was wrong when written and is plainly wrong now. Two of those
+legs are built, shipped, and in one case better capitalized than this project will ever be.
+
+**What is prior art:** capability-normalized price observation (Epoch AI, Artificial Analysis),
+receipt-verified token indexing (Ornn OTPI), threshold-anchored token units for derivatives
+(SIT), the algorithmic-efficiency premium (arXiv 2511.23455), agent payment rails (x402, AP2),
+and the indexed-unit-of-account template itself (Chile's UF, 1967).
+
+**What we claim as new, precisely two things:**
+
+1. **UF-style contract denomination for cognition.** Not the number — the *mechanics of owing
+   in it*: the Settlement Fix, the fix-unavailability ladder, chain-linking across a basket
+   version change, the self-verifying invoice that carries the hashes of every fix it used, and
+   the denomination extension that lets an x402 payment or an AP2 recurring mandate carry a cog
+   quantity while the rails keep settling in stablecoin. Existing indices publish numbers. None
+   of them specify how an obligation settles against one, what happens when publication fails,
+   or how a contract survives the basket being replaced. That specification is the contribution.
+
+2. **The depth protocol.** K independent sized buys per window, with endpoint pinning,
+   commit-reveal paraphrase rotation, and single-token endpoint fingerprinting — so that the
+   model which sat the capability exam is provably the model which sold the tokens. "Receipts,
+   not posted prices" is a marketing claim everyone now makes; a published, reproducible
+   protocol for making receipts mean something is not.
+
+**What we no longer claim:** that capability-normalized price observation is unbuilt (Epoch AI
+built it), that receipt-verified indexing is unbuilt (Ornn built it), that a frozen-capability
+token unit is unprecedented (SIT has priority), or that the algorithmic-efficiency premium is
+unmeasured (it was measured in 2025). The phrase "deflation-native unit of account" still
+appears to be unclaimed, but a phrase is not an invention.
+
+Conceding this makes the remaining claim stronger, not weaker. A project that consumes the best
+available capability signal instead of minting a worse one, and spends its effort on the layer
+nobody has built, is more likely to be useful than one defending a novelty claim against the
+evidence.
 
 ---
 
@@ -375,17 +485,30 @@ Each ancestor has one leg. Nothing we could find has two, let alone three, and t
 - **Phase 1 — The Fix, published** *(started 2026-06-09: first ssh-signed quote-mode fix,
   $0.144, via `fixer/fixerd.py`)*: daily COG-1 fix with execution receipts at a public URL;
   signed JSON + archive. One fixer (us), methodology open, anyone can verify or fork.
-  Remaining: receipts on, the qualifying harness (replace the assumed allowlist with a
-  daily administered capability exam), public hosting, 7-day median series.
-- **Phase 2 — Agent SLAs first, then enterprise riders**: hybrid-denomination templates
-  ("$F/month fixed + N cogs/month, settled monthly in USD/USDC at the published COG-1
-  7-day median fix"). Agent-to-agent standing agreements lead — no human defends margin
-  there, and defaults win; enterprise MSA riders follow on buyer procurement pressure.
-  Settlement plumbing over stablecoin rails; pairs with verified-delivery receipts for
-  full *priced-and-proven* agent settlement.
-- **Phase 3 — Plurality**: independent fixers, cross-fixer median, COG-2 process, sibling
-  units if demanded, and — if the futures people are right — cogs as the settlement index
-  for intelligence derivatives.
+  **Partially done, and the honest accounting matters more than the checkmark.** Shipped: the
+  signing path now verifies what it just signed and refuses to report success otherwise (an
+  earlier build published unsigned fixes while printing "signed yes"); archives are signed and
+  immutable; the qualifying harness exists and its fingerprint covers the pass mark; the
+  fallback chain labels the evidence grade of every number it returns.
+  **Not done:** receipts. `receipts: []` is still the truth, the depth gate has never run at
+  spec size, and until it does the published number is a posted-price quote wearing the right
+  labels. Also outstanding: public hosting, the 7-day median series (the archive holds two
+  days), and endpoint pinning + fingerprinting in the buy path (§6).
+- **Phase 2 — The contracting layer** *(now the priority, ahead of index work)*: the
+  Cog-Denominated Obligation; the Settlement Fix; the fix-unavailability ladder; chain-linking
+  across a basket change; the self-verifying invoice; rider templates from enterprise MSA to
+  RFP clause to agent SLA; and the denomination extension that lets an x402 payment or an AP2
+  recurring mandate carry a cog quantity while the rails keep settling in stablecoin. Agent
+  standing agreements lead — no human defends margin there, and defaults win. Pairs with
+  verified-delivery receipts for full *priced-and-proven* settlement.
+- **Phase 3 — Plurality, and probably not led by us**: independent fixers, cross-fixer median,
+  the COG-2 process, sibling units if demanded. Honest assessment: the index layer is being
+  built by better-capitalized parties with real transaction flow and exchange distribution, and
+  they will likely get there first. That is a good outcome, not a bad one. The
+  `settlement.publishers[]` field takes a list precisely so a better index than ours can be
+  named in a contract — the unit does not require that we operate the fix, only that someone
+  does, reproducibly. If cogs become the settlement index for intelligence derivatives, it will
+  be because the denomination layer made the unit worth quoting.
 
 ---
 
