@@ -29,15 +29,36 @@ const RAIL_ID = 'escrow-durable';
  *   rail terminalization verify receipt signatures before changing state.
  * @returns {RailAdapter & { id: string, compact: () => void, flush: () => true, close: () => {closed:true}, health: () => Object, _debugState: () => Object }}
  */
-export function createDurableEscrowRail({ logPath, now: nowOption, audit = null, settlementPublicKey = null, requireSignature = false } = {}) {
+export function createDurableEscrowRail(rawOpts = {}) {
+  // Own-property copy before destructuring: destructuring defaults only apply
+  // when a property is `undefined`, and prototype-chain lookup is not undefined.
+  // A polluted Object.prototype could otherwise supply allowUnsignedReceipts or
+  // an attacker-controlled settlementPublicKey that the caller never passed.
+  const {
+    logPath,
+    now: nowOption,
+    audit = null,
+    settlementPublicKey = null,
+    requireSignature = false,
+    allowUnsignedReceipts = false,
+  } = { __proto__: null, ...rawOpts };
   const now = clockFrom({ now: nowOption });
   const auditSink = normalizeAuditSink(audit);
   if (!logPath || typeof logPath !== 'string') {
     throw new TypeError('createDurableEscrowRail: logPath is required');
   }
-  // Opt-in fail-closed mode for production (mirrors createMockEscrowRail).
-  if (requireSignature === true && (settlementPublicKey === null || settlementPublicKey === undefined)) {
-    throw new TypeError('createDurableEscrowRail: requireSignature is set but no settlementPublicKey was provided');
+  // FAIL-CLOSED BY DEFAULT (v0.10) — mirrors createMockEscrowRail. A settlement
+  // key is REQUIRED so every terminalization verifies the receipt signature;
+  // without one the rail authenticates nothing and a forged receipt with
+  // matching binding fields can capture a hold. `allowUnsignedReceipts: true`
+  // restores the pre-0.10 behaviour for demos/fixtures. `requireSignature` is a
+  // deprecated no-op: verification is now the default.
+  if ((settlementPublicKey === null || settlementPublicKey === undefined) && allowUnsignedReceipts !== true) {
+    throw new TypeError(
+      'createDurableEscrowRail: settlementPublicKey is required so terminalization verifies receipt signatures. ' +
+        'Pass allowUnsignedReceipts: true to opt out — UNSAFE: without a key any forged receipt with matching ' +
+        'binding fields can capture a hold.',
+    );
   }
   mkdirSync(dirname(logPath), { recursive: true });
   let closed = false;
@@ -229,8 +250,15 @@ export function createDurableEscrowRail({ logPath, now: nowOption, audit = null,
 
   function assertReceiptSignature(receipt) {
     if (settlementPublicKey === null || settlementPublicKey === undefined) {
-      // Back-compat demo path; requireSignature forces a key at construction.
-      // Decision/verdict consistency is still enforced above.
+      // Only reachable under an explicit allowUnsignedReceipts opt-out. Decision
+      // /verdict consistency and the binding checks still hold, but receipt
+      // AUTHENTICITY is unchecked here — record that on every terminalization.
+      emitAudit(auditSink, 'rail.unsigned.accepted', {
+        railId: RAIL_ID,
+        holdId: receipt?.holdId ?? null,
+        decision: receipt?.decision ?? null,
+        reason: 'allowUnsignedReceipts is set; receipt signature was NOT verified',
+      }, { now });
       return;
     }
     if (typeof settlementPublicKey !== 'string' || !verifyReceipt(receipt, settlementPublicKey)) {

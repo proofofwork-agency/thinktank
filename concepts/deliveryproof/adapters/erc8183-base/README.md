@@ -141,12 +141,12 @@ and the human-decision checklist before any live transaction.
 
 The adapter mirrors the core durable rail's money-safety invariants at the
 ERC-8183 boundary. The gates below reject a **mis-bound or internally
-contradictory** receipt before any on-chain call, even with no key. Note the honest
-limit (identical to the core rails): a **forged-but-fully-consistent** receipt —
+contradictory** receipt before any on-chain call. Since v0.10 signature
+verification is no longer optional: the rail **requires** `settlementPublicKey` at
+construction, which closes the **forged-but-fully-consistent** receipt — one with
 correct `holdId`/`contractId`/`contractHash`/`amount`/`currency` against a real
-authorized binding — is closed only when signature verification is enabled. Enable
-`settlementPublicKey` + `requireSignature` for any real-value path. The gates, in
-order:
+authorized binding, which gates 1-2 alone cannot distinguish from a real one. The
+gates, in order:
 
 1. **7-field receipt⇄hold binding.** `capture`/`refund` verify `decision`,
    `holdId`, `contractId`, `contractHash`, `railId` (=== `hold.railId`),
@@ -154,13 +154,13 @@ order:
 2. **Verdict-consistency gate.** Release only if `verdict.ok === true`; refund
    only if `verdict.ok === false`. A receipt whose `decision` contradicts its
    `verdict.ok` is rejected before any submission — even with no signature key.
-3. **Optional signature verification (closes the forged-but-consistent hole).**
-   Construct the rail with `settlementPublicKey` (verify when a receipt is signed)
-   and/or `requireSignature: true` (mandatory signature, and a key required at
-   construction) to call `verifyReceipt(receipt, settlementPublicKey)`. Without a
-   key, gates 1–2 still reject a mis-bound or contradictory receipt, but a forged
-   receipt carrying the correct fields is **not** rejected — enable this for any
-   path that moves real value.
+3. **Signature verification (closes the forged-but-consistent hole).** The rail
+   requires `settlementPublicKey` at construction and calls
+   `verifyReceipt(receipt, settlementPublicKey)` before any submission.
+   `requireSignature` is a retained no-op alias. `allowUnsignedReceipts: true`
+   skips this gate for local fixtures — never set it on a path that moves real
+   value: gates 1-2 reject a mis-bound or contradictory receipt, but a forged
+   receipt carrying the correct fields is indistinguishable without gate 3.
 4. **Idempotency via `getJob`, not a trusting fake.** Before submitting a tx the
    rail reconciles the live job: if it is already `Completed` and this is a
    capture, it returns the captured Hold with **no** tx; if already `Rejected`
@@ -212,4 +212,11 @@ restart (the job `Map` survives), exercising idempotency-via-`getJob`.
 
 ## License
 
-Apache-2.0. See [LICENSE](./LICENSE) (verbatim copy of the core package license).
+Apache-2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
+
+You may use, modify, redistribute, and build commercial or closed-source products
+on this software. In exchange, Apache-2.0 §4(d) requires that you keep the
+attribution in [NOTICE](./NOTICE) — the ProofOfWork Agency copyright line — visible
+somewhere customary in your product (source header, docs, or a third-party
+notices screen). No permission request, no fee, no obligation to open your own
+changes. Just keep the credit.

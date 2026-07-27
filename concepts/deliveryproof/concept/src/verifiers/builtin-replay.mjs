@@ -1,4 +1,4 @@
-// src/verifiers/testsuite.mjs
+// src/verifiers/builtin-replay.mjs
 // Tier A verifier (the strongest "objective replay" verifier).
 //
 // The verifier RE-EXECUTES a reference computation from the contract predicate and
@@ -19,20 +19,20 @@
 //   unique  -> de-duplicated array preserving first-seen order
 //   reverse -> reversed array
 
-import { runTestsuiteReplay } from './testsuite-runner.mjs';
+import { runBuiltinReplay } from './builtin-replay-runner.mjs';
 import { checkedAt } from '../protocol/runtime.mjs';
 
 /** @typedef {import('../protocol/types.mjs').DeliveryContract} DeliveryContract */
 /** @typedef {import('../protocol/types.mjs').DeliveryEvidence} DeliveryEvidence */
 /** @typedef {import('../protocol/types.mjs').Verdict} Verdict */
 
-const NAME = 'testsuite';
+const NAME = 'builtin-replay';
 const TIER = 'A';
 
 /**
  * @type {import('../protocol/types.mjs').Verifier}
  */
-export const testsuiteVerifier = {
+export const builtinReplayVerifier = {
   name: NAME,
   tier: TIER,
   /**
@@ -49,14 +49,14 @@ export const testsuiteVerifier = {
         ok: false,
         tier: TIER,
         verifier: NAME,
-        reason: 'contract.predicate.params.op (string) is required for the testsuite verifier',
+        reason: 'contract.predicate.params.op (string) is required for the builtin-replay verifier',
         checkedAt: at,
       };
     }
 
     let result;
     try {
-      result = await runTestsuiteReplay(
+      result = await runBuiltinReplay(
         { op, input: params.input, actual: evidence?.output },
         {
           timeoutMs: params.timeoutMs,
@@ -69,7 +69,7 @@ export const testsuiteVerifier = {
         ok: false,
         tier: TIER,
         verifier: NAME,
-        reason: `testsuite sandbox failed: ${err instanceof Error ? err.message : String(err)}`,
+        reason: `builtin-replay worker failed: ${err instanceof Error ? err.message : String(err)}`,
         checkedAt: at,
       };
     }
@@ -102,3 +102,6 @@ export const testsuiteVerifier = {
     };
   },
 };
+
+/** @deprecated Use builtinReplayVerifier. */
+export const testsuiteVerifier = builtinReplayVerifier;

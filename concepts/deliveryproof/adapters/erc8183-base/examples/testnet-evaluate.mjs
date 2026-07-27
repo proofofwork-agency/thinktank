@@ -317,8 +317,9 @@ async function main() {
     client,
     chainNamespace: String(env.chainId),
     jobContractAddress: env.jobContract,
+    // Since v0.10 signature verification is the default whenever a key is
+    // present; the old requireSignature flag is a no-op and is omitted here.
     settlementPublicKey: settlementKey.publicKey,
-    requireSignature: true,
   });
 
   // 1) Read the REAL on-chain job and authorize a hold from it. authorize throws if

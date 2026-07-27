@@ -1,2 +1,2 @@
-// Fixture used by test/testsuite-sandbox.test.mjs.
+// Fixture used by test/builtin-replay-sandbox.test.mjs.
 setInterval(() => {}, 1000);

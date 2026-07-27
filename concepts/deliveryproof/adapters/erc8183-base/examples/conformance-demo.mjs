@@ -27,7 +27,7 @@ import { createErc8183Rail, createInMemoryErc8183Client } from '../src/index.mjs
  */
 function createRail({ previousRail } = {}) {
   const client = previousRail ? previousRail._client() : createInMemoryErc8183Client();
-  return createErc8183Rail({ client, supportsRestart: true });
+  return createErc8183Rail({ client, supportsRestart: true, allowUnsignedReceipts: true });
 }
 
 async function main() {

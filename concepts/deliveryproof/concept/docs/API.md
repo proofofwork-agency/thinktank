@@ -71,7 +71,53 @@ Common policy keys:
 - `minAssurance`;
 - `expectedVerifier`;
 - `expectedRailId`;
-- `requireNonceRegistry: true`.
+- `requireNonceRegistry: true`;
+- `expectedPolicyHash` (v0.10) — pin the exact router policy that produced the
+  decision. Without it, a receipt routed under a permissive policy is
+  indistinguishable from one routed under the strict policy you believe was in
+  force.
+
+Two v0.10 behaviour changes worth knowing:
+
+- `minAssurance` now **fails** when the receipt carries no `routeDecision`.
+  Previously that check was skipped, so the weakest possible receipt satisfied the
+  strictest possible policy.
+- `settle()` no longer signs a caller-supplied `selectedAssurance`. It re-derives
+  the value from the trusted profile table and refuses to sign a mismatch, and it
+  will not grant a protocol assurance level to a verifier that is not the built-in
+  by object identity. A custom verifier still runs; it cannot inherit an assurance
+  number by reusing a built-in's name.
+
+## Replay stores
+
+### `createNonceRegistry(options)` / `createWalReplayStore(options)`
+
+The default WAL store is durable across restarts, but its uniqueness check lives
+in an in-process `Map`. Two processes sharing one log will **both** reserve the
+same nonce. Single-process deployments only.
+
+### `createSqliteReplayStore({ dbPath })` (v0.10)
+
+Cross-process-atomic replay store. Uniqueness is a SQLite `PRIMARY KEY`, so the
+constraint — not application code — decides the winner of a concurrent
+reservation, under SQLite's own file lock. Use this whenever more than one
+process can settle.
+
+```js
+import { createNonceRegistry, createSqliteReplayStore } from 'deliveryproof';
+
+const nonceRegistry = createNonceRegistry({
+  store: createSqliteReplayStore({ dbPath: '/var/lib/deliveryproof/replay.db' }),
+});
+```
+
+Uses `node:sqlite` (built into Node 22+), so the package's single-runtime-dependency
+guarantee is unchanged. Pass `':memory:'` for single-process tests — an in-memory
+database has nothing to be atomic *across*.
+
+Known limitation, shared with the WAL store: `mark()` authenticates only the
+replay key, so any holder of that key can advance or regress a row's state. This
+is a property of the `ReplayStore` interface contract both stores implement.
 
 ## Verifiers
 
@@ -81,7 +127,7 @@ Resolve verifier implementations by predicate kind. Runnable built-ins include:
 
 - `schema`;
 - `hash`;
-- `testsuite`;
+- `builtin-replay`;
 - `transcript`;
 - `dataset`;
 - `api-response`;
@@ -129,10 +175,12 @@ empty = SHA256(0x02)
 
 Reference in-memory rail for tests and demos only. It is not production money
 movement. It rejects a receipt whose `decision` contradicts its `verdict.ok` before
-any terminalization. If constructed with `settlementPublicKey`, direct
-`capture`/`refund` calls also verify the DeliveryReceipt signature; opt-in
-`requireSignature: true` requires a key at construction and makes that signature
-check mandatory on every terminalization.
+any terminalization. Since v0.10 it **requires** `settlementPublicKey` at
+construction and verifies the DeliveryReceipt signature on every
+`capture`/`refund`. Construction without a key throws unless the caller passes
+`allowUnsignedReceipts: true`, which skips verification and emits a
+`rail.unsigned.accepted` audit event on each terminalization. `requireSignature`
+is a retained no-op alias.
 
 ### Durable local rail helpers
 
@@ -140,9 +188,9 @@ The durable rail demonstrates append-only local WAL recovery, idempotent termina
 operations, `flush`, `close`, and `health`. It is still a reference local hold
 ledger, not a production external rail adapter, and it does not claim
 fsync-level power-loss durability. Like the mock rail it rejects receipts whose
-`decision` contradicts `verdict.ok`, verifies signatures when constructed with
-`settlementPublicKey`, and supports opt-in `requireSignature: true` for mandatory
-signature checks before writing the terminal WAL record.
+`decision` contradicts `verdict.ok`, and since v0.10 requires
+`settlementPublicKey` at construction so signatures are verified before the
+terminal WAL record is written (`allowUnsignedReceipts: true` opts out).
 
 ## Operability
 

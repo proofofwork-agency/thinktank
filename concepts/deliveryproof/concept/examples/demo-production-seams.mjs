@@ -89,7 +89,7 @@ console.log(HEAVY + '\n');
 // verdict-contradicting receipt. Here we show the three v0.9.1 guarantees
 // explicitly, by forging settlement attempts and watching them fail:
 //   1. the consistency gate  — rails reject a decision<->verdict.ok contradiction;
-//   2. requireSignature      — opt-in mandatory settlement-signature verification;
+//   2. signature default     — mandatory settlement-signature verification;
 //   3. interop refusal       — no contradictory receipt becomes a chain-facing win.
 //
 // Nothing moves money. Each forged attempt MUST be rejected; if any is accepted
@@ -129,7 +129,7 @@ function demoContract(rail, label) {
     seller: 'seller_demo',
     intent: `fail-closed demo ${label}`,
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'identity' } },
+    predicate: { kind: 'builtin-replay', params: { op: 'identity' } },
     price: { amount: 5, currency: 'USDC' },
     sla: { deadlineMs: 60000 },
     refundRule: 'full-refund-on-fail',
@@ -159,12 +159,12 @@ const settlementKey = generateKeypair();
 const attackerKey = generateKeypair();
 const settlementKeyId = keyId(settlementKey.publicKey);
 
-// 1) Consistency gate on a keyless reference rail.
+// 1) Consistency gate on a settlement-authenticated reference rail.
 {
   console.log('\n' + LINE);
   console.log('  1) consistency gate: a "release" receipt that carries verdict.ok=false');
   console.log(LINE);
-  const rail = createMockEscrowRail({ logger: false });
+  const rail = createMockEscrowRail({ logger: false, settlementPublicKey: settlementKey.publicKey });
   const contract = demoContract(rail, 'consistency');
   const hold = await rail.authorize(contract);
 
@@ -178,19 +178,19 @@ const settlementKeyId = keyId(settlementKey.publicKey);
   console.log('  honest release receipt (verdict.ok=true)  -> ' + (await rail.capture(hold, honest)).state.toUpperCase());
 }
 
-// 2) requireSignature: opt-in mandatory settlement-signature verification.
+// 2) Signature verification is mandatory by default.
 {
   console.log('\n' + LINE);
-  console.log('  2) requireSignature: a forged-but-internally-consistent receipt');
+  console.log('  2) signature default: a forged-but-internally-consistent receipt');
   console.log(LINE);
 
-  // Fail-closed construction: requireSignature without a key is refused outright.
-  const ctorWhy = await expectReject('requireSignature without key', async () =>
-    createMockEscrowRail({ logger: false, requireSignature: true }));
-  console.log('  createMockEscrowRail({ requireSignature:true }) with no key -> REFUSED at construction');
+  // Fail-closed construction: omitting a key is refused outright.
+  const ctorWhy = await expectReject('missing settlement key', async () =>
+    createMockEscrowRail({ logger: false }));
+  console.log('  createMockEscrowRail() with no key -> REFUSED at construction');
   console.log('    ' + ctorWhy);
 
-  const rail = createMockEscrowRail({ logger: false, settlementPublicKey: settlementKey.publicKey, requireSignature: true });
+  const rail = createMockEscrowRail({ logger: false, settlementPublicKey: settlementKey.publicKey });
   const contract = demoContract(rail, 'requiresig');
   const hold = await rail.authorize(contract);
 
@@ -212,7 +212,7 @@ const settlementKeyId = keyId(settlementKey.publicKey);
   console.log('\n' + LINE);
   console.log('  3) interop: a contradictory receipt cannot become an on-chain success');
   console.log(LINE);
-  const rail = createMockEscrowRail({ logger: false });
+  const rail = createMockEscrowRail({ logger: false, settlementPublicKey: settlementKey.publicKey });
   const contract = demoContract(rail, 'interop');
   const hold = await rail.authorize(contract);
 
@@ -232,7 +232,7 @@ const settlementKeyId = keyId(settlementKey.publicKey);
   console.log('\n' + HEAVY);
   console.log('  Takeaway: the money-safety invariant is re-enforced at the money/interop');
   console.log('  layer, not just inside settle(). The consistency gate blocks contradictory');
-  console.log('  receipts everywhere; requireSignature additionally blocks forged-but-');
-  console.log('  consistent unsigned receipts. A real adapter still owns custody and finality.');
+  console.log('  receipts everywhere; default signature verification additionally blocks');
+  console.log('  forged-but-consistent receipts. A real adapter still owns custody and finality.');
   console.log(HEAVY + '\n');
 }

@@ -7,7 +7,7 @@ import { merkleRoot, verifyMerkleProof } from '../src/protocol/merkle.mjs';
 import { verifiers, getVerifier } from '../src/verifiers/index.mjs';
 import { schemaVerifier } from '../src/verifiers/schema.mjs';
 import { hashVerifier } from '../src/verifiers/hash.mjs';
-import { testsuiteVerifier } from '../src/verifiers/testsuite.mjs';
+import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
 import { transcriptVerifier } from '../src/verifiers/transcript.mjs';
 import { datasetVerifier } from '../src/verifiers/dataset.mjs';
 import { datasetMerkleSampleVerifier } from '../src/verifiers/dataset-merkle-sample.mjs';
@@ -39,7 +39,7 @@ function assertVerdictShape(verdict, expectedVerifier) {
 test('registry: getVerifier returns each built-in and throws on unknown', () => {
   assert.equal(getVerifier('schema'), schemaVerifier);
   assert.equal(getVerifier('hash'), hashVerifier);
-  assert.equal(getVerifier('testsuite'), testsuiteVerifier);
+  assert.equal(getVerifier('builtin-replay'), builtinReplayVerifier);
   assert.equal(getVerifier('transcript'), transcriptVerifier);
   assert.equal(getVerifier('dataset'), datasetVerifier);
   assert.equal(getVerifier('dataset-merkle-sample'), datasetMerkleSampleVerifier);
@@ -148,45 +148,45 @@ test('hash verifier: fail when no expectedHash provided', () => {
   assert.match(verdict.reason, /expectedHash/);
 });
 
-// --- testsuite verifier (objective replay) -----------------------------------
+// --- builtin-replay verifier (objective replay) -----------------------------------
 
-test('testsuite verifier: pass on correct sort', async () => {
-  const contract = { predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } } };
-  const verdict = await testsuiteVerifier.verify(contract, evidenceFor([1, 3, 5, 9]));
-  assertVerdictShape(verdict, 'testsuite');
+test('builtin-replay verifier: pass on correct sort', async () => {
+  const contract = { predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } } };
+  const verdict = await builtinReplayVerifier.verify(contract, evidenceFor([1, 3, 5, 9]));
+  assertVerdictShape(verdict, 'builtin-replay');
   assert.equal(verdict.ok, true);
 });
 
-test('testsuite verifier: pass on sum, unique, reverse', async () => {
-  const sum = await testsuiteVerifier.verify(
-    { predicate: { kind: 'testsuite', params: { op: 'sum', input: [1, 2, 3, 4] } } },
+test('builtin-replay verifier: pass on sum, unique, reverse', async () => {
+  const sum = await builtinReplayVerifier.verify(
+    { predicate: { kind: 'builtin-replay', params: { op: 'sum', input: [1, 2, 3, 4] } } },
     evidenceFor(10),
   );
   assert.equal(sum.ok, true);
 
-  const unique = await testsuiteVerifier.verify(
-    { predicate: { kind: 'testsuite', params: { op: 'unique', input: [1, 1, 2, 2, 3] } } },
+  const unique = await builtinReplayVerifier.verify(
+    { predicate: { kind: 'builtin-replay', params: { op: 'unique', input: [1, 1, 2, 2, 3] } } },
     evidenceFor([1, 2, 3]),
   );
   assert.equal(unique.ok, true);
 
-  const reverse = await testsuiteVerifier.verify(
-    { predicate: { kind: 'testsuite', params: { op: 'reverse', input: [1, 2, 3] } } },
+  const reverse = await builtinReplayVerifier.verify(
+    { predicate: { kind: 'builtin-replay', params: { op: 'reverse', input: [1, 2, 3] } } },
     evidenceFor([3, 2, 1]),
   );
   assert.equal(reverse.ok, true);
 });
 
-test('testsuite verifier: fail on wrong (cheating) sort output', async () => {
-  const contract = { predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } } };
-  const verdict = await testsuiteVerifier.verify(contract, evidenceFor([9, 5, 3, 1]));
-  assertVerdictShape(verdict, 'testsuite');
+test('builtin-replay verifier: fail on wrong (cheating) sort output', async () => {
+  const contract = { predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } } };
+  const verdict = await builtinReplayVerifier.verify(contract, evidenceFor([9, 5, 3, 1]));
+  assertVerdictShape(verdict, 'builtin-replay');
   assert.equal(verdict.ok, false);
 });
 
-test('testsuite verifier: fail on unsupported op', async () => {
-  const contract = { predicate: { kind: 'testsuite', params: { op: 'factorize', input: [12] } } };
-  const verdict = await testsuiteVerifier.verify(contract, evidenceFor([2, 2, 3]));
+test('builtin-replay verifier: fail on unsupported op', async () => {
+  const contract = { predicate: { kind: 'builtin-replay', params: { op: 'factorize', input: [12] } } };
+  const verdict = await builtinReplayVerifier.verify(contract, evidenceFor([2, 2, 3]));
   assert.equal(verdict.ok, false);
   assert.match(verdict.reason, /could not compute reference/);
 });

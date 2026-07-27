@@ -1,7 +1,7 @@
 {
   "name": "@deliveryproof/rail-erc8183-base",
-  "version": "0.1.0",
-  "description": "First DeliveryProof RailAdapter for the ERC-8183 (Agentic Commerce) evaluator slot: reads an already-funded Submitted job and releases (complete) or refunds (reject) escrow from a signed DeliveryProof receipt. Evaluator only — never funds, custodies, or submits. Testnet/local only. viem is an optional, lazily imported dependency.",
+  "version": "0.2.0",
+  "description": "First DeliveryProof RailAdapter for the ERC-8183 (Agentic Commerce) evaluator slot: reads an already-funded Submitted job and releases (complete) or refunds (reject) escrow from a signed DeliveryProof receipt. Evaluator only \u2014 never funds, custodies, or submits. Testnet/local only. viem is an optional, lazily imported dependency.",
   "type": "module",
   "license": "Apache-2.0",
   "repository": {
@@ -24,7 +24,8 @@
     "SECURITY.md",
     "ESCALATIONS.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "test": "node --test",

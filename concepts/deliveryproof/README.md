@@ -59,4 +59,11 @@ choice, custody, finality) remains an operator/human responsibility — see
 
 ## License
 
-Apache-2.0.
+Apache-2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
+
+You may use, modify, redistribute, and build commercial or closed-source products
+on this software. In exchange, Apache-2.0 §4(d) requires that you keep the
+attribution in [NOTICE](./NOTICE) — the ProofOfWork Agency copyright line — visible
+somewhere customary in your product (source header, docs, or a third-party
+notices screen). No permission request, no fee, no obligation to open your own
+changes. Just keep the credit.

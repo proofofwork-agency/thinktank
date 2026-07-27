@@ -23,11 +23,12 @@
  * The predicate that defines what "delivered" means for a contract.
  *
  * @typedef {Object} DeliveryPredicate
- * @property {'schema'|'hash'|'testsuite'|'transcript'|'dataset'|'dataset-merkle-sample'|'api-response'|'document'|'compose'|'signed-oracle'} kind
+ * @property {'schema'|'hash'|'builtin-replay'|'testsuite'|'transcript'|'dataset'|'dataset-merkle-sample'|'api-response'|'document'|'compose'|'signed-oracle'} kind
  *   Which verifier evaluates the deliverable.
  *     - 'schema'     : output must match a declared shape (Tier A, shallow shape-only).
  *     - 'hash'       : output hash must equal an expected hash (Tier A).
- *     - 'testsuite'  : reference computation is re-executed and compared (Tier A, deep).
+ *     - 'builtin-replay'  : reference computation is re-executed and compared (Tier A, deep).
+ *     - 'testsuite'       : deprecated alias for 'builtin-replay'.
  *     - 'transcript' : a nonce-bound signed transcript attests delivery (Tier A).
  *     - 'dataset'    : a tabular deliverable is checked for DEEP correctness — column
  *                      presence, row count, required/nullable semantics, per-field
@@ -54,7 +55,7 @@
  *   Verifier-specific parameters. By kind:
  *     - schema:     { schema: ShapeSchema }
  *     - hash:       { expectedHash: string }   // lowercase hex sha256 of output
- *     - testsuite:  { op: 'sort'|'sum'|'unique'|'reverse', input: any,
+ *     - builtin-replay:  { op: 'sort'|'sum'|'unique'|'reverse', input: any,
  *                     timeoutMs?: number, maxInputBytes?: number, maxDepth?: number }
  *     - transcript: {}                          // verification data travels in evidence
  *     - dataset:    DatasetSpec                 // see @typedef DatasetSpec below

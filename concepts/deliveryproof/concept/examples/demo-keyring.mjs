@@ -13,7 +13,7 @@ import {
   generateKeypair,
   keyId,
   settle,
-  testsuiteVerifier,
+  builtinReplayVerifier,
   verifyReceipt,
 } from '../src/index.mjs';
 
@@ -35,13 +35,13 @@ const contract = {
   seller: keyId(seller.publicKey),
   intent: 'sort array ascending',
   deliverableType: 'application/json',
-  predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+  predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
   price: { amount: 5, currency: 'USDC' },
   sla: { deadlineMs: 60000 },
   refundRule: 'full-refund-on-fail',
   railId: 'escrow-mock',
   nonce: 'nonce-keyring-demo',
-  createdAt: 0,
+  createdAt: Date.now(), // real timestamp: an epoch-0 contract is long past its SLA deadline
 };
 
 console.log('\n' + HEAVY);
@@ -56,8 +56,8 @@ console.log(`
 const result = await settle({
   contract,
   produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-  verifier: testsuiteVerifier,
-  rail: createMockEscrowRail(),
+  verifier: builtinReplayVerifier,
+  rail: createMockEscrowRail({ settlementPublicKey: oldSettlementKey.publicKey }),
   settlementKey: oldSettlementKey,
 });
 

@@ -108,7 +108,7 @@ function evidenceFor(contract, rows) {
 
 async function runSettlement({ title, contract, route, settlementKey, evidence }) {
   section(title);
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract,
     produceEvidence: () => evidence,

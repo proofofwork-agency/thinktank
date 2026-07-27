@@ -35,6 +35,28 @@ trust inputs, unknown key ids, empty keyrings, or bad signatures.
 Production signing policy, revocation, operator authorization, and private-key
 custody belong in the deployment or a companion package.
 
+
+### Replay store: use the atomic one if more than one process can settle
+
+The bundled WAL store keeps its uniqueness check in an in-process `Map`, so two
+processes sharing one log will BOTH reserve the same nonce and the same contract
+can settle twice. Since v0.10 the package ships an atomic alternative whose
+uniqueness is a SQLite `PRIMARY KEY`:
+
+```js
+import { createNonceRegistry, createSqliteReplayStore } from 'deliveryproof';
+
+const nonceRegistry = createNonceRegistry({
+  store: createSqliteReplayStore({ dbPath: '/var/lib/deliveryproof/replay.db' }),
+});
+```
+
+It uses `node:sqlite` (Node 22+), so the one-runtime-dependency guarantee holds.
+A Postgres/Redis store with an equivalent atomic uniqueness constraint is also
+fine — validate any implementation with the exported replay-store conformance
+suite, which covers concurrent double-reserve.
+
+
 ## Signature-Verifying Rails
 
 Reference rails can reject forged direct terminalization when constructed with the
@@ -45,18 +67,25 @@ import { createDurableEscrowRail } from 'deliveryproof';
 
 const rail = createDurableEscrowRail({
   logPath: '/var/lib/deliveryproof/rail.jsonl',
-  settlementPublicKey: activeSettlementPublicKey,
-  requireSignature: true, // mandatory: a settlement key must be set, and every
-                          // terminalization must carry a valid signature
+  settlementPublicKey: activeSettlementPublicKey, // REQUIRED since v0.10
 });
 ```
 
-Even without a key, the reference rails reject a receipt whose `decision`
-contradicts its `verdict.ok` (the consistency gate) before terminalizing.
-`settlementPublicKey` adds signature verification when a receipt is signed;
-`requireSignature: true` makes a valid signature mandatory and refuses construction
-without a key. The consistency gate closes the contradictory-receipt hole; only
-signature verification closes the forged-but-consistent unsigned-receipt hole.
+Since v0.10 a settlement key is mandatory: construction throws without one, and
+every terminalization verifies the receipt signature. `requireSignature` is a
+retained no-op alias.
+
+Two gates run at the money layer, and they close different holes. The
+*consistency* gate rejects a receipt whose `decision` contradicts its
+`verdict.ok` — that stops a forged "release" carrying a failing verdict, and it
+has never needed a key. *Signature verification* is what stops a
+forged-but-internally-consistent receipt. Before v0.10 the second gate was
+opt-in, so a rail built without a key accepted any well-formed release receipt;
+that is why the key is now required rather than encouraged.
+
+`allowUnsignedReceipts: true` restores the old behaviour for demos and fixtures.
+Do not set it in a deployment: it disables the only check that distinguishes a
+real settlement receipt from a well-formed forgery.
 
 The rail still must enforce its own money-movement semantics. A production rail
 adapter should verify receipt signatures before terminal settlement, carry

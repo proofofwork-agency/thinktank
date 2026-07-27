@@ -76,15 +76,22 @@ function defaultJobIdResolver(contract) {
  * @param {string} [opts.chainNamespace='local'] Operator chain namespace (part of holdId).
  * @param {string} [opts.jobContractAddress='0xlocal'] Operator job-contract address (part of holdId). NOT a blessed/canonical address.
  * @param {(contract: DeliveryContract) => (string|number|undefined)} [opts.jobIdResolver] Resolve a contract to its on-chain job id.
- * @param {string|null} [opts.settlementPublicKey=null] PEM key receipts are verified against when requireSignature is on (or always, when present).
- * @param {boolean} [opts.requireSignature=false] Fail closed: require settlementPublicKey and a valid signature before any release/refund.
+ * @param {string|null} [opts.settlementPublicKey=null] PEM key receipts are verified against. REQUIRED unless allowUnsignedReceipts is true.
+ * @param {boolean} [opts.allowUnsignedReceipts=false] UNSAFE opt-out: construct without a settlement key and skip signature verification.
+ * @param {boolean} [opts.requireSignature=false] Deprecated no-op; signature verification is the default since v0.10.
  * @param {boolean} [opts.supportsRestart=false] Advertise restart support (the job Map lives in the client, so restart = same client instance).
  * @param {{ _client?: () => Erc8183Client }|null} [opts.previousRail=null] Prior rail instance to inherit the client from across a restart.
  * @param {() => number} [opts.now=Date.now] Clock for deterministic history timestamps.
  * @param {((event: string, data: Object) => void)|null} [opts.audit=null] Optional best-effort audit hook; failures are swallowed.
  * @returns {{ id: string, authorize: Function, capture: Function, refund: Function, status: Function, health: Function, _client: () => Erc8183Client }}
  */
-export function createErc8183Rail(opts = {}) {
+export function createErc8183Rail(rawOpts = {}) {
+  // Own-property copy before destructuring. Destructuring defaults only fire on
+  // `undefined`, and a prototype-chain hit is not undefined — so a polluted
+  // Object.prototype could otherwise inject allowUnsignedReceipts (disabling
+  // verification on a rail that moves real escrow) or an attacker-held
+  // settlementPublicKey, with the caller passing neither.
+  const opts = { __proto__: null, ...rawOpts };
   const {
     id = DEFAULT_RAIL_ID,
     chainNamespace = DEFAULT_CHAIN_NAMESPACE,
@@ -92,6 +99,7 @@ export function createErc8183Rail(opts = {}) {
     jobIdResolver = defaultJobIdResolver,
     settlementPublicKey = null,
     requireSignature = false,
+    allowUnsignedReceipts = false,
     supportsRestart = false,
     previousRail = null,
     now = Date.now,
@@ -117,11 +125,16 @@ export function createErc8183Rail(opts = {}) {
   if (typeof id !== 'string' || id.length === 0) {
     throw new Erc8183RailError('createErc8183Rail: id must be a non-empty string');
   }
-  // Opt-in fail-closed mode (mirrors createDurableEscrowRail): requireSignature
-  // demands a settlement key be present so we never silently skip verification.
-  if (requireSignature === true && (settlementPublicKey === null || settlementPublicKey === undefined)) {
+  // FAIL-CLOSED BY DEFAULT (v0.10) — mirrors createDurableEscrowRail. This rail
+  // moves REAL escrow through client.complete/reject, so an unauthenticated
+  // receipt here is worse than on the reference rails: a settlement key is
+  // REQUIRED unless the caller explicitly opts out with allowUnsignedReceipts.
+  // `requireSignature` is a deprecated no-op: verification is now the default.
+  if ((settlementPublicKey === null || settlementPublicKey === undefined) && allowUnsignedReceipts !== true) {
     throw new Erc8183RailError(
-      'createErc8183Rail: requireSignature is set but no settlementPublicKey was provided',
+      'createErc8183Rail: settlementPublicKey is required so terminalization verifies receipt signatures. ' +
+        'Pass allowUnsignedReceipts: true to opt out — UNSAFE: without a key any forged receipt with matching ' +
+        'binding fields can release or refund real escrow.',
     );
   }
   if (typeof jobIdResolver !== 'function') {
@@ -652,10 +665,18 @@ export function createErc8183Rail(opts = {}) {
    */
   function assertReceiptSignature(receipt) {
     if (settlementPublicKey === null || settlementPublicKey === undefined) {
-      if (requireSignature === true) {
+      if (allowUnsignedReceipts !== true) {
         // Defense in depth: construction already forbids this combination.
-        throw new Erc8183RailError('[erc8183-rail] requireSignature is set but no settlementPublicKey is configured');
+        throw new Erc8183RailError('[erc8183-rail] no settlementPublicKey is configured and allowUnsignedReceipts is not set');
       }
+      // Explicit opt-out: bindings and verdict consistency still hold, but the
+      // receipt is UNAUTHENTICATED. Record it on every terminalization.
+      emitAudit('rail.unsigned.accepted', {
+        railId: id,
+        holdId: receipt?.holdId ?? null,
+        decision: receipt?.decision ?? null,
+        reason: 'allowUnsignedReceipts is set; receipt signature was NOT verified',
+      });
       return;
     }
     if (typeof settlementPublicKey !== 'string' || !verifyReceipt(receipt, settlementPublicKey)) {

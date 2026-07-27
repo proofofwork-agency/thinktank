@@ -29,7 +29,10 @@ import { makeSettlementKey, makeContract, makeReceipt } from './helpers/receipts
  */
 function makeRail(railOpts = {}) {
   const client = createInMemoryErc8183Client();
-  const rail = createErc8183Rail({ client, ...railOpts });
+  // Since v0.10 a settlement key is mandatory unless the caller opts out. Tests
+  // that exercise job-state mechanics rather than receipt authenticity take the
+  // opt-out; any test passing settlementPublicKey overrides it below.
+  const rail = createErc8183Rail({ client, allowUnsignedReceipts: true, ...railOpts });
   return { rail, client };
 }
 
@@ -241,12 +244,21 @@ test('signature enforcement: requireSignature rejects a receipt signed by a fore
   assert.equal((await rail.status(hold.holdId)).state, 'held');
 });
 
-test('requireSignature without a settlementPublicKey fails closed at construction', () => {
+test('construction without a settlementPublicKey fails closed (v0.10 default)', () => {
   const client = createInMemoryErc8183Client();
+  // Pre-0.10 this only threw when requireSignature was explicitly set. Now the
+  // absence of a key is itself the error: the unsafe configuration must be
+  // chosen deliberately, not inherited by default.
+  assert.throws(
+    () => createErc8183Rail({ client }),
+    /settlementPublicKey is required/,
+  );
   assert.throws(
     () => createErc8183Rail({ client, requireSignature: true }),
-    /requireSignature/i,
+    /settlementPublicKey is required/,
   );
+  // The explicit opt-out is the only way through without a key.
+  assert.ok(createErc8183Rail({ client, allowUnsignedReceipts: true }));
 });
 
 test('restart without re-authorize: capture FAILS CLOSED (binding is never derived from the receipt)', async () => {

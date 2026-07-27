@@ -37,7 +37,7 @@ function base({ attester = generateKeypair(), output = { weather: 'rain' } } = {
     refundRule: 'full-refund-on-fail',
     railId: 'escrow-mock',
     nonce: 'n_oracle',
-    createdAt: 0,
+    createdAt: Date.now(),
   };
   const evidence = {
     protocolVersion: 'deliveryproof/0.4-jcs1',
@@ -134,7 +134,7 @@ test('signed-oracle: route + settle signs provenance into the receipt', async ()
     produceEvidence: () => evidence,
     verifier: route.verifier,
     routeDecision: route.routeDecision,
-    rail: createMockEscrowRail(),
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
   assert.equal(result.verdict.ok, true);

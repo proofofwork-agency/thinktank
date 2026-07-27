@@ -28,13 +28,13 @@ function contract(seller) {
     seller: keyId(seller.publicKey),
     intent: 'sort array ascending',
     deliverableType: 'compute',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 5, currency: 'USDC' },
     sla: { deadlineMs: 30000 },
     refundRule: 'full-refund-on-fail',
     railId: 'escrow-mock',
     nonce: 'nonce-interop-demo',
-    createdAt: 0,
+    createdAt: Date.now(), // real timestamp: an epoch-0 contract is long past its SLA deadline
   };
 }
 
@@ -45,8 +45,8 @@ async function run(label, output) {
   const result = await settle({
     contract: contract(seller),
     produceEvidence: () => ({ output }),
-    verifier: getVerifier('testsuite'),
-    rail: createMockEscrowRail(),
+    verifier: getVerifier('builtin-replay'),
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
   console.log('\n' + LINE);

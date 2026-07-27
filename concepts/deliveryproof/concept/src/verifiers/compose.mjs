@@ -6,7 +6,7 @@
 
 import { schemaVerifier } from './schema.mjs';
 import { hashVerifier } from './hash.mjs';
-import { testsuiteVerifier } from './testsuite.mjs';
+import { builtinReplayVerifier } from './builtin-replay.mjs';
 import { transcriptVerifier } from './transcript.mjs';
 import { datasetVerifier } from './dataset.mjs';
 import { apiResponseVerifier } from './api-response.mjs';
@@ -24,7 +24,9 @@ const DEFAULT_MODE = 'all';
 const DEFAULT_REGISTRY = {
   schema: schemaVerifier,
   hash: hashVerifier,
-  testsuite: testsuiteVerifier,
+  'builtin-replay': builtinReplayVerifier,
+  // Deprecated compatibility alias for existing composed contracts.
+  testsuite: builtinReplayVerifier,
   transcript: transcriptVerifier,
   dataset: datasetVerifier,
   'api-response': apiResponseVerifier,

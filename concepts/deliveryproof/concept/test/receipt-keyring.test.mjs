@@ -6,7 +6,7 @@ import { generateKeypair, keyId, sign } from '../src/protocol/crypto.mjs';
 import { createInMemoryKeyring } from '../src/protocol/signer.mjs';
 import { settle, verifyReceipt } from '../src/engine/deliveryproof.mjs';
 import { createMockEscrowRail } from '../src/rails/escrow-mock.mjs';
-import { testsuiteVerifier } from '../src/verifiers/testsuite.mjs';
+import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
 
 function sortContract() {
   return {
@@ -15,7 +15,7 @@ function sortContract() {
     seller: 'seller_______',
     intent: 'sort array ascending',
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 5, currency: 'USDC' },
     sla: { deadlineMs: 60000 },
     refundRule: 'full-refund-on-fail',
@@ -29,8 +29,8 @@ async function settledWith(settlementKey) {
   return settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
-    rail: createMockEscrowRail({ logger: false }),
+    verifier: builtinReplayVerifier,
+    rail: createMockEscrowRail({ logger: false, settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
 }

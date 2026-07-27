@@ -193,7 +193,7 @@ const produceCorrupt = () => {
 
 // --- 1) SHALLOW verifier (schema/shape) — what competitors ship --------------
 
-const shallowRail = createMockEscrowRail();
+const shallowRail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
 const shallowContract = makeContract({
   predicate: {
     kind: 'schema',
@@ -239,7 +239,7 @@ console.log('  >> A shallow shape-check PAYS for a corrupt dataset. This is the 
 
 // --- 2) DEEP verifier (dataset correctness) — DeliveryProof ------------------
 
-const deepRail = createMockEscrowRail();
+const deepRail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
 const deepContract = makeContract({
   predicate: { kind: 'dataset', params: datasetParams },
   railId: deepRail.id,
