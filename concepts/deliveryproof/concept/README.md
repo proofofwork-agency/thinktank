@@ -333,6 +333,9 @@ Postgres, KMS, or chain-specific code outside this core package, see
 
 ## Where To Read Next
 
+- [Verdict](./VERDICT.md) - the honest call after three adversarial review
+  rounds: what held, what didn't, the trust roots no code closes, and why the
+  finding rate had not converged when we stopped.
 - [Whitepaper](./docs/WHITEPAPER.md) - full concept, impossibility-result
   background, experiment narrative, related work, and limitations.
 - [Specification](./SPEC.md) - normative objects, hashes, signatures, and state

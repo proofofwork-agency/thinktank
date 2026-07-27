@@ -16,16 +16,26 @@ the adapters prove it can drive *real* settlement without pulling chain/wallet/R
 into the core. The strategy and priority order are in
 [`concept/docs/ADAPTER-RFC.md`](./concept/docs/ADAPTER-RFC.md).
 
+**Current state: v0.10 — fail closed by default.** 310 core tests + 57 adapter
+tests green. v0.10 was shaped by three rounds of two-agent adversarial review that
+found 13 exploitable defects, every one requiring a running proof-of-concept.
+Rails now require a settlement key, the engine refuses to sign assurance claims it
+cannot re-derive, and the contract handed to seller code is frozen. The honest
+assessment — including what is still trusted and why the finding rate had not
+converged — is in [`concept/VERDICT.md`](./concept/VERDICT.md); the full list is
+in [`concept/CHANGELOG.md`](./concept/CHANGELOG.md).
+
 ## Layout
 
 ```text
 deliveryproof/                 (monorepo root — npm workspaces)
 ├── concept/                   the deliveryproof reference library (start here)
 │   ├── src/ test/ examples/ docs/
-│   └── README.md SPEC.md WHITEPAPER (docs/) ...
+│   └── README.md SPEC.md VERDICT.md CHANGELOG.md WHITEPAPER (docs/) ...
 ├── adapters/
 │   └── erc8183-base/          @deliveryproof/rail-erc8183-base (first reference adapter)
-└── example/                   standalone React/Vite demo app
+├── example/                   standalone React/Vite demo app
+└── LICENSE NOTICE             Apache-2.0; NOTICE carries the required attribution
 ```
 
 ## Quickstart
