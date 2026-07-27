@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 ProofOfWork Agency (https://github.com/proofofwork-agency)
 """COG test suite — stdlib unittest, no network.
 
 Run:  python3 -m unittest discover -s tests -v
@@ -142,8 +144,23 @@ class TestMcpServer(unittest.TestCase):
         init = self.call("initialize", {"protocolVersion": "2024-11-05"})
         self.assertEqual(init["result"]["serverInfo"]["name"], "cog-fix")
         tools = self.call("tools/list")
-        self.assertEqual([t["name"] for t in tools["result"]["tools"]],
+        names = [t["name"] for t in tools["result"]["tools"]]
+        # The original four stay first and in order — agents bind to that surface, so
+        # adding tools must not reshuffle it. Growth beyond them is allowed.
+        self.assertEqual(names[:4],
                          ["get_fix", "price_in_cogs", "reprice_contract", "generate_sla"])
+
+    def test_contracting_tools_are_exposed(self):
+        names = [t["name"] for t in self.call("tools/list")["result"]["tools"]]
+        for expected in ("generate_rider", "draft_obligation", "settlement_fix",
+                         "settle_invoice", "verify_invoice"):
+            self.assertIn(expected, names)
+
+    def test_every_tool_declares_a_schema(self):
+        for t in self.call("tools/list")["result"]["tools"]:
+            self.assertIn("inputSchema", t, f"{t['name']} has no inputSchema")
+            self.assertEqual(t["inputSchema"].get("type"), "object", t["name"])
+            self.assertTrue(t["description"].strip(), f"{t['name']} has no description")
 
     def test_notification_gets_no_response(self):
         self.assertIsNone(cog_mcp.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
@@ -214,7 +231,18 @@ class TestUnitHonesty(unittest.TestCase):
         finally:
             cog_mcp.ROOT, fixerd.fetch_models = real_root, real_fetch
             shutil.rmtree(tmp)
-        self.assertEqual(f["mode"], "bundled")
+        # Corrupt published fix + no network drops past both settleable rungs. It lands on
+        # the Epoch anchor (rung 4), not the bundled snapshot (rung 5) — the anchor is the
+        # better-sourced of the two non-settleable fallbacks.
+        self.assertEqual(f["tier"], "external-anchor")
+        self.assertFalse(f["provenance"]["settleable"])
+
+    def test_non_settleable_rungs_are_marked_as_such(self):
+        """The whole point of the tier label: a research CSV must never quietly settle
+        an invoice. Rungs 4 and 5 have to say so in the payload."""
+        for tier in ("external-anchor", "bundled-snapshot"):
+            desc = cog_mcp.unit_description({"tier": tier, "receipts": 0, "qualification": "x"})
+            self.assertIn("NON-SETTLEABLE", desc, tier)
 
 
 class TestQualifyGate(unittest.TestCase):
@@ -239,6 +267,55 @@ class TestQualifyGate(unittest.TestCase):
         self.assertFalse(r["aborted"])
         self.assertEqual(r["administered"], r["total"])
         self.assertTrue(r["passed"])
+
+
+class TestBlendIsDefinedOnce(unittest.TestCase):
+    """The 4:1 mix is quoted in four places; a unit that means different things in
+    different call sites is not a unit."""
+
+    def test_python_definitions_agree(self):
+        self.assertAlmostEqual(cogfix.blend(10, 30), fixerd.BLEND(10, 30))
+        self.assertAlmostEqual(cogfix.blend(10, 30), 0.8 * 10 + 0.2 * 30)
+
+    def test_data_json_prose_matches_the_code(self):
+        prose = cogfix.DATA["spec"]["blend"]
+        self.assertIn(f"{cogfix.BLEND_IN} * input_usd_per_M", prose)
+        self.assertIn(f"{cogfix.BLEND_OUT} * output_usd_per_M", prose)
+
+    def test_every_series_point_blends_correctly(self):
+        # Stored to 4dp: the 2026 points came off a live feed and were rounded for
+        # publication (0.25168 -> 0.2517, 0.11796 -> 0.1180). The rounding is left alone
+        # because 0.2517 is the last official point and every headline figure in the repo
+        # is computed from it. Asserting at stored precision still catches a leg/blend
+        # mismatch, which is what this guards.
+        for p in cogfix.DATA["frontier_tier_series"]:
+            if "input_usd_per_M" not in p:
+                continue
+            self.assertAlmostEqual(
+                p["blended_usd_per_M"],
+                cogfix.blend(p["input_usd_per_M"], p["output_usd_per_M"]),
+                places=4, msg=f"{p['date']} {p['model']} blended price does not match its legs")
+
+
+class TestDemoMirrors(unittest.TestCase):
+    """demo/index.html hardcodes copies of data.json so it works from file://.
+    Drift is what left two dead endpoints quoted on the page for weeks."""
+
+    DEMO = (ROOT / "demo" / "index.html").read_text()
+
+    def test_demo_allowlist_matches_data_json(self):
+        import re
+        block = re.search(r"const ALLOWLIST = \[(.*?)\];", self.DEMO, re.S).group(1)
+        demo_ids = set(re.findall(r'"([^"]+)"', block))
+        self.assertEqual(demo_ids, set(cogfix.DATA["live_fix_allowlist"]))
+
+    def test_demo_quotes_no_retired_endpoint(self):
+        for entry in cogfix.DATA.get("retired_from_allowlist", []):
+            self.assertNotIn(entry["id"], self.DEMO,
+                             f"{entry['id']} was retired {entry['retired']} but the demo still quotes it")
+
+    def test_demo_blend_matches_the_code(self):
+        self.assertIn(f"{cogfix.BLEND_IN}*pin + {cogfix.BLEND_OUT}*pout", self.DEMO)
 
 
 if __name__ == "__main__":

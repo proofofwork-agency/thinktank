@@ -153,8 +153,12 @@ const SERIES = [ // [YYYY-MM, model, blended $/M, status]
   ["2026-06","DeepSeek V3.2",0.2517,"live-quote"],
   ["2026-06","DeepSeek V4 Flash",0.118,"provisional"],
 ];
+// MIRROR of cogfix/data.json — that file is the source of truth. This copy exists so the page
+// works from file:// with no fetch. tests/test_cog.py::TestDemoMirrors asserts the two agree,
+// so drift fails the suite instead of silently quoting retired endpoints (which is exactly what
+// happened with gemini-2.0-flash-001 and grok-4-fast — see retired_from_allowlist).
 const ALLOWLIST = ["deepseek/deepseek-v3.2","deepseek/deepseek-v4-flash","deepseek/deepseek-v4-pro",
-  "openai/gpt-4o-mini","google/gemini-2.0-flash-001","x-ai/grok-4-fast",
+  "openai/gpt-4o-mini",
   "meta-llama/llama-3.3-70b-instruct","qwen/qwen-2.5-72b-instruct"];
 
 const mi = ym => { const [y,m] = ym.split("-").map(Number); return y*12+m-1; };

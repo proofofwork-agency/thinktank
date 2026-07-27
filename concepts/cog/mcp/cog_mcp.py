@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 ProofOfWork Agency (https://github.com/proofofwork-agency)
 """cog-fix MCP server — puts the price of intelligence in every agent's hands.
 
 A minimal Model Context Protocol server (stdio, JSON-RPC 2.0, one message per
@@ -14,6 +16,7 @@ Tools:
 """
 
 import json
+import math
 import statistics
 import sys
 from datetime import date, datetime, timezone
@@ -21,16 +24,26 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "cogfix"))
 sys.path.insert(0, str(ROOT / "fixer"))
 import cogfix  # noqa: E402
 import fixerd  # noqa: E402
+from anchor import anchor_at, normalize_blend  # noqa: E402
+from contracts import cdo as cdo_contract  # noqa: E402
+from contracts import riders  # noqa: E402
+from contracts.settle import (  # noqa: E402
+    invoice as settle_cdo_invoice,
+    load_series,
+    settlement_fix as resolve_settlement_fix,
+    verify_invoice as verify_cog_invoice,
+)
 
 
 # ---------------------------------------------------------------- fix lookup
 
 def current_fix():
-    """Best available fix: published file, else live quote, else bundled snapshot.
+    """Best available fix across five explicitly labeled evidence rungs.
 
     Every result carries the basis it actually earned — age, qualification, and
     receipt count — so a caller can tell a receipted fix from a provisional
@@ -41,14 +54,27 @@ def current_fix():
     today = datetime.now(timezone.utc).date().isoformat()
     try:
         p = json.loads(fix_file.read_text())
+        fix_value = float(p["fix_usd"])
+        if not math.isfinite(fix_value) or fix_value <= 0:
+            raise ValueError("published fix_usd must be finite and positive")
         age = (date.fromisoformat(today) - date.fromisoformat(p["date"])).days
-        return {"fix_usd": p["fix_usd"], "date": p["date"], "mode": p["mode"],
+        receipts = len(p.get("receipts") or [])
+        tier = "receipted-depth" if receipts else "venue-quote"
+        provenance = {
+            "publisher": p.get("publisher", "unknown"),
+            "artifact": "fixer/fix.json",
+            "settleable": True,
+        }
+        provenance.update(p.get("provenance") or {})
+        stale = age < 0 or age > 1
+        return {"fix_usd": fix_value, "date": p["date"], "mode": p["mode"],
                 "source": "published fixer/fix.json"
-                          + (f" (stale by {age}d — rerun fixerd)" if age > 1 else ""),
+                          + (f" (unusable age {age}d — rerun fixerd)" if stale else ""),
                 "floor_usd": p.get("floor_usd"),
-                "age_days": age, "stale": age > 1,
+                "age_days": age, "stale": stale,
                 "qualification": (p.get("qualification") or {}).get("basis", "unknown"),
-                "receipts": len(p.get("receipts") or [])}
+                "receipts": receipts, "tier": tier,
+                "provenance": provenance}
     except (OSError, ValueError, KeyError):
         pass  # missing, corrupt, or malformed — fall through to the live quote
     try:
@@ -60,13 +86,43 @@ def current_fix():
                 "source": "live OpenRouter posted prices (unreceipted)",
                 "floor_usd": quotes[0]["blended_usd_per_M"],
                 "age_days": 0, "stale": False,
-                "qualification": "assumed static allowlist (no exam run)", "receipts": 0}
+                "qualification": "assumed static allowlist (no exam run)", "receipts": 0,
+                "tier": "venue-quote-live",
+                "provenance": {"provider": "OpenRouter", "network": "live"}}
+    except Exception:
+        pass
+    try:
+        event = anchor_at(today)
+        normalized = normalize_blend(event)
+        age = (date.fromisoformat(today) - date.fromisoformat(event["date"])).days
+        return {
+            "fix_usd": float(normalized["usd_per_cog"]),
+            "date": event["date"],
+            "mode": "external-anchor",
+            "source": "Epoch AI vendored snapshot (CC-BY; 3:1 mix, normalized with uncertainty)",
+            "floor_usd": None,
+            "age_days": age,
+            "stale": True,
+            "qualification": "external MMLU/GPT-4 anchor; not COG exam-qualified",
+            "receipts": 0,
+            "tier": "external-anchor",
+            "provenance": {
+                "provider": "Epoch AI",
+                "artifact": "anchor/snapshot/epoch_llm_inference_prices.csv",
+                "model": event["model"],
+                "lookup": "step-function",
+                "normalization": normalized,
+                "settleable": False,
+            },
+        }
     except Exception:
         s = cogfix.official_series()
         return {"fix_usd": s[-1][1], "date": "2026-06", "mode": "bundled",
                 "source": "bundled snapshot (offline fallback)", "floor_usd": None,
                 "age_days": None, "stale": True,
-                "qualification": "assumed static allowlist (no exam run)", "receipts": 0}
+                "qualification": "assumed static allowlist (no exam run)", "receipts": 0,
+                "tier": "bundled-snapshot",
+                "provenance": {"artifact": "cogfix/data.json", "settleable": False}}
 
 
 def unit_description(f):
@@ -76,8 +132,16 @@ def unit_description(f):
     posted-price quote with no receipts is exactly the LIBOR failure the
     whitepaper argues against, so the wording tracks the evidence.
     """
-    price = ("depth-verified" if f.get("receipts", 0) > 0
-             else "posted-price (PROVISIONAL, unreceipted)")
+    evidence_tier = f.get("tier") or (
+        "receipted-depth" if f.get("receipts", 0) > 0 else "venue-quote"
+    )
+    price = {
+        "receipted-depth": "depth-verified",
+        "venue-quote": "posted-price (PROVISIONAL, unreceipted)",
+        "venue-quote-live": "live posted-price (PROVISIONAL, unreceipted)",
+        "external-anchor": "external research anchor (NON-SETTLEABLE)",
+        "bundled-snapshot": "bundled historical snapshot (NON-SETTLEABLE)",
+    }.get(evidence_tier, "unknown evidence")
     tier = ("exam-qualified" if str(f.get("qualification", "")).startswith("exam-qualified")
             else "assumed-qualifying (no exam administered)")
     return (f"1 cog = {price} price of 1M blended tokens (800k in / 200k out) "
@@ -147,9 +211,6 @@ def t_generate_sla(args):
     term = int(args.get("term_months", 12))
     f = current_fix()
     est = fixed + cogs * f["fix_usd"]
-    # §1 and §6 below describe the COG-1 publication standard (receipted, auditable).
-    # If today's fix does not yet meet that standard, say so in the document itself —
-    # a rider whose audit clause references receipts that do not exist is a trap.
     unmet = []
     if f.get("receipts", 0) == 0:
         unmet.append("no execution receipts (fix is a posted-price quote, PROVISIONAL)")
@@ -157,52 +218,111 @@ def t_generate_sla(args):
         unmet.append("capability tier assumed, not exam-administered")
     if f.get("stale"):
         unmet.append(f"published fix is stale (age {f.get('age_days')}d)")
-    warning = ("\n\n!! BASIS WARNING — the reference publisher does NOT currently meet the\n"
-               "   standard described in §1 and §6:\n"
-               + "\n".join(f"     - {u}" for u in unmet)
-               + "\n   Do not rely on §6 (Audit) until the publisher publishes receipts.") if unmet else ""
-    text = f"""COG-DENOMINATED PRICING RIDER (TEMPLATE v0.1 — NOT LEGAL ADVICE)
-between {provider} ("Provider") and {client} ("Client")
-
-1. DEFINITIONS
-   "COG-1 Fix" means the published daily price, in USD, of the COG-1 Reference
-   Workload (1,000,000 blended tokens, 800,000 input / 200,000 output, executed
-   at COG-1 qualifying capability), as defined in the COG specification
-   (WHITEPAPER.md, draft 0.1) and published by the Fix Publisher with execution
-   receipts. "Settlement Fix" means the arithmetic median of the COG-1 Fix over
-   the seven (7) calendar days preceding the invoice date.
-
-2. PRICE
-   Client shall pay Provider, per calendar month:
-   (a) a fixed component of USD {fixed:,.2f}; plus
-   (b) an indexed component of {cogs:,.0f} cogs, settled in USD at the
-       Settlement Fix on the invoice date.
-   (Indicative month-1 total at today's fix of ${f['fix_usd']}/cog: ~USD {est:,.2f}.)
-
-3. TERM
-   {term} months. Neither party may reprice the cog quantity during the term;
-   the USD value of the indexed component floats with the Settlement Fix by
-   construction.
-
-4. FIX UNAVAILABILITY & VERSIONING
-   If no COG-1 Fix is published for 14 consecutive days, the last published
-   fix applies until publication resumes. If the publisher retires COG-1 in
-   favor of a successor basket, the indexed component converts at the published
-   chain-linking factor over the parallel-publication window.
-
-5. SYMMETRY
-   The indexed component rises and falls with the Settlement Fix in both
-   directions. Neither party bears renegotiation obligations from fix movement.
-
-6. AUDIT
-   Either party may verify any Settlement Fix against the publisher's receipts
-   archive. Disputes use the recomputed value from published receipts.
-
-Fix source today: {f['source']} ({f['date']}, mode {f['mode']}).
-Qualification basis: {f.get('qualification', 'unknown')}. Receipts: {f.get('receipts', 0)}.{warning}"""
+    warning = (
+        "!! BASIS WARNING — the displayed reference fix does not currently meet "
+        "the rider's settlement standard:\n"
+        + "\n".join(f"- {item}" for item in unmet)
+    ) if unmet else ""
+    text = riders.render(
+        "msa-hybrid",
+        provider=provider,
+        client=client,
+        fixed_usd_per_period=f"{fixed:.2f}",
+        cogs_per_period=f"{cogs:.0f}",
+        term=f"{term} months",
+        fix_usd=str(f["fix_usd"]),
+        estimated_total_usd=f"{est:.2f}",
+        fix_source=(
+            f"{f['source']} ({f['date']}, mode {f['mode']}, "
+            f"tier {f.get('tier', 'venue-quote')})"
+        ),
+        qualification=f.get("qualification", "unknown"),
+        receipts=f.get("receipts", 0),
+        basis_warning=warning,
+    )
     return {"rider_text": text, "estimated_month1_usd": round(est, 2),
             "fix_used": f["fix_usd"], "fix_basis_unmet": unmet,
             "disclaimer": "template for negotiation; not legal advice"}
+
+
+def t_generate_rider(args):
+    name = args["template"]
+    values = args.get("values") or {}
+    return {
+        "template": name,
+        "rider_text": riders.render(name, values),
+        "disclaimer": "template for negotiation; not legal advice",
+    }
+
+
+def t_draft_obligation(args):
+    parties = args.get("parties") or {
+        "provider": {"name": args.get("provider", "Provider")},
+        "client": {"name": args.get("client", "Client")},
+    }
+    legs = args.get("legs")
+    if legs is None:
+        legs = []
+        if args.get("fixed_usd_per_period") is not None:
+            legs.append({"kind": "fixed", "USD": str(args["fixed_usd_per_period"])})
+        if args.get("cogs_per_period") is not None:
+            legs.append({
+                "kind": "indexed",
+                "cog": "COG-1",
+                "quantity": str(args["cogs_per_period"]),
+            })
+    term = args.get("term") or {
+        "start": args["start"],
+        "end": args["end"],
+        "period": args.get("period", "month"),
+    }
+    document = cdo_contract.draft_obligation(
+        parties=parties,
+        legs=legs,
+        term=term,
+        unit=args.get("unit"),
+        settlement=args.get("settlement"),
+        versioning=args.get("versioning"),
+        metering=args.get("metering"),
+    )
+    return document
+
+
+def _tool_series(args):
+    if args.get("series") is not None:
+        return args["series"]
+    return load_series(
+        args.get("archive_dir", str(ROOT / "fixer" / "archive")),
+        verify_sigs=bool(args.get("verify_sigs", True)),
+    )
+
+
+def t_settlement_fix(args):
+    return resolve_settlement_fix(
+        _tool_series(args),
+        args["period_end"],
+        min_tier=args.get("min_tier", "venue-quote"),
+        publishers=args.get("publishers"),
+        counterparty_ack=bool(args.get("counterparty_ack", False)),
+    )
+
+
+def t_settle_invoice(args):
+    document = settle_cdo_invoice(
+        args["cdo"],
+        args["period"],
+        _tool_series(args),
+        prior_invoices=args.get("prior_invoices"),
+    )
+    return document
+
+
+def t_verify_invoice(args):
+    return verify_cog_invoice(
+        args["invoice"],
+        args.get("archive_dir", str(ROOT / "fixer" / "archive")),
+        invoice_allowed_signers=args.get("allowed_signers"),
+    )
 
 
 TOOLS = {
@@ -241,6 +361,68 @@ TOOLS = {
             "cogs_per_month": {"type": "number"},
             "term_months": {"type": "integer"},
         }, "required": ["cogs_per_month"]},
+    },
+    "generate_rider": {
+        "fn": t_generate_rider,
+        "description": "Render one of the five COG contracting riders from reviewable Markdown data.",
+        "schema": {"type": "object", "properties": {
+            "template": {"type": "string", "enum": list(riders.NAMES)},
+            "values": {"type": "object"},
+        }, "required": ["template"]},
+    },
+    "draft_obligation": {
+        "fn": t_draft_obligation,
+        "description": "Draft and schema-validate a canonical Cog-Denominated Obligation (CDO).",
+        "schema": {"type": "object", "properties": {
+            "parties": {"type": "object"},
+            "provider": {"type": "string"},
+            "client": {"type": "string"},
+            "legs": {"type": "array"},
+            "fixed_usd_per_period": {"type": ["number", "string"]},
+            "cogs_per_period": {"type": ["number", "string"]},
+            "term": {"type": "object"},
+            "start": {"type": "string"},
+            "end": {"type": "string"},
+            "period": {"type": "string"},
+            "unit": {"type": "object"},
+            "settlement": {"type": "object"},
+            "versioning": {"type": "object"},
+            "metering": {"type": "object"},
+        }, "required": []},
+    },
+    "settlement_fix": {
+        "fn": t_settlement_fix,
+        "description": "Resolve the labeled COG-SETTLE-1 period-end fix from local archive evidence.",
+        "schema": {"type": "object", "properties": {
+            "period_end": {"type": "string", "description": "UTC service-period end, YYYY-MM-DD"},
+            "min_tier": {"type": "string"},
+            "publishers": {"type": "array", "items": {"type": "string"}},
+            "counterparty_ack": {"type": "boolean"},
+            "series": {"type": "array"},
+            "archive_dir": {"type": "string"},
+            "verify_sigs": {"type": "boolean"},
+        }, "required": ["period_end"]},
+    },
+    "settle_invoice": {
+        "fn": t_settle_invoice,
+        "description": "Purely recompute an unsigned COG invoice from a CDO and signed local series.",
+        "schema": {"type": "object", "properties": {
+            "cdo": {"type": "object"},
+            "period": {"type": ["object", "string"]},
+            "series": {"type": "array"},
+            "archive_dir": {"type": "string"},
+            "verify_sigs": {"type": "boolean"},
+            "prior_invoices": {"type": "array"},
+        }, "required": ["cdo", "period"]},
+    },
+    "verify_invoice": {
+        "fn": t_verify_invoice,
+        "description": "Verify a COG invoice's canonical id, Decimal arithmetic, and archive evidence.",
+        "schema": {"type": "object", "properties": {
+            "invoice": {"type": ["object", "string"]},
+            "archive_dir": {"type": "string"},
+            "allowed_signers": {"type": "string"},
+        }, "required": ["invoice"]},
     },
 }
 

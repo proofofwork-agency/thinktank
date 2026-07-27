@@ -1,0 +1,15 @@
+{
+  "provider": "Epoch AI",
+  "license": "CC-BY (asserted on Epoch AI data page; see snapshot/SOURCE.md)",
+  "bench": "MMLU",
+  "threshold_model": "GPT-4-0314",
+  "lookup": "step-function",
+  "snapshot_sha256": "1bee6aa928f0e66eb0328992f7e353277649252303117d21c48247cf664a2777",
+  "source_mix": "3:1 input/output",
+  "cog_target_mix": "4:1 input/output",
+  "latest_event": {
+    "date": "2025-02-05",
+    "model": "Gemini 2.0 Flash",
+    "usd_per_million_tokens": "0.175000"
+  }
+}

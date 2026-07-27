@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 ProofOfWork Agency (https://github.com/proofofwork-agency)
 """cogfix — reference implementation of the COG-1 fix.
 
 The cog: a capability-indexed unit of account for the intelligence economy.
@@ -30,6 +32,16 @@ from pathlib import Path
 DATA = json.loads((Path(__file__).parent / "data.json").read_text())
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+
+# COG-1's 4:1 reference mix (800k in / 200k out), defined once. fixerd aliases this and the
+# demo mirrors it; data.json states it in prose. A blend rule that drifts between call sites
+# is a unit that means different things in different places.
+BLEND_IN, BLEND_OUT = 0.8, 0.2
+
+
+def blend(input_usd_per_M: float, output_usd_per_M: float) -> float:
+    """COG-1 blended price per million tokens."""
+    return BLEND_IN * input_usd_per_M + BLEND_OUT * output_usd_per_M
 
 
 def month_index(ym: str) -> int:
@@ -160,10 +172,10 @@ def live_fix():
             continue
         pin = float(m["pricing"]["prompt"]) * 1e6
         pout = float(m["pricing"]["completion"]) * 1e6
-        blend = 0.8 * pin + 0.2 * pout
-        print(f"{mid:<36}{pin:>9.3f}{pout:>9.3f}{blend:>9.4f}")
-        if best is None or blend < best[1]:
-            best = (mid, blend)
+        b = blend(pin, pout)
+        print(f"{mid:<36}{pin:>9.3f}{pout:>9.3f}{b:>9.4f}")
+        if best is None or b < best[1]:
+            best = (mid, b)
     if best:
         print(f"\n  PROVISIONAL LIVE FIX: 1 cog = ${best[1]:.4f}   ({best[0]}, posted price, unreceipted)")
     else:

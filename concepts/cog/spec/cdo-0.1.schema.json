@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cogunit.org/spec/cdo-0.1.schema.json",
+  "title": "Cog-Denominated Obligation 0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cdo_version",
+    "obligation_id",
+    "parties",
+    "unit",
+    "legs",
+    "term",
+    "settlement",
+    "versioning",
+    "signatures"
+  ],
+  "properties": {
+    "cdo_version": {"const": "0.1"},
+    "obligation_id": {
+      "type": "string",
+      "pattern": "^urn:cog:cdo:[0-9a-f]{64}$"
+    },
+    "parties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "client"],
+      "properties": {
+        "provider": {"$ref": "#/$defs/party"},
+        "client": {"$ref": "#/$defs/party"}
+      }
+    },
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basket", "spec_uri", "spec_sha256"],
+      "properties": {
+        "basket": {"type": "string", "minLength": 1},
+        "spec_uri": {"type": "string", "minLength": 1},
+        "spec_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "legs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "USD"],
+            "properties": {
+              "kind": {"const": "fixed"},
+              "USD": {"$ref": "#/$defs/decimal"}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "cog", "quantity"],
+            "properties": {
+              "kind": {"const": "indexed"},
+              "cog": {"const": "COG-1"},
+              "quantity": {"$ref": "#/$defs/decimal"}
+            }
+          }
+        ]
+      }
+    },
+    "term": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end", "period"],
+      "properties": {
+        "start": {"type": "string", "format": "date"},
+        "end": {"type": "string", "format": "date"},
+        "period": {"enum": ["day", "month", "quarter", "year"]}
+      }
+    },
+    "settlement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currency",
+        "fix_rule",
+        "publishers",
+        "multi_publisher_rule",
+        "min_tier",
+        "collar",
+        "rounding",
+        "rail"
+      ],
+      "properties": {
+        "currency": {"const": "USD"},
+        "fix_rule": {"const": "median-7d"},
+        "publishers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "multi_publisher_rule": {
+          "enum": ["priority-order", "median", "quorum-median"]
+        },
+        "min_tier": {
+          "enum": ["receipted-depth", "venue-quote", "venue-quote-live"]
+        },
+        "collar": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["floor", "ceiling", "period_change_cap_pct"],
+          "properties": {
+            "floor": {
+              "anyOf": [{"$ref": "#/$defs/decimal"}, {"type": "null"}]
+            },
+            "ceiling": {
+              "anyOf": [{"$ref": "#/$defs/decimal"}, {"type": "null"}]
+            },
+            "period_change_cap_pct": {
+              "anyOf": [{"$ref": "#/$defs/decimal"}, {"type": "null"}]
+            }
+          }
+        },
+        "rounding": {"const": "ROUND_HALF_UP"},
+        "rail": {"enum": ["invoice", "x402", "ap2", "other"]},
+        "counterparty_ack": {"type": "boolean"}
+      }
+    },
+    "versioning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["on_basket_retirement", "min_overlap_days"],
+      "properties": {
+        "on_basket_retirement": {"const": "chain_link"},
+        "min_overlap_days": {"type": "integer", "minimum": 180}
+      }
+    },
+    "metering": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "signatures": {
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  },
+  "$defs": {
+    "party": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "id": {"type": "string"}
+      }
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    }
+  }
+}

@@ -1,0 +1,77 @@
+The Cog
+Copyright 2026 ProofOfWork Agency (https://github.com/proofofwork-agency)
+
+A capability-indexed unit of account for the intelligence economy.
+
+This product includes software developed by ProofOfWork Agency as part of the
+ThinkTank concept lab (https://github.com/proofofwork-agency/thinktank).
+
+The COG-1 basket, the reference workload, the depth protocol, and the
+settlement mechanics (the Settlement Fix, the fix-unavailability ladder,
+chain-linking on basket change, and the Cog-Denominated Obligation) originated
+with ProofOfWork Agency.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this software except in compliance with the License. You may obtain a copy of
+the License in the LICENSE file distributed with this work, or at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+ATTRIBUTION REQUIREMENT
+-----------------------
+Section 4(d) of the Apache License requires that any Derivative Works you
+distribute carry a readable copy of the attribution notices contained in this
+NOTICE file. In plain terms:
+
+  You may use, modify, redistribute, and build commercial products on this
+  software, including in closed-source works. You may operate your own fixer,
+  publish your own fix, and compete with ours. If you do, you must retain the
+  above ProofOfWork Agency copyright line and this attribution, in the source,
+  the documentation, or another customary place where third-party notices for
+  your product appear.
+
+You are not required to make your own changes public, ask permission, or pay
+anything. You are required to keep the credit.
+
+You may add your own attribution notices alongside this one, provided they do
+not modify or obscure it.
+
+WHY PERMISSIVE
+--------------
+This license is chosen to match what the specification argues. A unit of
+account that others cannot freely adopt, fork, and independently publish is not
+a unit of account — it is a product. WHITEPAPER.md holds that any party should
+be able to become a fixer and any party should be able to audit one; the
+license has to actually permit that. Attribution is the only thing withheld.
+
+DOCUMENTATION AND SPECIFICATION
+-------------------------------
+The prose and normative specification — WHITEPAPER.md, README.md, and spec/ —
+are licensed separately under Creative Commons Attribution 4.0 International
+(CC BY 4.0). See LICENSE-DOCS. Attribution to ProofOfWork Agency is required
+for reuse or adaptation of that material, including in derivative
+specifications.
+
+TRADEMARK
+---------
+This license does not grant permission to use the trade names, trademarks, or
+product names of ProofOfWork Agency, except as required for reasonable and
+customary use in describing the origin of the work and reproducing this NOTICE.
+
+"COG-1" names a specific frozen basket defined in spec/COG-1.md. You may
+implement COG-1 and publish a COG-1 fix. Publishing a fix under the COG-1 name
+that does not follow that specification misdescribes the origin of the work.
+
+THIRD-PARTY MATERIAL
+--------------------
+This product includes data derived from:
+
+  Epoch AI — LLM inference price trends and the llm-benchmark-efficiency
+      dataset (https://epoch.ai), used under Creative Commons Attribution
+      4.0 International (CC BY 4.0) as asserted on Epoch AI's data pages.
+      Used as the external capability anchor. See anchor/snapshot/SOURCE.md
+      for the exact snapshot, retrieval date, and provenance notes.
+
+No other third-party code is vendored. The implementation is Python standard
+library only; ssh-keygen (OpenSSH) is invoked as an external binary for
+signature generation and verification and is not distributed with this work.

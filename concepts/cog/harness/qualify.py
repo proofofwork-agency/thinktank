@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 ProofOfWork Agency (https://github.com/proofofwork-agency)
 """qualify — the COG-1 qualifying exam. Administers the capability keuring.
 
 Replaces fixerd's *assumed* allowlist with an *administered* one: each candidate
@@ -37,8 +39,10 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "cogfix"))
 import cogfix  # noqa: E402
+from contracts.canon import canon_sha256  # noqa: E402
 
 OPENROUTER = "https://openrouter.ai/api/v1"
 EXAM = json.loads((HERE / "exam_core.json").read_text())
@@ -52,10 +56,13 @@ FINGERPRINT_META = ("name", "version", "threshold", "answer_instruction", "max_a
 
 def fingerprint():
     """sha256 over the canonical exam — the items AND the meta that defines the gate."""
-    canon = json.dumps({"items": EXAM["items"],
-                        "meta": {k: EXAM["meta"][k] for k in FINGERPRINT_META}},
-                       sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canon.encode()).hexdigest()
+    return canon_sha256(
+        {
+            "items": EXAM["items"],
+            "meta": {k: EXAM["meta"][k] for k in FINGERPRINT_META},
+        },
+        exclude_keys=(),
+    )
 
 
 def normalize(s: str) -> str:

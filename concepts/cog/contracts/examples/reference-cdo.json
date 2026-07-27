@@ -1,0 +1,73 @@
+{
+  "cdo_version": "0.1",
+  "obligation_id": "urn:cog:cdo:14e8c009dee1f2cf1fe0f123a4f025bdfdb5fa94368c19ff0f985091e0b7e432",
+  "parties": {
+    "provider": {
+      "name": "Demo Compute Provider",
+      "id": "demo:provider"
+    },
+    "client": {
+      "name": "Demo AI Buyer",
+      "id": "demo:client"
+    }
+  },
+  "unit": {
+    "basket": "COG-1",
+    "spec_uri": "spec/COG-1.md",
+    "spec_sha256": "c496199c015463c2979dad298b6054c1a07a3c64acea6efaec68bad637649fb2"
+  },
+  "legs": [
+    {
+      "kind": "fixed",
+      "USD": "3000.00"
+    },
+    {
+      "kind": "indexed",
+      "cog": "COG-1",
+      "quantity": "1000"
+    }
+  ],
+  "term": {
+    "start": "2026-06-01",
+    "end": "2027-05-31",
+    "period": "month"
+  },
+  "settlement": {
+    "currency": "USD",
+    "fix_rule": "median-7d",
+    "publishers": [
+      "proofofwork-agency/cog"
+    ],
+    "multi_publisher_rule": "priority-order",
+    "min_tier": "venue-quote",
+    "collar": {
+      "floor": "0.050000",
+      "ceiling": "1.000000",
+      "period_change_cap_pct": null
+    },
+    "rounding": "ROUND_HALF_UP",
+    "rail": "invoice"
+  },
+  "versioning": {
+    "on_basket_retirement": "chain_link",
+    "min_overlap_days": 180
+  },
+  "signatures": [
+    {
+      "role": "provider",
+      "identity": "demo:provider",
+      "mechanism": "ssh-keygen-Y",
+      "namespace": "cog-cdo",
+      "file": "reference-cdo.provider.sig",
+      "public_key_file": "demo-provider.pub"
+    },
+    {
+      "role": "client",
+      "identity": "demo:client",
+      "mechanism": "ssh-keygen-Y",
+      "namespace": "cog-cdo",
+      "file": "reference-cdo.client.sig",
+      "public_key_file": "demo-client.pub"
+    }
+  ]
+}

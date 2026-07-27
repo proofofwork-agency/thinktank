@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 ProofOfWork Agency (https://github.com/proofofwork-agency)
 """fixerd — the COG-1 fixer daemon. Publishes the daily price of intelligence.
 
 Phase 1 of WHITEPAPER.md: one fixer, methodology open, receipts published,
@@ -34,6 +36,7 @@ Output:
 
 import hashlib
 import json
+import math
 import os
 import statistics
 import subprocess
@@ -43,13 +46,18 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).parent
+ROOT = HERE.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE.parent / "cogfix"))
 sys.path.insert(0, str(HERE.parent / "harness"))
 import cogfix  # noqa: E402  (DATA, allowlist, blend rule)
 import qualify  # noqa: E402  (exam fingerprint for qualification validation)
+from anchor import anchor_at, divergence, normalize_blend  # noqa: E402
 
 OPENROUTER = "https://openrouter.ai/api/v1"
-BLEND = lambda pin, pout: 0.8 * pin + 0.2 * pout  # noqa: E731 — COG-1 4:1 blend
+BLEND = cogfix.blend
+MIN_RESOLVED_FRACTION = 0.80
+SIGNING_NAMESPACES = ("cogfix", "cog-cdo", "cog-invoice")
 EST_PROMPT_TOKENS = 200
 REFERENCE_PROMPT = (
     "You are executing one unit of the COG-1 reference workload. "
@@ -95,8 +103,14 @@ def posted_quotes(models, ids=None):
         m = models.get(mid)
         if not m:
             continue
-        pin = float(m["pricing"]["prompt"]) * 1e6
-        pout = float(m["pricing"]["completion"]) * 1e6
+        try:
+            pin = float(m["pricing"]["prompt"]) * 1e6
+            pout = float(m["pricing"]["completion"]) * 1e6
+            if not math.isfinite(pin) or not math.isfinite(pout) or pin < 0 or pout < 0:
+                raise ValueError("prices must be finite and non-negative")
+        except (KeyError, TypeError, ValueError) as exc:
+            print(f"  FEED INVALID: {mid}: {exc}", file=sys.stderr)
+            continue
         rows.append({"model": mid, "in_usd_per_M": round(pin, 6), "out_usd_per_M": round(pout, 6),
                      "blended_usd_per_M": round(BLEND(pin, pout), 6)})
     return sorted(rows, key=lambda r: r["blended_usd_per_M"])
@@ -182,8 +196,10 @@ def buy_receipts(candidates, api_key, buys, max_tokens, max_spend):
     return receipts, spent
 
 
-def _allowed_signers_trusts(allowed_signers: Path, public_key: str) -> bool:
-    """Return whether the existing trust file authorizes our key as ``cogfix``."""
+def _allowed_signers_trusts(
+    allowed_signers: Path, public_key: str, principal: str = "cogfix"
+) -> bool:
+    """Return whether the trust file authorizes ``principal`` with our key."""
     key_type, key_blob = public_key.split()[:2]
     for raw_line in allowed_signers.read_text().splitlines():
         line = raw_line.strip()
@@ -191,42 +207,55 @@ def _allowed_signers_trusts(allowed_signers: Path, public_key: str) -> bool:
             continue
         fields = line.split()
         principals = fields[0].split(",")
-        if "cogfix" not in principals:
+        if principal not in principals:
             continue
         if any(fields[i:i + 2] == [key_type, key_blob] for i in range(1, len(fields) - 1)):
             return True
     return False
 
 
-def sign(payload_path: Path):
-    """Sign and verify a payload with the fixer's ed25519 SSH key."""
-    key = HERE / "keys" / "cogfix_ed25519"
+def sign(
+    payload_path: Path,
+    namespace: str = "cogfix",
+    key: Path | None = None,
+    allowed_signers: Path | None = None,
+):
+    """Sign and verify a payload with the shared ed25519 SSH signer."""
+    payload_path = Path(payload_path)
+    key = Path(key) if key is not None else HERE / "keys" / "cogfix_ed25519"
     signature = Path(f"{payload_path}.sig")
-    allowed_signers = HERE / "allowed_signers"
+    allowed_signers = (
+        Path(allowed_signers) if allowed_signers is not None else HERE / "allowed_signers"
+    )
     try:
+        if namespace not in SIGNING_NAMESPACES:
+            raise ValueError(f"unsupported signing namespace: {namespace}")
         # ssh-keygen otherwise prompts before overwriting and can return success
         # without changing the signature when its stdin is closed.
         signature.unlink(missing_ok=True)
         if not key.exists():
             key.parent.mkdir(parents=True, exist_ok=True)
             subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-f", str(key), "-N", "",
-                            "-C", "cogfix-fixer"], check=True, capture_output=True,
+                            "-C", "cog-shared-signer"], check=True, capture_output=True,
                            stdin=subprocess.DEVNULL)
-        public_key = key.with_suffix(".pub").read_text().strip()
+        public_key = Path(f"{key}.pub").read_text().strip()
         if allowed_signers.exists():
-            if not _allowed_signers_trusts(allowed_signers, public_key):
-                print("  SIGNING REFUSED: allowed_signers does not trust the current fixer key",
+            if not _allowed_signers_trusts(allowed_signers, public_key, namespace):
+                print(f"  SIGNING REFUSED: allowed_signers does not trust the current key "
+                      f"for principal {namespace!r}",
                       file=sys.stderr)
                 return False
         else:
             key_type, key_blob = public_key.split()[:2]
-            allowed_signers.write_text(f"cogfix {key_type} {key_blob}\n")
+            allowed_signers.parent.mkdir(parents=True, exist_ok=True)
+            principals = ",".join(SIGNING_NAMESPACES)
+            allowed_signers.write_text(f"{principals} {key_type} {key_blob}\n")
 
-        subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "cogfix",
+        subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", namespace,
                         str(payload_path)], check=True, capture_output=True,
                        stdin=subprocess.DEVNULL)
         subprocess.run(["ssh-keygen", "-Y", "verify", "-f", str(allowed_signers),
-                        "-I", "cogfix", "-n", "cogfix", "-s", str(signature)],
+                        "-I", namespace, "-n", namespace, "-s", str(signature)],
                        input=payload_path.read_bytes(), check=True, capture_output=True)
         return True
     except Exception as e:  # signing is best-effort; the fix still publishes
@@ -247,6 +276,27 @@ def _write_immutable(path: Path, payload: bytes):
     path.write_bytes(payload)
 
 
+def local_anchor_check(local_fix, today: str):
+    """Compare against the vendored Epoch snapshot without touching the network."""
+    event = anchor_at(today)
+    normalized = normalize_blend(event)
+    return {
+        "publisher": "Epoch AI",
+        "source": "anchor/snapshot/epoch_llm_inference_prices.csv (CC-BY)",
+        "event_date": event["date"],
+        "model": event["model"],
+        "lookup": event["lookup"],
+        "source_usd_per_million_tokens": event["usd_per_million_tokens"],
+        "ratio_adjusted_usd_per_cog": normalized["usd_per_cog"],
+        "normalized": normalized,
+        "divergence": divergence(local_fix, normalized),
+        "settlement_use": (
+            "precommitted external anchor only; provisional, acknowledgement-gated, "
+            "and subject to true-up"
+        ),
+    }
+
+
 def main(argv):
     receipt_mode = "--receipt" in argv
     arg = lambda flag, default: (argv[argv.index(flag) + 1] if flag in argv else default)  # noqa: E731
@@ -258,7 +308,23 @@ def main(argv):
     print(f"fixerd — COG-1 fix for {today} ({'receipt-lite' if receipt_mode else 'quote'} mode)")
 
     qualified_ids, qualification = load_qualification(today)
-    quotes = posted_quotes(fetch_models(), ids=qualified_ids)
+    requested_ids = qualified_ids or cogfix.DATA["live_fix_allowlist"]
+    model_feed = fetch_models()
+    quotes = posted_quotes(model_feed, ids=qualified_ids)
+    resolved_ids = {row["model"] for row in quotes}
+    missing_ids = [model_id for model_id in requested_ids if model_id not in resolved_ids]
+    # An empty feed is used by the offline main() regression with posted_quotes
+    # patched to deterministic rows. A real, non-empty provider response must
+    # meet the configured allowlist coverage floor.
+    if model_feed:
+        for model_id in missing_ids:
+            print(f"  FEED MISS: allowlisted model did not resolve: {model_id}", file=sys.stderr)
+        minimum = max(3, math.ceil(len(requested_ids) * MIN_RESOLVED_FRACTION))
+        if len(resolved_ids) < minimum:
+            sys.exit(
+                f"only {len(resolved_ids)}/{len(requested_ids)} allowlisted models resolved "
+                f"(minimum {minimum}); refusing to publish"
+            )
     if len(quotes) < 3:
         sys.exit("fewer than 3 qualifying models in feed; refusing to fix")
     candidates = quotes[:3]
@@ -287,6 +353,7 @@ def main(argv):
         "basket": "COG-1 (draft)",
         "date": today,
         "mode": mode,
+        "tier": "receipted-depth" if mode == "receipt-lite" else "venue-quote",
         "fix_usd": round(fix, 6),
         "floor_usd": quotes[0]["blended_usd_per_M"],
         "method": method,
@@ -297,7 +364,14 @@ def main(argv):
         "receipts": receipts,
         "spend_usd_est": round(spent, 6),
         "publisher": "proofofwork-agency/cog fixerd v0.1",
-        "spec": "WHITEPAPER.md (COG-1 draft 0.1)",
+        "spec": "spec/COG-1.md",
+        "provenance": {
+            "feed": "OpenRouter model catalogue",
+            "resolved_allowlisted": len(resolved_ids),
+            "requested_allowlisted": len(requested_ids),
+            "missing_allowlisted": missing_ids,
+        },
+        "anchor_check": local_anchor_check(fix, today),
     }
 
     payload_bytes = (json.dumps(payload, indent=2) + "\n").encode()

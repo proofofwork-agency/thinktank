@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cogunit.org/spec/invoice-0.1.schema.json",
+  "title": "COG Settlement Invoice 0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "invoice_version",
+    "invoice_id",
+    "obligation_id",
+    "period",
+    "unit",
+    "settlement",
+    "lines",
+    "subtotal_usd",
+    "amount_due_usd",
+    "archive_evidence",
+    "recompute",
+    "signatures"
+  ],
+  "properties": {
+    "invoice_version": {"const": "0.1"},
+    "invoice_id": {
+      "type": "string",
+      "pattern": "^urn:cog:invoice:[0-9a-f]{64}$"
+    },
+    "obligation_id": {
+      "type": "string",
+      "pattern": "^urn:cog:cdo:[0-9a-f]{64}$"
+    },
+    "period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"type": "string", "format": "date"},
+        "end": {"type": "string", "format": "date"}
+      }
+    },
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basket", "spec_sha256"],
+      "properties": {
+        "basket": {"type": "string"},
+        "spec_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "settlement": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "usd_per_cog",
+        "status",
+        "provisional",
+        "payable",
+        "true_up_required",
+        "ack_required",
+        "window",
+        "fixes_used",
+        "n_used",
+        "n_expected",
+        "min_tier_required"
+      ],
+      "properties": {
+        "usd_per_cog": {"$ref": "#/$defs/decimal6"},
+        "status": {
+          "enum": [
+            "normal",
+            "degraded-window",
+            "carry-forward",
+            "anchor-fallback",
+            "converted"
+          ]
+        },
+        "provisional": {"type": "boolean"},
+        "payable": {"type": "boolean"},
+        "true_up_required": {"type": "boolean"},
+        "ack_required": {"type": "boolean"},
+        "window": {"type": "object"},
+        "fixes_used": {"type": "array"},
+        "n_used": {"type": "integer", "minimum": 0},
+        "n_expected": {"type": "integer", "minimum": 1},
+        "min_tier_required": {"type": "string"}
+      }
+    },
+    "lines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["kind", "amount_usd"],
+        "properties": {
+          "kind": {"enum": ["fixed", "indexed", "true_up", "conversion"]},
+          "amount_usd": {"$ref": "#/$defs/decimal2"}
+        }
+      }
+    },
+    "subtotal_usd": {"$ref": "#/$defs/decimal2"},
+    "amount_due_usd": {
+      "anyOf": [{"$ref": "#/$defs/decimal2"}, {"type": "null"}]
+    },
+    "archive_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["archive_sha256", "sig_ok"],
+        "properties": {
+          "date": {"type": "string", "format": "date"},
+          "archive_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "sig_ok": {"type": "boolean"},
+          "publisher": {"type": "string"},
+          "tier": {"type": "string"}
+        }
+      }
+    },
+    "recompute": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signatures": {
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  },
+  "$defs": {
+    "decimal2": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)\\.[0-9]{2}$"
+    },
+    "decimal6": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)\\.[0-9]{6}$"
+    }
+  }
+}
