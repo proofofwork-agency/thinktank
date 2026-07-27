@@ -20,6 +20,10 @@ economy has no stable unit to write standing obligations in.
 > frozen capability basket (GPT-4-class tier) — a volume-weighted median of receipted,
 > sized purchases, so a loss-leader sip can't set the fix.
 
+*That is the unit as specified. What this repo has actually published so far is a posted-price
+quote with `receipts: []` — the fix payload and every MCP response label themselves accordingly
+rather than borrowing the definition's confidence. See Status & honesty.*
+
 Write the contract in cogs; settle in any currency at the daily published fix. Chile has run
 its entire mortgage market this way since 1967 (the UF) — against *inflation of money*. The
 cog is the same machine pointed at *deflation of intelligence*.
@@ -55,6 +59,12 @@ what deflates): same deal at $3,000 fixed + 1,000 cogs still saves the buyer **$
   The whitepaper argues; the spec binds.
 - [`fixer/PROVENANCE.md`](fixer/PROVENANCE.md) — what the published number does and does not
   measure, including the impurities.
+- [`anchor/snapshot/SOURCE.md`](anchor/snapshot/SOURCE.md) — the vendored Epoch AI series we
+  anchor the capability tier against, with its retrieval date, licence provenance, and the
+  blend-mismatch caveat (Epoch uses its own input/output ratio, so the comparison publishes an
+  uncertainty band rather than pretending at an exact match).
+- [`contracts/examples/`](contracts/examples/) — a worked, signed, self-verifying obligation and
+  invoice. The fastest way to see what "denominate a contract in cogs" actually means.
 
 ## Run
 
@@ -78,7 +88,7 @@ python3 -m http.server 8483
 
 Zero dependencies (Python stdlib + one self-contained HTML file).
 
-## The Fixer — Phase 1, the published price of intelligence
+## The Fixer — the settlement source we operate
 
 ```sh
 # free quote mode: publishes fixer/fix.json + dated archive, ssh-signed
@@ -101,9 +111,17 @@ ssh-keygen -Y verify -f fixer/allowed_signers -I cogfix -n cogfix \
 ```
 
 First fix published 2026-06-09 (UTC): **1 cog = $0.144** (quote mode — median of the 3
-cheapest qualifying posted prices; floor $0.118). Receipt mode implements the same plumbing
-with real buys; the full COG-1 depth gate (K=5 × 10M tokens) is the same code with bigger
-numbers.
+cheapest qualifying posted prices; floor $0.118).
+
+**The depth gate is not just "bigger numbers" — an earlier draft said so and was wrong.** A
+1M-token buy is ~20 requests, not one, and getting there honestly needs four things this repo
+does not yet do at spec size: fresh per-request filler (repeat the same input and providers
+bill it cached at ~10%, so the fix measures a price nobody pays and proves no capacity),
+endpoint pinning so the artifact that sat the exam is the one selling tokens, commit-reveal
+paraphrase rotation so a fixed prompt can't be pattern-matched and special-cased, and a
+persistent spend ledger — a per-run cap does not bound a daily cron. Costed at current prices,
+K=5 × 10M is roughly $9/day sourcing the cheapest qualifying tier and ~$60/day diversified
+across the major labs. See WHITEPAPER §6.
 
 **Trust-anchor caveat.** `fixer/allowed_signers` is written once, at key bootstrap, and is
 never rewritten by a later run — but it still ships in the same checkout as the signature it
@@ -124,13 +142,22 @@ OPENROUTER_API_KEY=... python3 harness/qualify.py --max-spend-usd 0.25
 ```
 
 The exam (`harness/exam_core.json`, **COG1-CORE-v0**, 40 auto-gradable items, threshold
-80%) has a frozen sha256 fingerprint published with every result. A real run writes
-`fixer/qualified.json`; while fresh (≤ 7 days) **fixerd gates the fix on it** and the
-published fix says `"basis": "exam-qualified"` — otherwise it falls back to the static
-allowlist and says so. Every published fix declares what its qualification rests on.
-v0 honesty: the core is a basic capability floor (catches junk/broken/mislabeled models);
-tier calibration against known models is pending, and the private rotating audit set
-(contamination detection, WHITEPAPER §5) is deliberately not in this repo.
+80%) publishes a sha256 fingerprint with every result. **The fingerprint covers the items *and*
+the meta that defines the gate** — threshold, answer instruction, token budget, version —
+because hashing items alone let `meta.threshold` move 0.8 → 0.05 while every published fix
+still cited a byte-identical "frozen" exam. A real run writes `fixer/qualified.json`; while
+fresh (0 ≤ age ≤ 7 days, so a future-dated file is rejected too) **and only if its
+`exam_sha256` matches the exam actually on disk**, fixerd gates the fix on it and the published
+fix says `"basis": "exam-qualified"`. Otherwise it falls back to the static allowlist and says
+which condition failed. Every published fix declares what its qualification rests on.
+
+v0 honesty: the core is a basic capability floor — it catches junk, broken, and mislabeled
+models, and it does **not** measure GPT-4-class capability, which is what the spec's threshold
+actually calls for. Tier calibration against known models is pending, a latent-ability (IRT)
+threshold would be the right shape rather than a raw percentage, and the private rotating audit
+set (contamination detection, WHITEPAPER §5) is deliberately not in this repo. The gap between
+"clears this quiz" and "is GPT-4-class" is the distance between concept and product, and it is
+not closed.
 
 Tests: `python3 -m unittest discover -s tests` — **69 tests, no network, stdlib only**: fix math,
 hybrid repricing, grading, exam integrity and fingerprint scope, spend caps, MCP protocol and
@@ -150,8 +177,15 @@ python3 contracts/settle.py --settle contracts/examples/reference-cdo.json --per
 
 # ...and check the vendor's arithmetic yourself, with no key material
 python3 contracts/settle.py --verify contracts/examples/reference-invoice.json \
-  --archive fixer/archive
+  --archive fixer/archive --allowed-signers contracts/examples/demo_allowed_signers
+# -> {"valid": true, "signature_ok": true, "errors": []}
 ```
+
+`--allowed-signers` is the trust anchor for the *invoice's* detached signature; omit it and
+verification correctly fails, because you have not told it whose signature to accept. The
+archive's own signatures are checked against `fixer/allowed_signers`, resolved next to the
+archive. Every invoice carries the exact command that verifies it in its `recompute` field —
+run that rather than retyping this one.
 
 The invoice carries the sha256 and signature verdict of **every archived fix it used**, the
 settlement status label, and its own recompute command. Flip one byte in one archived fix and

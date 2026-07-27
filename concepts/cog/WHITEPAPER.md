@@ -2,7 +2,13 @@
 
 ## A Capability-Indexed Unit of Account for the Intelligence Economy
 
-*Draft 0.2 — June 2026 — ProofOfWorks*
+*Draft 0.3 — July 2026 — ProofOfWorks*
+
+*Changes from 0.2: the novelty claim is narrowed (§7) after finding that capability-normalized
+price observation and receipt-verified indexing were already built by others; §2 is demoted from
+novelty to premise; §6 gains endpoint substitution as a documented, observed failure mode; the
+contracting layer moves ahead of index work in the roadmap. Licensed CC BY 4.0 — see
+LICENSE-DOCS.*
 
 ---
 
@@ -479,8 +485,15 @@ evidence.
 - **Phase 1 — The Fix, published** *(started 2026-06-09: first ssh-signed quote-mode fix,
   $0.144, via `fixer/fixerd.py`)*: daily COG-1 fix with execution receipts at a public URL;
   signed JSON + archive. One fixer (us), methodology open, anyone can verify or fork.
-  Remaining: receipts on, the qualifying harness (replace the assumed allowlist with a
-  daily administered capability exam), public hosting, 7-day median series.
+  **Partially done, and the honest accounting matters more than the checkmark.** Shipped: the
+  signing path now verifies what it just signed and refuses to report success otherwise (an
+  earlier build published unsigned fixes while printing "signed yes"); archives are signed and
+  immutable; the qualifying harness exists and its fingerprint covers the pass mark; the
+  fallback chain labels the evidence grade of every number it returns.
+  **Not done:** receipts. `receipts: []` is still the truth, the depth gate has never run at
+  spec size, and until it does the published number is a posted-price quote wearing the right
+  labels. Also outstanding: public hosting, the 7-day median series (the archive holds two
+  days), and endpoint pinning + fingerprinting in the buy path (§6).
 - **Phase 2 — The contracting layer** *(now the priority, ahead of index work)*: the
   Cog-Denominated Obligation; the Settlement Fix; the fix-unavailability ladder; chain-linking
   across a basket change; the self-verifying invoice; rider templates from enterprise MSA to
