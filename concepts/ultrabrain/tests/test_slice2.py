@@ -6,7 +6,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from ultrabrain.propose.llm import clean_expr, extract_code, prompt_for
-from ultrabrain.verify import CASVerifier, CodeTestVerifier, harden, CERTIFIED
+from ultrabrain.verify import ABSTAIN, CASVerifier, CERTIFIED, CodeTestVerifier, StructuredCodeVerifier, harden
 
 
 def _code_tasks():
@@ -59,14 +59,27 @@ def test_train_qlora_dry_run(tmp_path):
 
 
 def test_llm_execution_is_isolated_and_ledger_secret_required():
-    # Codex blockers for the real Qwen run: untrusted (llm) code execution must use the OS-isolated
-    # runner, and trace collection must refuse to write beliefs without a private ledger secret.
+    # Codex blockers for the real Qwen run: untrusted (llm) code execution must not run un-isolated,
+    # and trace collection must refuse to write beliefs without a private ledger secret.
     import run_verified_search as rvs
-    from ultrabrain.verify import run_tests_isolated
     task = _code_tasks()["is_even"]
-    assert rvs.verifier_for(task, isolated=True).runner is run_tests_isolated
-    assert rvs.verifier_for(task, isolated=False).runner is not run_tests_isolated
+    # A migrated task certifies through the parent-owned-oracle judge (which runs the candidate in a
+    # scrubbed child of its own). The TRUST PATH IS JUDGE-ONLY: a code task WITHOUT a judge spec
+    # ABSTAINS — it is never certified via the forgeable assert runner (Codex final review).
+    assert isinstance(rvs.verifier_for(task), StructuredCodeVerifier)
+    legacy = {k: v for k, v in task.items() if k != "judge"}
+    assert rvs.verifier_for(legacy).verify(legacy, task["gold"]).status == ABSTAIN
     assert rvs.run(["--proposer", "mock"]) == 2  # fails closed: no --ledger_secret / env, no --unsafe
+
+
+def test_eval_code_untrusted_fails_closed_without_unsafe():
+    # HOST CONTAINMENT (Codex final review): eval_code must NOT execute untrusted llm/fim output by
+    # default — rlimits are not a host jail. The gate fires before the proposer is built or run, so no
+    # candidate code executes; only --unsafe opts into throwaway diagnostics.
+    import eval_code
+    res = eval_code.run(["--proposer", "fim", "--tasks",
+                         os.path.join(ROOT, "tasks", "micro_fim.jsonl"), "--n", "1"])
+    assert res.get("error") == "untrusted_execution_requires_unsafe_or_host_jail"
 
 
 def test_cli_fail_closed_exit_codes(tmp_path):

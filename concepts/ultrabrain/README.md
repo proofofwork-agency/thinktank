@@ -25,17 +25,47 @@
 > - **Slice 2b — diffusion FIM proposer behind the gate, DONE + hardened.**
 >   `ultrabrain/propose/fim.py` wires the masked-diffusion denoiser in as a fill-in-the-middle
 >   proposer — the one role where diffusion beats same-scale AR (native infilling). `--proposer fim`
->   runs in all three CLIs, OS-isolated and fail-closed exactly like `llm` (a diffusion fill is
->   untrusted model output); the gate is unchanged. With the Shakespeare checkpoint it certifies
->   0/11 — the trust boundary holding *through* the diffusion head, not a bug. Code-fill capability is
->   one `train.py --corpus <code>` run away (RUNBOOK). Run: `python eval_code.py --proposer fim
->   --tasks tasks/micro_fim.jsonl`.
+>   runs in all three CLIs, and (like `llm`) is treated as untrusted model output. With the shipped
+>   **Shakespeare** checkpoint it certifies **0/11** — the trust boundary holding *through* the diffusion
+>   head, not a bug. A byte-level **code-corpus retrain** was then done (`data/code_corpus.txt` →
+>   `checkpoints/diffusion_code.pt`, non-destructive) plus a FIM fill-length sweep, moving it to
+>   **2/11** — but **in-sample / contaminated**: the corpus contains the exact eval golds, so this is a
+>   memorization smoke result, **not** held-out generalization (a held-out family/task split is still
+>   owed). The certified fills are genuine (they pass the original hardened suites too, per Codex),
+>   not channel forgeries. Run: `python eval_code.py --proposer fim --tasks tasks/micro_fim.jsonl
+>   --fim_checkpoint checkpoints/diffusion_code.pt --fim_tokenizer checkpoints/tokenizer_code.json --unsafe`.
 > - **Slice 3 — scientific zoo + decompose-then-verify orchestrator, DONE.**
 >   `ultrabrain/verify/scientific.py` + `ultrabrain/orchestrate.py` (`python ultrabrain/orchestrate.py`;
 >   the orchestrator isolates untrusted proposer output too). Eval/loop entry points: `eval_code.py`,
 >   `self_improve.py`.
-> - **Roadmap COMPLETE.** Slices 1, 2, 2b, 3 built + tested (`python -m pytest tests` → 87 passed) +
->   Codex- and workflow-reviewed; what remains is the real fine-tunes / code-training on your hardware.
+> - **Verdict-forgery: found, reworked, and honestly scoped (was: "no false-certification vector
+>   found" — that claim was FALSE and is withdrawn).** A Claude↔Codex adversarial pass found the
+>   assert-string runner exec'd the candidate in the SAME interpreter frame as the verdict state,
+>   letting it frame-walk and forge a `CERTIFIED` for failing code (3 exploits, working under OS
+>   isolation). Reworked to a **parent-owned-oracle** judge (`ultrabrain/verify/judge.py`, `judge_v1`):
+>   the candidate runs in a scrubbed child that returns only VALUES; the trusted parent holds the
+>   oracle and decides; a per-run **HMAC** authenticates the channel. This closes the original
+>   frame-walk forgery and post-exec/file tampering (an `execve`/`spawnv` survivor lacks the key).
+> - **KNOWN CRITICAL RESIDUAL (Codex-confirmed — not fixed here).** The worker that runs the candidate
+>   is the same process that signs, so same-address-space reflection (`string.Formatter().get_field`,
+>   `typing.evaluate_forward_ref` with `globals={}`, …) can still drive the worker to HMAC-sign forged
+>   values — a wrong `add` was reproduced certifying *through* the authenticated judge. Deny-listing
+>   gadgets is whack-a-mole (the class is open-ended). An outer container / separate uid / seccomp does
+>   **not** fix it either — it isolates the host, not candidate-from-signer *within* the worker. The
+>   ONLY sound fix is a **subordinate-jailed executor**: the candidate in its OWN process, the
+>   decider/signer OUTSIDE it, a value-only authenticated channel. That is **not built**. So the trust
+>   CLIs **fail closed** for untrusted proposers (`llm`/`fim`): they NEVER write the ledger/SFT (no env
+>   flag enables it — an earlier `ULTRABRAIN_OS_SANDBOX` attestation was itself unsound and removed);
+>   `--unsafe` runs diagnostics-only (no writes). `orchestrate` likewise writes no trusted ledger and
+>   flags results `trusted=false`. Certificates carry `os_boundary=false`, behavioral-on-cases only.
+>   The 3 original exploits are regressions; the residual is a strict-xfail documenting the limit.
+> - **The verified-trace loop is BLOCKED on that executor.** Certifying *real model* output into
+>   trusted training data — the project's core mechanism — cannot be done soundly in-process. It works
+>   today only with the zero-ML `mock` proposer (our own reference code). This is the gating next step.
+> - **Roadmap.** Slices 1, 2, 2b, 3 built + tested (`python -m pytest tests` → all green incl. the
+>   xfail residual) + Codex-reviewed. What remains: the real fine-tunes / code-training on your
+>   hardware, and — REQUIRED before trusting untrusted-proposer certificates — the OS capability
+>   boundary.
 >
 > Everything is local and tested (`python -m pytest tests`). The masked-diffusion LM described
 > below is a **research component** — now wired in behind the gate as the Slice 2b FIM proposer

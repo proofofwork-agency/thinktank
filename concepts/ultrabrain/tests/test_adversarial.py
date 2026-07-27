@@ -30,6 +30,9 @@ from ultrabrain.verify import (  # noqa: E402
     CERTIFIED,
     REJECTED,
     CASVerifier,
+    CodeTestVerifier,
+    Gate,
+    Ledger,
     cas_antiderivative,
     cas_equivalent,
     run_tests,
@@ -165,6 +168,98 @@ def test_stdout_forgery_does_not_forge_verdict():
     )
     for res in _both_runners(forge2, ["assert f() == 1"]):
         assert not res.ok and res.n_pass == 0, res
+
+
+# --------------------------------------------------------------------------------------------------
+# 4b. VERDICT FORGERY — the confirmed false-certification vectors (Claude+Codex adversarial review).
+#     A candidate that reaches ``sys`` can walk frames to the runner's live verdict state, or patch a
+#     shared module the runner calls, and forge a CERTIFIED verdict for blatantly wrong code — even
+#     under OS isolation (a LOGICAL escape, not a resource one, so rlimits are irrelevant). Each
+#     vector below must be CONTAINED: never certified, never ``ExecResult.ok``, and — end to end
+#     through a real Gate + HMAC Ledger — never written as a trusted belief.
+# --------------------------------------------------------------------------------------------------
+import tempfile  # noqa: E402
+
+# add() is blatantly wrong; these tests are impossible for it. If any vector "passes", it forged.
+_IMPOSSIBLE = ["assert add(1, 2) == 3", "assert add(0, 0) == 0", "assert add(-5, 5) == 0"]
+
+# (A) operator.attrgetter -> shared json module -> patch json.dump so the runner writes a forged
+#     verdict (attrgetter takes a STRING, evading the direct-.sys attribute ban and the dunder scan).
+_FORGE_ATTRGETTER_JSONDUMP = (
+    "import operator, dataclasses\n"
+    "def add(a, b):\n"
+    "    return 999999\n"
+    "_get = operator.attrgetter\n"
+    "_sys = _get('sys')(dataclasses)\n"
+    "_json = _get('modules')(_sys)['json']\n"
+    "_real = _get('dump')(_json)\n"
+    "def _forged(obj, fh, *a, **k):\n"
+    "    return _real({'load_error': None, 'results': "
+    "[{'i': 0, 'ok': True}, {'i': 1, 'ok': True}, {'i': 2, 'ok': True}]}, fh)\n"
+    "_json.dump = _forged\n"
+)
+
+# (B) assemble '__globals__' from non-dunder fragments (dodging the literal scan) + attrgetter +
+#     sys._getframe().f_back.f_locals to blank payload['tests'] and preload out['results'].
+_FORGE_FRAME_GLOBALS = (
+    "import operator, dataclasses\n"
+    "def add(a, b):\n"
+    "    return 999999\n"
+    "_g = '_' + '_' + 'globals' + '_' + '_'\n"
+    "_deco_globals = operator.attrgetter(_g)(dataclasses.dataclass)\n"
+    "_sys = _deco_globals['sys']\n"
+    "_f = _sys._getframe()\n"
+    "while _f is not None:\n"
+    "    L = _f.f_locals\n"
+    "    if isinstance(L.get('payload'), dict) and 'tests' in L.get('payload', {}):\n"
+    "        L['out']['results'] = [{'i': i, 'ok': True} for i in range(len(L['payload']['tests']))]\n"
+    "        L['payload']['tests'] = []\n"
+    "    _f = _f.f_back\n"
+)
+
+# (C) 'from dataclasses import sys' — ImportFrom validated only the module name, not the imported
+#     symbol — then the same frame-locals mutation.
+_FORGE_IMPORT_ALIAS = (
+    "from dataclasses import sys as s\n"
+    "def add(a, b):\n"
+    "    return 999999\n"
+    "_f = s._getframe()\n"
+    "while _f is not None:\n"
+    "    L = _f.f_locals\n"
+    "    if isinstance(L.get('payload'), dict) and 'tests' in L.get('payload', {}):\n"
+    "        L['out']['results'] = [{'i': i, 'ok': True} for i in range(len(L['payload']['tests']))]\n"
+    "        L['payload']['tests'] = []\n"
+    "    _f = _f.f_back\n"
+)
+
+_FORGERY_VECTORS = {
+    "attrgetter_jsondump": _FORGE_ATTRGETTER_JSONDUMP,
+    "frame_globals": _FORGE_FRAME_GLOBALS,
+    "import_alias_sys": _FORGE_IMPORT_ALIAS,
+}
+
+
+def test_verdict_forgery_vectors_never_certify():
+    # Every vector is a real, previously-working exploit. It must be contained through both runners;
+    # the AST gate now refuses it (defense in depth), but the load-bearing assertion is "never ok".
+    for name, src in _FORGERY_VECTORS.items():
+        assert policy_check(src) is not None, (name, "policy_check let a forgery vector through")
+        for res in _both_runners(src, _IMPOSSIBLE):
+            assert _is_contained(res), (name, res)
+            assert res.n_pass == 0, (name, res)
+
+
+def test_verdict_forgery_never_writes_ledger():
+    # End-to-end trust boundary: through the real Gate + a real HMAC Ledger, a forgery vector must
+    # leave ZERO certified beliefs (no false trusted training example: no evidence -> no belief).
+    for name, src in _FORGERY_VECTORS.items():
+        with tempfile.TemporaryDirectory() as d:
+            led = Ledger(os.path.join(d, "ledger.jsonl"), secret="adversarial-regression")
+            for runner in (run_tests, run_tests_isolated):
+                gate = Gate(CodeTestVerifier(_IMPOSSIBLE, timeout=5.0, runner=runner), led)
+                outcome = gate.judge({"id": f"forge-{name}"}, src)
+                assert not outcome.certified, (name, "FORGED CERTIFICATION")
+            assert led.count() == 0, (name, "a forged verdict was written to the ledger")
 
 
 # --------------------------------------------------------------------------------------------------

@@ -63,13 +63,43 @@ base + **our own** verifier generating **our own** verified-trace corpus.
 
 ## Slice roadmap
 
-**Status: COMPLETE.** Slices 1, 2, 2b, and 3 are built, tested (`python -m pytest tests -q` →
-87 passed), and adversarially reviewed by Codex + an 8-agent validation workflow (no
-false-certification vector found). The gate is the only trust anchor; every proposer (zero-ML mock,
-Qwen3-Coder-14B `llm`, masked-diffusion `fim`) is a demoted, untrusted, OS-isolated client of it.
-What remains is not code — it is the real fine-tunes / code-corpus training runs on YOUR hardware
-(one command each in the RUNBOOK); the pipeline is verified here end-to-end with zero-ML and a
-real-checkpoint soundness check (fim certifies 0/11, no false certs).
+**Status: built + hardened, with a corrected soundness story.** Slices 1, 2, 2b, and 3 are built and
+tested (`python -m pytest tests -q` → 98 passed). An earlier revision claimed "no false-certification
+vector found"; that claim was **FALSE and has been withdrawn**. A later Claude↔Codex adversarial pass
+**found and fixed** a real verdict-forgery vector: the assert-string runner exec'd the untrusted
+candidate in the SAME interpreter frame that held the verdict state, so a candidate that reached `sys`
+could frame-walk (or patch a shared module) and forge a `CERTIFIED` verdict for code whose tests
+actually failed (three independent exploits, working even under OS isolation — a logical, not a
+resource, escape).
+
+The rework (`ultrabrain/verify/judge.py`, `judge_v1`): code is certified by a **parent-owned-oracle**
+verifier. The candidate runs in a scrubbed child that returns only VALUES over a per-run **HMAC**-
+authenticated channel; the trusted parent holds the oracle and decides pass/fail. This closes the
+original frame-walk forgery on the assert runner, and — via the HMAC — post-exec/file tampering (an
+`execve`/`spawnv` survivor that lacks the run key cannot forge a valid MAC). Policy hardening
+(ImportFrom-name validation; banning `attrgetter`/frame-reflection attrs and the native-escape family)
++ the three exploits as regressions are best-effort defense in depth.
+
+**KNOWN CRITICAL RESIDUAL — NOT fixed here (Codex adversarial review).** The worker that runs the
+candidate is the SAME process that signs the response, so a same-address-space candidate can, via an
+unbounded set of stdlib reflection gadgets (`string.Formatter().get_field`,
+`typing.evaluate_forward_ref` with `globals={}`, `dataclasses._create_fn` where exposed, …), frame-walk
+into the worker and mutate the very `out` it then HMAC-signs. Codex reproduced a wrong `add` certifying
+**through** the authenticated judge. Deny-listing gadgets is whack-a-mole (the class is open-ended);
+the ONLY sound fix is to stop the candidate and the signer/oracle sharing an address space. An outer
+container / separate uid / seccomp does **not** achieve this — it isolates the host, not
+candidate-from-signer *within* the worker (Codex final review). What is required is a **subordinate-jailed
+executor**: the candidate in its OWN process, the decider/signer OUTSIDE it, a value-only authenticated
+channel. That is **not built**. Until it exists the trust CLIs **fail closed** for untrusted proposers
+(`llm`/`fim`): they NEVER write the ledger/SFT — no env flag enables it (an earlier `ULTRABRAIN_OS_SANDBOX`
+attestation was itself unsound and removed); `--unsafe` is diagnostics-only. `orchestrate` writes no
+trusted ledger and flags results `trusted=false`. The certificate is **behavioral-on-cases** with
+`os_boundary=False` in evidence, never a global-correctness or adversarial-soundness claim.
+
+**This blocks the core loop.** Certifying *real model* output into trusted verified-trace training data —
+the project's central mechanism — cannot be done soundly in-process; it works today only with the zero-ML
+`mock` proposer. What remains is: the subordinate-jailed executor (the gating prerequisite), then the real
+fine-tunes / code-corpus training on YOUR hardware, and a held-out task split for any writer-capability claim.
 
 - **Slice 1 — Verifier Gate / Zero-ML Falsification. DONE + hardened.** One model-agnostic gate
   (sandbox + candidate ledger + accept/reject) with two verifier adapters (code *hardened*, CAS

@@ -32,20 +32,59 @@ from dataclasses import dataclass, field
 
 ALLOWED_IMPORTS = {
     "math", "cmath", "itertools", "functools", "collections", "heapq", "bisect", "re",
-    "fractions", "decimal", "statistics", "typing", "dataclasses", "string", "operator",
+    "fractions", "decimal", "statistics", "typing", "dataclasses", "operator",
     "numbers", "copy", "array", "enum",
 }
+# NOTE (Codex adversarial review): this allow-list is DEFENSE IN DEPTH, not a security boundary.
+# Several of these modules expose reflection gadgets that reach arbitrary objects while hiding the
+# dangerous name inside a string (``string.Formatter().get_field`` — ``string`` is removed above
+# for exactly this reason — ``dataclasses._create_fn`` on interpreters that expose it, etc.). The
+# class is unbounded; a determined same-uid candidate can still reach reflection. Sound execution of
+# genuinely UNTRUSTED code REQUIRES the OS capability boundary in ``isolate.py`` (separate uid /
+# container / seccomp / no network), NOT this list. See judge.py for the scoped certificate.
 BANNED_CALLS = {
     "eval", "exec", "compile", "__import__", "open", "input", "breakpoint", "exit", "quit",
     "globals", "locals", "vars", "getattr", "setattr", "delattr", "dir",
+    # getattr-equivalents that take a STRING and so evade the dunder-string-literal scan
+    # (``operator.attrgetter("sys")(dataclasses)`` reached ``sys`` past every other guard).
+    "attrgetter", "methodcaller", "itemgetter",
+    # native-escape calls: replacing the process image (``os.execve``) or forking a survivor jumps
+    # OUT of every Python-level guard, so ban the family as bare names too (Codex adversarial review).
+    "execve", "execv", "execvp", "execvpe", "execl", "execlp", "execle", "execlpe",
+    "posix_spawn", "posix_spawnp", "spawnv", "spawnve", "spawnl", "spawnlp",
+    "fork", "forkpty", "system", "popen", "putenv", "abort",
 }
 # Attribute names that lead to escape — banned whether accessed or called. Closes
-# ``module.sys.modules["builtins"].open`` and friends (Codex review).
+# ``module.sys.modules["builtins"].open`` and friends (Codex review), plus the
+# frame-walk verdict-forgery class (``sys._getframe().f_back.f_locals`` reached the runner's
+# live ``payload``/``out`` and forged a CERTIFIED verdict — Claude+Codex adversarial review).
 BANNED_ATTRS = {
     "__globals__", "__builtins__", "__subclasses__", "__bases__", "__mro__", "__code__",
     "__class__", "__base__", "__dict__", "__loader__", "__import__", "__getattribute__",
     "sys", "modules", "builtins", "open", "eval", "exec", "compile", "system", "popen",
     "getattr", "setattr", "delattr", "fdopen", "spawn", "execv", "register",
+    # Frame / stack introspection — the route from a stray ``sys`` reference to the runner's
+    # own locals. Banning these severs the frame walk regardless of how ``sys`` was obtained.
+    "_getframe", "f_back", "f_locals", "f_globals", "f_builtins", "f_code", "f_trace",
+    "gi_frame", "cr_frame", "ag_frame", "tb_frame", "tb_next", "settrace", "setprofile",
+    "argv",
+    # getattr-equivalents, banned as attributes too (``operator.attrgetter`` is an Attribute).
+    "attrgetter", "methodcaller", "itemgetter",
+    # native-escape reach: the ``os`` module (re-exported as ``os``/``_os`` by several allowed
+    # modules, e.g. ``statistics.random._os``) and process-replacement/fork calls. Replacing the
+    # process image or forking a survivor jumps out of every Python guard, so ban the attribute
+    # path too (Codex adversarial review — ``random._os.execve`` / ``.spawnv`` / ``.fork``). The
+    # per-run response MAC is the structural backstop; this is defense in depth beneath it.
+    "os", "_os", "environ", "inspect", "ctypes", "_ctypes",
+    "execve", "execv", "execvp", "execvpe", "execl", "execlp", "execle", "execlpe",
+    "posix_spawn", "posix_spawnp", "spawnv", "spawnve", "spawnl", "spawnlp",
+    "fork", "forkpty", "putenv", "urandom", "_urandom", "_exit", "kill", "abort",
+    # string-taking getattr-equivalents that traverse to arbitrary objects while hiding the
+    # dangerous name inside an ordinary string (``string.Formatter().get_field("0.sys", ...)``),
+    # and codegen that execs arbitrary bodies (``dataclasses._create_fn``). Best-effort ONLY:
+    # this class is unbounded across the stdlib; it is NOT a security boundary (Codex review).
+    "get_field", "Formatter", "vformat", "format_field", "convert_field", "get_value",
+    "_create_fn", "_create_fn_",
 }
 
 
@@ -73,6 +112,13 @@ def policy_check(source: str) -> str | None:
         elif isinstance(node, ast.ImportFrom):
             if (node.module or "").split(".")[0] not in ALLOWED_IMPORTS:
                 return f"import-from not allowed: {node.module}"
+            # Validate the IMPORTED NAMES too, not just the module. ``from dataclasses import sys``
+            # passed this gate because only ``node.module`` ("dataclasses") was checked — it
+            # re-binds a dangerous module the module name never reveals (Claude+Codex review). Any
+            # imported symbol that is itself a banned attribute/call name is refused.
+            for alias in node.names:
+                if alias.name in BANNED_ATTRS or alias.name in BANNED_CALLS:
+                    return f"import-from name not allowed: {alias.name}"
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             if node.func.id in BANNED_CALLS:
                 return f"call not allowed: {node.func.id}"

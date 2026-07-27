@@ -15,8 +15,14 @@ HONEST NOTE: real training (step 2) needs a CUDA GPU (e.g. an RTX 5080) or a ren
 ``train_qlora`` exits non-zero on a non-CUDA host. So the default here is ``--dry_run``, which runs
 collect+eval everywhere and validates the training data/config without touching a GPU. With the
 mock proposer the policy does not actually change between rounds (it is zero-ML), so the dry-run
-trajectory measures loop plumbing, not learning; point ``--proposer llm`` at a served model and drop
-``--dry_run`` on a GPU box to measure real round-over-round improvement.
+trajectory measures loop plumbing, not learning.
+
+BLOCKED (Codex final review): collecting verified traces from a REAL model (``--proposer llm/fim``)
+now FAILS CLOSED — untrusted model output cannot be soundly certified into trusted training data by
+the in-process judge (the candidate shares the worker interpreter with the signer). The closed
+self-improvement loop is therefore blocked on the subordinate-jailed EXECUTOR (candidate in its own
+process, decider outside); only ``--proposer mock`` (our own reference code) collects today. Do not
+read this as a working real-model loop until that executor exists.
 
   python self_improve.py                                   # 1 dry round, mock proposer (safe anywhere)
   python self_improve.py --rounds 3 --n 8 --json

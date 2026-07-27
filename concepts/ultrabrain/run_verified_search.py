@@ -6,10 +6,12 @@ are written to the HMAC ledger AND to an SFT dataset (``data/verified_traces.jso
 This is how the weights get better without a frontier teacher: ``no evidence -> no clean training
 example`` (thoughts/22, 24).
 
-SECURITY (Codex review): ``--proposer llm`` executes UNTRUSTED model output, so code execution runs
-through the OS-isolated runner by default and FAILS CLOSED if isolation is unavailable; and because
-this path writes trusted beliefs, a private ledger secret is REQUIRED. ``--unsafe`` overrides both
-(dev only). The mock proposer runs only our own reference/distractor code, so it does not isolate.
+SECURITY (Codex review): ``--proposer llm/fim`` executes UNTRUSTED model output. The in-process judge
+is NOT adversarially sound at the same uid (a candidate can forge signed verdicts AND write host files
+via stdlib reflection), and rlimits are not a host jail — so untrusted proposers FAIL CLOSED here and
+NEVER write the ledger/SFT. ``--unsafe`` runs them for DIAGNOSTICS ONLY (no trusted writes). Only the
+mock proposer (our own reference code) writes trusted beliefs, and it requires a private ledger secret.
+Sound certification of real model output awaits the subordinate-jailed executor (see judge.py).
 
   python run_verified_search.py --proposer mock --ledger_secret dev    # zero-ML, tests the loop
   ULTRABRAIN_LEDGER_SECRET=$(openssl rand -hex 16) \
@@ -35,6 +37,7 @@ from ultrabrain.verify import (  # noqa: E402
     Gate,
     ISOLATION_AVAILABLE,
     Ledger,
+    StructuredCodeVerifier,
     harden,
     run_tests_isolated,
 )
@@ -58,10 +61,23 @@ def build_proposer(args):
 
 
 def verifier_for(task, isolated=False):
-    """CAS for cas tasks; hardened execution for code — OS-isolated when ``isolated`` (untrusted)."""
+    """Pick the certifier for a task on this TRUST path (it writes the ledger + SFT traces).
+
+    * cas -> airtight CAS (symbolic, not candidate-forgeable).
+    * code WITH a judge_v1 spec -> the parent-owned-oracle :class:`StructuredCodeVerifier`: the
+      SOUND certifier (the candidate runs in a scrubbed child that returns only VALUES; the trusted
+      parent decides). This removes the shared-interpreter verdict forgery (Claude+Codex fix). It
+      isolates its own worker, so ``isolated`` does not apply.
+    * code WITHOUT a judge spec -> the hardened assert runner as deny-list DEFENSE-IN-DEPTH only
+      (OS-isolated when untrusted). It is not adversarially sound; migrate the task to judge_v1.
+    """
     if task.get("kind") == "cas":
         return CASVerifier()
-    return CodeTestVerifier(harden(task), runner=run_tests_isolated if isolated else None)
+    # TRUST PATH IS JUDGE-ONLY (Codex final review): the legacy assert runner is a live false-cert
+    # authority (a candidate frame-mutates its in-interpreter verdict), so a code task WITHOUT a
+    # judge_v1 spec ABSTAINS here — it is never certified into the ledger/SFT via the assert runner.
+    # ``isolated`` no longer applies; the judge isolates its own worker.
+    return StructuredCodeVerifier()
 
 
 def run(argv=None):
@@ -81,19 +97,47 @@ def run(argv=None):
     ap.add_argument("--ledger", default=os.path.join(ROOT, "state", "verified_ledger.jsonl"))
     ap.add_argument("--ledger_secret", default=None, help="HMAC secret (else ULTRABRAIN_LEDGER_SECRET)")
     ap.add_argument("--unsafe", action="store_true",
-                    help="DANGEROUS: skip OS-isolation requirement and allow the insecure default ledger secret")
+                    help="DANGEROUS: run an untrusted proposer for DIAGNOSTICS ONLY (no ledger/SFT "
+                         "writes) and allow the insecure default ledger secret. rlimits are not a host "
+                         "jail; use a throwaway environment.")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
-    # Untrusted model output (llm OR diffusion-fim) must run isolated; fail closed unless overridden.
-    isolated = (args.proposer in ("llm", "fim")) and not args.unsafe
+    # Untrusted model output (llm OR diffusion-fim) executes candidate code. TWO DISTINCT things:
+    #   (1) POSIX rlimits (ISOLATION_AVAILABLE) — defense in depth against resource abuse, NOT a jail.
+    #   (2) A REAL OS capability boundary — REQUIRED before its certificates may be TRUSTED into the
+    #       ledger/SFT, because the in-process judge has a KNOWN same-address-space forgery residual
+    #       (a candidate can make the worker HMAC-sign forged values via stdlib reflection). rlimits
+    #       are NOT that boundary (Codex adversarial review). Do not conflate the two.
+    untrusted = args.proposer in ("llm", "fim")
+    isolated = untrusted and not args.unsafe          # apply rlimits to the legacy assert-runner path
     if isolated and not ISOLATION_AVAILABLE:
-        print("ERROR: OS isolation is unavailable here but is REQUIRED to execute untrusted model "
-              "output (--proposer llm/fim). Run where the `resource` module works, wrap in a "
-              "container, or pass --unsafe to override (DANGEROUS).", file=sys.stderr)
+        print("ERROR: POSIX rlimits unavailable but required to execute untrusted model output "
+              "(--proposer llm/fim). Run where `resource` works / in a container, or pass --unsafe.",
+              file=sys.stderr)
         return 2
 
-    # Trace collection writes trusted beliefs: require a private secret.
+    # Untrusted model output CANNOT be soundly certified into trusted sinks by the in-process judge:
+    # the candidate shares the worker's interpreter with the signer, so stdlib reflection can drive the
+    # honest worker to HMAC-sign forged values (KNOWN residual). An outer container / separate uid /
+    # seccomp boundary does NOT fix this — it isolates the host, not candidate-from-signer WITHIN the
+    # worker (Codex final review). The only sound fix is a subordinate-jailed EXECUTOR (candidate in
+    # its OWN process, decider/signer OUTSIDE it, value-only authenticated channel), which is NOT built.
+    # Therefore: untrusted proposer -> NEVER writes trusted ledger/SFT. No env flag enables it.
+    os_boundary = os.environ.get("ULTRABRAIN_OS_SANDBOX") == "1"  # reported only; does NOT gate writes
+    if untrusted and not args.unsafe:
+        print("ERROR: --proposer llm/fim executes UNTRUSTED code and the in-process judge cannot "
+              "soundly certify it — the candidate shares the worker interpreter with the signer, so "
+              "stdlib reflection forges signed values (KNOWN residual; see judge.py). No trusted "
+              "ledger/SFT will be written until a subordinate-jailed EXECUTOR exists (candidate in its "
+              "own process, decider outside; an outer container does NOT substitute). Pass --unsafe to "
+              "run DIAGNOSTICS ONLY (no ledger / no SFT writes).", file=sys.stderr)
+        return 2
+
+    # Untrusted proposer -> diagnostics only, trusted writes suppressed regardless of any flag.
+    suppress_trusted = untrusted
+
+    # Trace collection writes trusted beliefs: require a private secret (unless we suppress writes).
     secret = args.ledger_secret or os.environ.get("ULTRABRAIN_LEDGER_SECRET")
     if secret is None and not args.unsafe:
         print("ERROR: trace collection writes trusted beliefs to the ledger. Set --ledger_secret or "
@@ -102,9 +146,10 @@ def run(argv=None):
 
     tasks = load_jsonl(args.tasks)
     proposer = build_proposer(args)
-    ledger = Ledger(args.ledger, secret=secret)
+    # No trusted sink when suppressed: the gate gets no ledger, and no SFT traces are written.
+    ledger = None if suppress_trusted else Ledger(args.ledger, secret=secret)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    count_before = ledger.count()
+    count_before = ledger.count() if ledger is not None else 0
 
     traces, solved, attempts = [], 0, 0
     t0 = time.time()
@@ -125,36 +170,49 @@ def run(argv=None):
                 break  # one verified trace per task is enough for the dataset
     wall = time.time() - t0
 
-    with open(args.out, "w") as fh:
-        for tr in traces:
-            fh.write(json.dumps(tr) + "\n")
+    # SFT + ledger are TRUSTED sinks: write them only when the run is trusted (mock, or untrusted
+    # under an attested OS boundary). A suppressed diagnostics run writes neither (Codex #2).
+    if not suppress_trusted:
+        with open(args.out, "w") as fh:
+            for tr in traces:
+                fh.write(json.dumps(tr) + "\n")
 
-    # Checkpointed chain verification: detects truncation of THIS run's appends (not just self-consistency).
-    expected_count = count_before + len(traces)
-    expected_head = ledger.head()
-    chain_ok = ledger.verify_chain(expected_count=expected_count, expected_head=expected_head)
+    if ledger is not None:
+        expected_count = count_before + len(traces)
+        expected_head = ledger.head()
+        chain_ok = ledger.verify_chain(expected_count=expected_count, expected_head=expected_head)
+        ledger_count = ledger.count()
+    else:
+        expected_head, chain_ok, ledger_count = None, None, None
 
     result = {
         "proposer": args.proposer,
-        "isolated_execution": isolated,
+        "rlimits_applied": isolated,          # POSIX rlimits — defense in depth, NOT a jail
+        "os_boundary_attested": os_boundary,  # ULTRABRAIN_OS_SANDBOX=1 — the real trust prerequisite
+        "trusted_writes": not suppress_trusted,
         "tasks": len(tasks),
         "solved": solved,
         "attempts": attempts,
-        "traces_written": len(traces),
-        "out": args.out,
+        "traces_written": 0 if suppress_trusted else len(traces),
+        "out": None if suppress_trusted else args.out,
         "wall_seconds": round(wall, 3),
         "seconds_per_solved": round(wall / solved, 4) if solved else None,
-        "ledger_count": ledger.count(),
+        "ledger_count": ledger_count,
         "ledger_head": expected_head,
         "ledger_chain_ok": chain_ok,
-        "note": "every written trace passed the hardened gate -> the SFT set is verified by construction",
+        "note": ("DIAGNOSTICS ONLY (untrusted proposer, no attested OS boundary): certificates are NOT "
+                 "trustworthy and no ledger/SFT was written" if suppress_trusted else
+                 "every written trace passed the gate -> the SFT set is verified by construction"),
     }
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
+    elif suppress_trusted:
+        print(f"proposer={args.proposer} DIAGNOSTICS-ONLY (no attested OS boundary) solved "
+              f"{solved}/{len(tasks)} ({attempts} attempts) — certificates NOT trusted, no ledger/SFT written")
     else:
-        print(f"proposer={args.proposer} isolated={isolated} solved {solved}/{len(tasks)} "
-              f"({attempts} attempts, {result['seconds_per_solved']}s/solved)")
-        print(f"wrote {len(traces)} verified traces -> {args.out}  "
+        print(f"proposer={args.proposer} rlimits={isolated} os_boundary={os_boundary} solved "
+              f"{solved}/{len(tasks)} ({attempts} attempts, {result['seconds_per_solved']}s/solved)")
+        print(f"wrote {result['traces_written']} verified traces -> {args.out}  "
               f"ledger_ok={chain_ok} (count={result['ledger_count']})")
     return result
 

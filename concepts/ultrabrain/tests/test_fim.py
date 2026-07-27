@@ -202,12 +202,13 @@ def test_run_verified_search_isolates_fim(monkeypatch, tmp_path):
     assert rc == 2                                                    # isolation required -> fail closed
 
 
-def test_eval_code_isolates_fim(monkeypatch):
-    """eval_code executes model output too, so it must isolate fim like llm (fail closed)."""
+def test_eval_code_does_not_execute_fim_by_default():
+    """eval_code executes model output, so fim (untrusted) must FAIL CLOSED by default — rlimits are
+    NOT a host jail (Codex host-containment). It refuses to run without an explicit --unsafe opt-in."""
     import eval_code
-    monkeypatch.setattr(eval_code, "ISOLATION_AVAILABLE", False)
     res = eval_code.run(["--proposer", "fim", "--tasks", FIM_TASKS_PATH, "--n", "1"])
-    assert isinstance(res, dict) and res.get("error") == "isolation_unavailable"
+    assert isinstance(res, dict)
+    assert res.get("error") == "untrusted_execution_requires_unsafe_or_host_jail"
 
 
 def test_fim_unavailable_degrades_soundly():
