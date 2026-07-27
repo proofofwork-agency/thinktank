@@ -18,6 +18,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { assertReservableState, assertReplayTransition } from './replay-transitions.mjs';
 
 /**
  * Create a durable, cross-process-atomic replay store.
@@ -65,6 +66,9 @@ export function createSqliteReplayStore({ dbPath } = {}) {
      */
     reserve({ key, fingerprint, state = 'reserved', at = Date.now() }) {
       assertFields({ key, fingerprint, state, at });
+      // A reservation may only be created in 'reserved'. Reserving straight into
+      // a terminal state would let a caller assert a settlement that never ran.
+      assertReservableState(state);
       try {
         insert.run(key, fingerprint, state, at);
       } catch (err) {
@@ -96,6 +100,10 @@ export function createSqliteReplayStore({ dbPath } = {}) {
       if (typeof at !== 'number' || !Number.isFinite(at)) throw new Error('replay store mark requires finite at');
       const prior = selectOne.get(key);
       if (!prior) throw new Error(`nonce registry cannot mark unknown key ${key}`);
+      // Monotonic: reserved -> terminal, once. See ./replay-transitions.mjs for
+      // why this is the available defence rather than caller authentication.
+      assertReplayTransition(prior.state, state, key);
+      if (prior.state === state) return; // idempotent retry, no write
       const result = updateState.run(state, at, key, prior.fingerprint);
       if (result.changes !== 1) {
         throw new Error(`nonce registry could not advance key ${key}`);

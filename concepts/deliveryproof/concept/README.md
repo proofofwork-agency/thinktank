@@ -13,7 +13,7 @@ For byte-level protocol details, read [SPEC.md](./SPEC.md).
 
 ## Is It Live-Tested?
 
-**Yes, locally end to end.** The v0.10 tree runs `288/288` Node tests and eleven
+**Yes, locally end to end.** The v0.10 tree runs `310/310` Node tests and eleven
 example demos. Those tests and demos execute real canonical hashing, Ed25519
 receipt signatures, deep verifiers, replay protection, keyring verification,
 Ethereum Keccak helpers, and the money-shot flows where shallow checks release

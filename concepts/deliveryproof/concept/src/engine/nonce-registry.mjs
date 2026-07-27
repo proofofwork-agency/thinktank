@@ -12,6 +12,7 @@ import { appendFileSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync
 import { dirname } from 'node:path';
 import { sha256hex } from '../protocol/canonical.mjs';
 import { assertNoPrototypePollutionKeys, clockFrom } from '../protocol/runtime.mjs';
+import { assertReservableState, assertReplayTransition } from './replay-transitions.mjs';
 
 export const REPLAY_STORE_INTERFACE = Object.freeze({
   name: 'durable-replay-store',
@@ -89,6 +90,7 @@ export function createWalReplayStore({ logPath, fsync = false } = {}) {
      */
     reserve({ key, fingerprint, state = 'reserved', at = Date.now() }) {
       assertReplayRecordFields({ key, fingerprint, state, at });
+      assertReservableState(state);
       const prior = entries.get(key);
       if (prior) {
         if (prior.fingerprint !== fingerprint) {
@@ -113,6 +115,8 @@ export function createWalReplayStore({ logPath, fsync = false } = {}) {
       if (typeof at !== 'number' || !Number.isFinite(at)) throw new Error('replay store mark requires finite at');
       const prior = entries.get(key);
       if (!prior) throw new Error(`nonce registry cannot mark unknown key ${key}`);
+      assertReplayTransition(prior.state, state, key);
+      if (prior.state === state) return; // idempotent retry, no WAL append
       const record = { type: 'mark', key, fingerprint: prior.fingerprint, state, at };
       append(record);
       apply(record);
@@ -189,6 +193,9 @@ export function createWalReplayStore({ logPath, fsync = false } = {}) {
       if (prior && prior.fingerprint !== record.fingerprint) {
         throw new Error(`nonce registry WAL conflict for key ${record.key}`);
       }
+      // A reserve record must create 'reserved'. A tampered WAL line claiming a
+      // reservation was born 'captured' would fabricate a settlement on restart.
+      assertReservableState(record.state);
     } else if (record.type === 'mark') {
       // A 'mark' may only ADVANCE an existing reservation. A lone mark record
       // (no prior reserve) must never synthesize replay state — otherwise a
@@ -200,6 +207,10 @@ export function createWalReplayStore({ logPath, fsync = false } = {}) {
       if (prior.fingerprint !== record.fingerprint) {
         throw new Error(`nonce registry WAL mark fingerprint mismatch for key ${record.key}`);
       }
+      // Replay is fed by on-disk records, so the transition rules must hold here
+      // too: a tampered log must not be able to regress a terminal back to
+      // 'reserved' (freeing the nonce for reuse) or flip captured <-> refunded.
+      assertReplayTransition(prior.state, record.state, record.key);
     } else {
       throw new Error(`nonce registry unknown record type ${JSON.stringify(record.type)}`);
     }
