@@ -135,6 +135,7 @@ test('operability: durable rail exposes flush, close, health, and graceful shutd
     logPath: tmpWal(t),
     now: () => 9,
     audit: (event) => events.push(event.event),
+    allowUnsignedReceipts: true,
   });
 
   assert.equal(rail.flush(), true);

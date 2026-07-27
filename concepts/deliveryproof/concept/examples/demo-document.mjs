@@ -109,7 +109,7 @@ kv('buyer', keyId(buyer.publicKey));
 kv('seller(cheat)', keyId(seller.publicKey));
 
 {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const shallowContract = {
     ...contract(),
     predicate: { kind: 'schema', params: { schema: { type: 'string' } } },
@@ -131,7 +131,7 @@ kv('seller(cheat)', keyId(seller.publicKey));
 }
 
 {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const c = contract();
   const { verifier, routeDecision } = routeVerifier(c, {
     policy: { deliverableType: 'document', minAssurance: 3 },

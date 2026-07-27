@@ -27,7 +27,7 @@ test('erc8183 rail passes the full DeliveryProof conformance suite', async () =>
   // inherits the prior rail's client (its job Map is the simulated chain state).
   const createRail = ({ previousRail } = {}) => {
     const client = previousRail ? previousRail._client() : createInMemoryErc8183Client();
-    return createErc8183Rail({ client, supportsRestart: true });
+    return createErc8183Rail({ client, supportsRestart: true, allowUnsignedReceipts: true });
   };
 
   const result = await runRailConformance({ createRail, supportsRestart: true });
@@ -54,7 +54,7 @@ test('erc8183 rail passes the full DeliveryProof conformance suite', async () =>
 test('every advertised conformance case is exercised', async () => {
   const createRail = ({ previousRail } = {}) => {
     const client = previousRail ? previousRail._client() : createInMemoryErc8183Client();
-    return createErc8183Rail({ client, supportsRestart: true });
+    return createErc8183Rail({ client, supportsRestart: true, allowUnsignedReceipts: true });
   };
   const result = await runRailConformance({ createRail, supportsRestart: true });
   const ran = new Set(result.cases.map((c) => c.name));

@@ -6,7 +6,7 @@ import { canonicalize, sha256hex } from '../src/protocol/canonical.mjs';
 import { generateKeypair, keyId, sign } from '../src/protocol/crypto.mjs';
 import { paidToolWithDeliveryProof } from '../src/mcp/paidToolWithDeliveryProof.mjs';
 import { createMockEscrowRail } from '../src/rails/escrow-mock.mjs';
-import { testsuiteVerifier } from '../src/verifiers/testsuite.mjs';
+import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
 import { transcriptVerifier } from '../src/verifiers/transcript.mjs';
 import { verifyReceipt } from '../src/engine/deliveryproof.mjs';
 
@@ -25,20 +25,20 @@ function baseContract({ seller, predicate }) {
     refundRule: 'full-refund-on-fail',
     railId: 'escrow-mock',
     nonce: randomUUID(),
-    createdAt: 0,
+    createdAt: Date.now(),
   };
 }
 
-test('paidToolWithDeliveryProof: testsuite verifier captures on verified output', async () => {
+test('paidToolWithDeliveryProof: builtin-replay verifier captures on verified output', async () => {
   const seller = generateKeypair();
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const paidSort = paidToolWithDeliveryProof({
     tool: (input) => [...input].sort((a, b) => a - b),
     makeContract: (input) => baseContract({
       seller,
-      predicate: { kind: 'testsuite', params: { op: 'sort', input } },
+      predicate: { kind: 'builtin-replay', params: { op: 'sort', input } },
     }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -52,7 +52,7 @@ test('paidToolWithDeliveryProof: testsuite verifier captures on verified output'
 
 test('paidToolWithDeliveryProof: transcript verifier works end-to-end with makeEvidence attestation', async () => {
   const seller = generateKeypair();
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const paidTranscriptTool = paidToolWithDeliveryProof({
     tool: () => ({ answer: 42 }),
     makeContract: () => baseContract({
@@ -86,7 +86,7 @@ test('paidToolWithDeliveryProof: transcript verifier works end-to-end with makeE
 
 test('paidToolWithDeliveryProof: transcript verifier refunds when attestation is absent', async () => {
   const seller = generateKeypair();
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const paidTranscriptTool = paidToolWithDeliveryProof({
     tool: () => ({ answer: 42 }),
     makeContract: () => baseContract({
@@ -108,15 +108,15 @@ test('paidToolWithDeliveryProof: transcript verifier refunds when attestation is
 
 test('paidToolWithDeliveryProof: default wrapper registry rejects nonce replay', async () => {
   const seller = generateKeypair();
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const fixedContract = baseContract({
     seller,
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [2, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [2, 1] } },
   });
   const paidSort = paidToolWithDeliveryProof({
     tool: (input) => [...input].sort((a, b) => a - b),
     makeContract: () => fixedContract,
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });
@@ -129,14 +129,14 @@ test('paidToolWithDeliveryProof: default wrapper registry rejects nonce replay',
 
 test('paidToolWithDeliveryProof: strictRouting requires an explicit route decision', async () => {
   const seller = generateKeypair();
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const paidSort = paidToolWithDeliveryProof({
     tool: (input) => [...input].sort((a, b) => a - b),
     makeContract: (input) => baseContract({
       seller,
-      predicate: { kind: 'testsuite', params: { op: 'sort', input } },
+      predicate: { kind: 'builtin-replay', params: { op: 'sort', input } },
     }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
     strictRouting: true,
@@ -147,15 +147,15 @@ test('paidToolWithDeliveryProof: strictRouting requires an explicit route decisi
 
 test('paidToolWithDeliveryProof: makeEvidence cannot silently replace tool output by default', async () => {
   const seller = generateKeypair();
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const paidSort = paidToolWithDeliveryProof({
     tool: () => [9, 1],
     makeContract: () => baseContract({
       seller,
-      predicate: { kind: 'testsuite', params: { op: 'sort', input: [2, 1] } },
+      predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [2, 1] } },
     }),
     makeEvidence: () => ({ output: [1, 2] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });

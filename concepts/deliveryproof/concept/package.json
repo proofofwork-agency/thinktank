@@ -1,6 +1,6 @@
 {
   "name": "deliveryproof",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Objective verified-delivery settlement protocol with one audited runtime dependency (@noble/hashes) for Ethereum keccak/ABI helpers; otherwise Node built-ins only",
   "author": "danillo felixdaal",
   "type": "module",
@@ -25,7 +25,9 @@
     "SECURITY.md",
     "CONTRIBUTING.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "VERDICT.md",
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "test": "node --test",

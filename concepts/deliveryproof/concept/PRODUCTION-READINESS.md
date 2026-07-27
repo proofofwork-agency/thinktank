@@ -69,7 +69,7 @@ Approximate baseline score: 70/100.
 | Dimension | Weight | Baseline Score | Weighted Points | Evidence |
 | --- | ---: | ---: | ---: | --- |
 | Correctness and tests | 18 | 88 | 15.84 | v0.6 had 166 deterministic tests, five demos, signed receipt and verifier coverage, and critical no-capture tests. |
-| Security and threat model | 18 | 78 | 14.04 | Strong JCS, signed receipts, bounded CSV/document/testsuite paths, mock/Tier-B caveats; remaining audit work around prototype-pollution keys, WAL shapes, and public-entry validation. |
+| Security and threat model | 18 | 78 | 14.04 | Strong JCS, signed receipts, bounded CSV/document/builtin-replay paths, mock/Tier-B caveats; remaining audit work around prototype-pollution keys, WAL shapes, and public-entry validation. |
 | Reliability, resource bounds, and recovery | 14 | 76 | 10.64 | Durable rail/idempotency/WAL recovery and nonce registry exist; clock injection and broader resource regression evidence still incomplete at baseline. |
 | API and packaging | 12 | 35 | 4.20 | Minimal package metadata, no exports map, no public `src/index.mjs`, no engine declaration, no files whitelist. |
 | Supply-chain and release integrity | 8 | 70 | 5.60 | The source-only repo had a small supply-chain surface; no release integrity statement, signed-tag guidance, or CI-backed checks. |
@@ -114,7 +114,7 @@ Required evidence:
 Scope:
 
 - Confirm every untrusted parser or loop is capped.
-- Add regression tests for oversized CSV, document, dataset, Merkle, testsuite, and API-response inputs.
+- Add regression tests for oversized CSV, document, dataset, Merkle, builtin-replay, and API-response inputs.
 - Add deterministic perf/resource smoke tests only when non-flaky; otherwise document manual benchmark commands.
 
 ### P2: API and Packaging
@@ -194,7 +194,7 @@ list below.
 | Dimension | Weight | Final Score | Weighted Points | Evidence |
 | --- | ---: | ---: | ---: | --- |
 | Correctness and tests | 18 | 94 | 16.92 | 183 deterministic `node:test` cases, five runnable demos, critical no-capture-on-failed-verdict tests, receipt tamper tests, router no-downgrade tests, verifier money-shot regressions, package self-reference test. Not 100 because there is no coverage metric or external conformance suite. |
-| Security and threat model | 18 | 92 | 16.56 | Prototype-pollution guards, public validation helpers, bounded CSV/document/dataset/API-response/testsuite surfaces, node:crypto only, no fake Tier-B crypto, `SECURITY.md`, and `docs/THREAT-MODEL.md`. Not 100 because there is no third-party audit, formal safe-regex proof, or hostile-code sandbox. |
+| Security and threat model | 18 | 92 | 16.56 | Prototype-pollution guards, public validation helpers, bounded CSV/document/dataset/API-response/builtin-replay surfaces, node:crypto only, no fake Tier-B crypto, `SECURITY.md`, and `docs/THREAT-MODEL.md`. Not 100 because there is no third-party audit, formal safe-regex proof, or hostile-code sandbox. |
 | Reliability, resource bounds, and recovery | 14 | 91 | 12.74 | Settlement exceptions after authorization become refund verdicts, durable local rail has WAL recovery/idempotent terminal operations/closed-state guards/flush/close/health, injectable clocks remove wall-clock flakes, JSON datasets and Merkle builds are bounded. Not 100 because real external rail failure modes remain adapter-specific. |
 | API and packaging | 12 | 90 | 10.80 | `package.json` version `0.7.0`, root export map, Node `>=22`, files whitelist, stable `src/index.mjs` barrel, API stability doc, API reference, and simple npm scripts. Not 100 because there are no generated `.d.ts` files and subpath imports remain intentionally unsupported. |
 | Supply-chain and release integrity | 8 | 88 | 7.04 | At the v0.7 checkpoint the package had a minimal source package, no build or generated opaque artifacts, `npm pack --dry-run` gate, read-only CI, and supply-chain policy with signed-tag guidance. v0.9 adds one pinned runtime dependency and a committed lockfile. Not 100 because no public signed tag, npm provenance, SLSA attestation, or third-party audit exists yet. |
@@ -210,7 +210,7 @@ list below.
 - Operators still need key-management policy, key rotation, monitoring, backups, incident response, and security review.
 - Tier-B interface descriptors remain interface-only except the signed-oracle example; use cases needing external-world provenance need a real attested proof system.
 - Regex and parser guardrails are pragmatic built-in CWE-400 mitigations, not formal safe-regex or arbitrary-input security proofs.
-- The testsuite verifier is bounded deterministic replay, not an OS sandbox for hostile seller code.
+- The builtin-replay verifier is bounded deterministic replay, not an OS sandbox for hostile seller code.
 - Projection-only Keccak/ABI helpers exist in v0.9; live on-chain adapters remain outside this library.
 - Partial-verifier Merkle mode remains deferred; v0.7 preserves full-root mode only.
 - Public push, npm publish, signed tags, and package provenance remain gated on explicit human approval.
@@ -286,8 +286,8 @@ all green.
   implementation hashing. String-keyed records stay byte-identical and the wire
   profile is unchanged.
 - Reference rails reject receipts whose `decision` contradicts `verdict.ok` before
-  terminalization, and add opt-in `requireSignature` for mandatory settlement-
-  signature checks.
+  terminalization, and (since v0.10) require a settlement key so every
+  terminalization is signature-checked.
 - ERC-8004/8183 projection helpers refuse to project a contradictory receipt into
   a chain-facing success.
 - The nonce-registry WAL rejects lone or forged `mark` records on replay.
@@ -297,8 +297,8 @@ all green.
 This does not change the out-of-scope boundary or the real-money posture: a
 deployment still needs a production non-custodial rail adapter, operator
 key/security review, and any required attested Tier-B verifier. Deferred
-follow-ups: `keyId` widening and mandatory-by-default rail/interop signature
-verification (`requireSignature` ships it as opt-in).
+follow-ups: `keyId` widening. Mandatory-by-default rail/interop signature
+verification is no longer deferred — v0.10 ships it.
 
 ## Explicitly Out Of Scope For v0.7
 

@@ -18,7 +18,7 @@ function validContract() {
     seller: 'seller',
     intent: 'test',
     deliverableType: 'compute',
-    predicate: { kind: 'testsuite', params: { op: 'sum', input: [1, 2] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sum', input: [1, 2] } },
     price: { amount: 1, currency: 'USDC' },
     sla: { deadlineMs: 1000 },
     refundRule: 'refund-on-fail',
@@ -29,7 +29,7 @@ function validContract() {
 }
 
 function validVerdict() {
-  return { ok: true, tier: 'A', verifier: 'testsuite', reason: 'ok', checkedAt: 2 };
+  return { ok: true, tier: 'A', verifier: 'builtin-replay', reason: 'ok', checkedAt: 2 };
 }
 
 test('protocol schema accepts valid core wire records', () => {

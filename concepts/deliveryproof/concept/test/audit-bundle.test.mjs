@@ -6,7 +6,7 @@ import { generateKeypair } from '../src/protocol/crypto.mjs';
 import { settle } from '../src/engine/deliveryproof.mjs';
 import { buildAuditBundle } from '../src/operability/audit-bundle.mjs';
 import { createMockEscrowRail } from '../src/rails/escrow-mock.mjs';
-import { testsuiteVerifier } from '../src/verifiers/testsuite.mjs';
+import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
 
 const settlementKey = generateKeypair();
 
@@ -17,23 +17,23 @@ function contract(extra = {}) {
     seller: 'seller_______',
     intent: 'sort array ascending',
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 5, currency: 'USDC' },
     sla: { deadlineMs: 60000 },
     refundRule: 'full-refund-on-fail',
     railId: 'escrow-mock',
     nonce: 'nonce-audit-bundle-1',
-    createdAt: 0,
+    createdAt: Date.now(),
     ...extra,
   };
 }
 
 async function settled() {
-  const rail = createMockEscrowRail({ logger: false });
+  const rail = createMockEscrowRail({ logger: false, settlementPublicKey: settlementKey.publicKey });
   const result = await settle({
     contract: contract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
+    verifier: builtinReplayVerifier,
     rail,
     settlementKey,
   });

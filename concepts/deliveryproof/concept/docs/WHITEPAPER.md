@@ -175,12 +175,12 @@ tamper-evident.
 
 | Tier | Meaning | Trust required | Examples (this reference build) |
 |------|---------|----------------|---------------------|
-| **A** | **Objective** — independently recomputable or cryptographically self-evident. | None beyond the predicate (transcript also binds the contract's authorized signer). | `testsuite` (resource-bounded replay), `dataset` (deep tabular correctness), `api-response` (paid API/MCP response correctness), `document` (structured Markdown correctness), `hash` (exact bytes), `schema` (shape — *shallow foil*), `transcript` (authorized nonce-bound signature), `compose` (AND/OR/threshold over child verifiers) |
+| **A** | **Objective** — independently recomputable or cryptographically self-evident. | None beyond the predicate (transcript also binds the contract's authorized signer). | `builtin-replay` (resource-bounded replay), `dataset` (deep tabular correctness), `api-response` (paid API/MCP response correctness), `document` (structured Markdown correctness), `hash` (exact bytes), `schema` (shape — *shallow foil*), `transcript` (authorized nonce-bound signature), `compose` (AND/OR/threshold over child verifiers) |
 | **B** | **Attested** — correctness rides on an external proof system. | Trust that proof system / hardware / source. | `signed-oracle` (runnable Ed25519 oracle/provenance attestation); *(interfaces only)* TEE attestation, zkTLS transcript, ZK proof |
 | **C** | **Subjective** — a model/rubric judges quality. | Trust the judge; advisory only. | *(production)* LLM-as-judge, rubric grader |
 
 Most shipped verifiers are **Tier A**. Four core verifier families are *deep*:
-`testsuite` re-executes the work in a bounded worker; `dataset` proves objective tabular correctness (row count; required/nullable;
+`builtin-replay` re-executes the work in a bounded worker; `dataset` proves objective tabular correctness (row count; required/nullable;
 per-field type/domain/range/regex/null-rate; unique keys; optional dataset hash and
 byte-tagged Merkle root; a **verifier-seeded** sample hash plus emitted Merkle proofs
 for sampled rows; aggregate invariants including `sum`/`min`/`max`/`avg`/`count`/`distinct`); and `api-response` proves a **paid API / MCP tool-call
@@ -197,7 +197,7 @@ testable. Tier B is represented by a real `signed-oracle` verifier, plus explici
 interface descriptors for TEE, zkTLS, and ZK proof systems. Tier C is documented as
 an extension point, not built here.
 
-*Honest scope of `testsuite`:* it bounds resource consumption of deterministic
+*Honest scope of `builtin-replay`:* it bounds resource consumption of deterministic
 built-in replay (CWE-400) with `worker_threads`, wall-clock timeouts, resource
 limits, and preflight size/depth checks. It does **not** execute arbitrary seller
 JavaScript and is **not** an OS jail for hostile code; Node worker limits primarily
@@ -248,7 +248,7 @@ src/
              merkle-sample.mjs (bounded partial-sample index selection)
              signer.mjs (signer/keyring interface descriptors)
   runtime.mjs · errors.mjs · operability/index.mjs · operability/audit-bundle.mjs
-  verifiers/ schema · hash · testsuite · transcript · dataset · api-response · document · compose · index
+  verifiers/ schema · hash · builtin-replay · transcript · dataset · api-response · document · compose · index
   verifiers/ tier-b/interfaces.mjs · tier-b/signed-oracle.mjs
   router/    policy.mjs  — routeVerifier(): cheapest sufficient verifier, no silent downgrade
   rails/     escrow-mock.mjs · durable-rail.mjs
@@ -292,10 +292,9 @@ A real deployment still needs:
 The in-repo `createMockEscrowRail()` is only a reference state machine for tests and
 demos. `createDurableEscrowRail()` demonstrates local WAL/idempotency mechanics,
 but it is still not production money movement. Both reference rails reject a receipt
-whose `decision` contradicts its `verdict.ok` before any terminalization, optionally
-verify receipt signatures when constructed with `settlementPublicKey`, and accept
-`requireSignature: true` to make a valid settlement signature mandatory on every
-capture/refund; a real rail adapter must still enforce its own authorization,
+whose `decision` contradicts its `verdict.ok` before any terminalization, and since
+v0.10 require `settlementPublicKey` at construction so a valid settlement signature is
+verified on every capture/refund; a real rail adapter must still enforce its own authorization,
 idempotency, custody, and compliance rules. Tier-B interface descriptors are not implemented proof systems;
 `signed-oracle` proves only that an allowed attester signed a bound statement.
 
@@ -372,7 +371,7 @@ closed several exported, money-moving surfaces that failed *open* by default):
   keys change bytes — named-field records like contracts and receipts are unaffected.
 - Reference rails (`escrow-mock`, `durable-rail`) re-enforce the money-safety invariant at
   the money layer, not only inside `settle()`: a receipt whose `decision` disagrees with
-  `verdict.ok` is rejected before any terminalization, and opt-in `requireSignature: true`
+  `verdict.ok` is rejected before any terminalization, and (since v0.10) a settlement key is required so signature verification
   makes a valid settlement signature mandatory. The consistency gate closes the
   *contradictory*-receipt hole; only signature verification closes the *forged-but-
   consistent unsigned* receipt hole.
@@ -391,8 +390,10 @@ A `keyId` widening (DER-based, 128-bit) is intentionally deferred: the current `
 is internally consistent, and changing its derivation would change the
 `signerKeyId`/`keyId` fields embedded in signed receipts (and therefore their canonical
 bytes and signatures) for no security gain today. Mandatory rail/interop signature
-verification by default is the other tracked follow-up; `requireSignature` ships it as
-opt-in now.
+verification by default was the other tracked follow-up; **v0.10 ships it**. Rails now
+require a settlement key at construction and verify every terminalization, after two
+independent review passes each reproduced a working forgery against the previous
+opt-in default.
 
 ---
 
@@ -403,7 +404,7 @@ wrong*; a shallow verifier pays it, a deep verifier refuses — on identical byt
 
 **Compute (`demo-compute.mjs`).** A seller is paid to sort `[5,3,9,1]` and returns
 `[9,5,3,1]` — a valid integer array, wrong order. The `schema` verifier (shape only)
-→ **RELEASE**; the `testsuite` verifier (re-executes the sort, compares) → **REFUND**.
+→ **RELEASE**; the `builtin-replay` verifier (re-executes the sort, compares) → **REFUND**.
 
 **Dataset (`demo-dataset.mjs`), routed.** A buyer purchases a 1,000-row table. The
 seller ships correct columns/types/row-count but a **duplicated key** (and corrupted
@@ -625,7 +626,7 @@ key storage, key rotation, replay-window policy, and independent security review
 
 Ninth, resource bounds are not arbitrary-code sandboxing. Canonicalization and
 verifier paths have pragmatic depth/size/work caps, but these are guardrails, not
-formal denial-of-service proofs. The `testsuite` verifier
+formal denial-of-service proofs. The `builtin-replay` verifier
 runs deterministic built-in replay in a worker with size/depth/time limits; it does
 not run untrusted seller JavaScript, and Node worker resource limits are not a
 complete process or OS isolation boundary. The `document` verifier similarly caps
@@ -664,7 +665,7 @@ verifier, rail, and predicate author — and to the rail's own finality model. T
 contribution is an objective, recomputable verdict and a portable receipt, not a
 cryptographic guarantee that a dishonest counterparty cannot strand the exchange. At the
 money layer the reference rails reject a receipt whose `decision` contradicts its
-`verdict.ok`, and `requireSignature` makes settlement-signature verification mandatory;
+`verdict.ok`, and since v0.10 settlement-signature verification is mandatory by default;
 neither replaces a real rail's authorization, custody, and finality rules.
 
 The threat model is therefore intentionally narrow: for objective digital

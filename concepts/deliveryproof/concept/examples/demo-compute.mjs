@@ -150,22 +150,22 @@ const results = {};
 // ---------------------------------------------------------------------------
 // SCENARIO 1 — HAPPY PATH: honest seller, correct output, RELEASE.
 //
-// Predicate: testsuite { op:'sort', input:[5,3,9,1] }  (Tier A: objective
+// Predicate: builtin-replay { op:'sort', input:[5,3,9,1] }  (Tier A: objective
 // replay — the verifier RE-COMPUTES the sort and deep-equals the delivery).
 // ---------------------------------------------------------------------------
 
 banner('SCENARIO 1 — HAPPY PATH (honest delivery -> RELEASE)');
 
 {
-  const rail = createMockEscrowRail();
-  const verifier = getVerifier('testsuite');
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
+  const verifier = getVerifier('builtin-replay');
 
   const contract = makeContract({
     buyer,
     seller: sellerHonest,
     intent: 'sort array ascending',
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 5, currency: 'USDC' },
     railId: rail.id,
   });
@@ -214,15 +214,15 @@ banner('SCENARIO 1 — HAPPY PATH (honest delivery -> RELEASE)');
 banner('SCENARIO 2 — CHEATING DELIVERY (wrong output -> REFUND)');
 
 {
-  const rail = createMockEscrowRail();
-  const verifier = getVerifier('testsuite');
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
+  const verifier = getVerifier('builtin-replay');
 
   const contract = makeContract({
     buyer,
     seller: sellerCheating,
     intent: 'sort array ascending',
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 5, currency: 'USDC' },
     railId: rail.id,
   });
@@ -323,7 +323,7 @@ function makeTranscriptEvidenceProducer(sellerKey, { mutate = false } = {}) {
 
 // --- 3a: clean transcript -> PASS -> RELEASE -------------------------------
 {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const verifier = getVerifier('transcript');
 
   const contract = makeContract({
@@ -335,7 +335,7 @@ function makeTranscriptEvidenceProducer(sellerKey, { mutate = false } = {}) {
     price: { amount: 7, currency: 'USDC' },
     railId: rail.id,
   });
-  // Reuse the testsuite input shape so the producer can compute the output.
+  // Reuse the builtin-replay input shape so the producer can compute the output.
   contract.predicate.params.input = [5, 3, 9, 1];
 
   section('CONTRACT (3a — clean transcript)');
@@ -361,7 +361,7 @@ function makeTranscriptEvidenceProducer(sellerKey, { mutate = false } = {}) {
 
 // --- 3b: tampered output -> signature/hash mismatch -> REJECT -> REFUND -----
 {
-  const rail = createMockEscrowRail();
+  const rail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const verifier = getVerifier('transcript');
 
   const contract = makeContract({
@@ -436,7 +436,7 @@ banner('SCENARIO 4 — MONEY SHOT: shallow verifier PAYS, deep verifier REFUNDS'
   };
 
   // --- 4a: SHALLOW verifier (schema/shape) — what competitors ship -----------
-  const shallowRail = createMockEscrowRail();
+  const shallowRail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const shallowContract = makeContract({
     buyer,
     seller: sellerCheating,
@@ -463,23 +463,23 @@ banner('SCENARIO 4 — MONEY SHOT: shallow verifier PAYS, deep verifier REFUNDS'
   console.log('  >> A shallow check PAYS the cheater. This is the status quo.');
 
   // --- 4b: DEEP verifier (objective replay) — DeliveryProof -------------------
-  const deepRail = createMockEscrowRail();
+  const deepRail = createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey });
   const deepContract = makeContract({
     buyer,
     seller: sellerCheating,
     intent: 'sort array ascending',
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 10, currency: 'USDC' },
     railId: deepRail.id,
   });
 
   section('4b — DEEP verifier: objective replay ("re-run the sort, compare")');
-  kv('verifier', 'testsuite  (DeliveryProof Tier A — re-executes the work)');
+  kv('verifier', 'builtin-replay  (DeliveryProof Tier A — re-executes the work)');
   const deepResult = await settle({
     contract: deepContract,
     produceEvidence: produceWrong,
-    verifier: getVerifier('testsuite'),
+    verifier: getVerifier('builtin-replay'),
     rail: deepRail,
     settlementKey,
   });

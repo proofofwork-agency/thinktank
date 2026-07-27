@@ -6,7 +6,7 @@ import { generateKeypair } from '../src/protocol/crypto.mjs';
 import { settle, verifyReceipt } from '../src/engine/deliveryproof.mjs';
 import { createNonceRegistry, nonceKey } from '../src/engine/nonce-registry.mjs';
 import { createMockEscrowRail } from '../src/rails/escrow-mock.mjs';
-import { testsuiteVerifier } from '../src/verifiers/testsuite.mjs';
+import { builtinReplayVerifier } from '../src/verifiers/builtin-replay.mjs';
 
 const settlementKey = generateKeypair();
 
@@ -17,7 +17,7 @@ function sortContract(extra = {}) {
     seller: 'seller_______',
     intent: 'sort array ascending',
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+    predicate: { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     price: { amount: 5, currency: 'USDC' },
     sla: { deadlineMs: 1000 },
     refundRule: 'full-refund-on-fail',
@@ -34,8 +34,8 @@ test('lifecycle events and nonce registry key are signed into the receipt', asyn
   const result = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9], producedAt: clock }),
-    verifier: testsuiteVerifier,
-    rail: createMockEscrowRail(),
+    verifier: builtinReplayVerifier,
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
     nonceRegistry: registry,
     now: () => clock++,
@@ -63,8 +63,8 @@ test('SLA deadline is engine-enforced and refunds without running the producer',
       producerCalled = true;
       return { output: [1, 3, 5, 9] };
     },
-    verifier: testsuiteVerifier,
-    rail: createMockEscrowRail(),
+    verifier: builtinReplayVerifier,
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
     now: () => 11_500,
   });
@@ -85,8 +85,8 @@ test('settle passes an AbortSignal to producers before the deadline', async () =
       seenSignal = signal;
       return { output: [1, 3, 5, 9] };
     },
-    verifier: testsuiteVerifier,
-    rail: createMockEscrowRail(),
+    verifier: builtinReplayVerifier,
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
     now: () => 10_100,
   });
@@ -101,8 +101,8 @@ test('nonce registry rejects replay even when only contract.id changes', async (
   const first = await settle({
     contract: sortContract(),
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
-    rail: createMockEscrowRail(),
+    verifier: builtinReplayVerifier,
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
     nonceRegistry: registry,
     now: () => 10_100,
@@ -113,8 +113,8 @@ test('nonce registry rejects replay even when only contract.id changes', async (
     () => settle({
       contract: sortContract({ id: 'contract_lifecycle_2' }),
       produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-      verifier: testsuiteVerifier,
-      rail: createMockEscrowRail(),
+      verifier: builtinReplayVerifier,
+      rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
       settlementKey,
       nonceRegistry: registry,
       now: () => 10_100,
@@ -126,8 +126,8 @@ test('nonce registry rejects replay even when only contract.id changes', async (
     () => settle({
       contract: sortContract({ id: 'contract_lifecycle_3', price: { amount: 9, currency: 'USDC' } }),
       produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-      verifier: testsuiteVerifier,
-      rail: createMockEscrowRail(),
+      verifier: builtinReplayVerifier,
+      rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
       settlementKey,
       nonceRegistry: registry,
       now: () => 10_100,
@@ -142,8 +142,8 @@ test('nonceKey excludes contract id but includes parties, rail, settlement key, 
   const result = await settle({
     contract,
     produceEvidence: () => ({ output: [1, 3, 5, 9] }),
-    verifier: testsuiteVerifier,
-    rail: createMockEscrowRail(),
+    verifier: builtinReplayVerifier,
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
     nonceRegistry: registry,
     now: () => 10_100,

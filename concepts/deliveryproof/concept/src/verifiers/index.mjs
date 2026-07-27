@@ -7,7 +7,7 @@
 
 import { schemaVerifier } from './schema.mjs';
 import { hashVerifier } from './hash.mjs';
-import { testsuiteVerifier } from './testsuite.mjs';
+import { builtinReplayVerifier, testsuiteVerifier } from './builtin-replay.mjs';
 import { transcriptVerifier } from './transcript.mjs';
 import { datasetVerifier } from './dataset.mjs';
 import { datasetMerkleSampleVerifier } from './dataset-merkle-sample.mjs';
@@ -20,12 +20,14 @@ import { signedOracleVerifier } from './tier-b/signed-oracle.mjs';
 
 /**
  * Registry keyed by predicate kind / verifier name.
- * @type {{ schema: Verifier, hash: Verifier, testsuite: Verifier, transcript: Verifier, dataset: Verifier, 'dataset-merkle-sample': Verifier, 'api-response': Verifier, document: Verifier, compose: Verifier, 'signed-oracle': Verifier }}
+ * `testsuite` is a deprecated compatibility alias for `builtin-replay`.
+ * @type {Record<string, Verifier>}
  */
-export const verifiers = {
+export const verifiers = Object.freeze({
   schema: schemaVerifier,
   hash: hashVerifier,
-  testsuite: testsuiteVerifier,
+  'builtin-replay': builtinReplayVerifier,
+  testsuite: builtinReplayVerifier,
   transcript: transcriptVerifier,
   dataset: datasetVerifier,
   'dataset-merkle-sample': datasetMerkleSampleVerifier,
@@ -33,7 +35,24 @@ export const verifiers = {
   document: documentVerifier,
   compose: composeVerifier,
   'signed-oracle': signedOracleVerifier,
-};
+});
+
+// FREEZE THE BUILT-INS.
+//
+// The engine grants a protocol assurance level only when the injected verifier is
+// the built-in BY OBJECT IDENTITY (see assertRouteDecisionMatchesVerifier). That
+// check is worth nothing if the thing it compares against can be replaced or
+// rewritten, and adversarial review pointed at exactly that: `verifiers.dataset =
+// evil` makes the impostor pass identity, and `datasetVerifier.verify = evil`
+// keeps identity intact while swapping the behaviour — including AFTER the check
+// has already run, since verification happens later in settle().
+//
+// Freezing the registry stops the first; freezing each verifier stops the second.
+// Both are shallow freezes of stateless objects, which is all that is needed:
+// the verifiers hold no mutable state, only a name, a tier, and a method.
+for (const verifier of new Set(Object.values(verifiers))) {
+  Object.freeze(verifier);
+}
 
 /**
  * Look up a verifier by name (matches predicate.kind). Throws on unknown name.
@@ -49,4 +68,17 @@ export function getVerifier(name) {
   return v;
 }
 
-export { schemaVerifier, hashVerifier, testsuiteVerifier, transcriptVerifier, datasetVerifier, datasetMerkleSampleVerifier, apiResponseVerifier, documentVerifier, composeVerifier, signedOracleVerifier };
+export {
+  schemaVerifier,
+  hashVerifier,
+  builtinReplayVerifier,
+  /** @deprecated Use builtinReplayVerifier. */
+  testsuiteVerifier,
+  transcriptVerifier,
+  datasetVerifier,
+  datasetMerkleSampleVerifier,
+  apiResponseVerifier,
+  documentVerifier,
+  composeVerifier,
+  signedOracleVerifier,
+};

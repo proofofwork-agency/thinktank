@@ -1,4 +1,4 @@
-// Pure testsuite replay logic. This file contains no worker_threads code so it
+// Pure built-in replay logic. This file contains no worker_threads code so it
 // can be imported both by the main verifier and by the worker process.
 
 /**
@@ -98,7 +98,7 @@ function requireArray(op, input) {
  * @param {{ op: string, input: *, actual: * }} task
  * @returns {{ ok: true, expected: *, matched: boolean } | { ok: false, reason: string }}
  */
-export function replayTestsuiteTask({ op, input, actual }) {
+export function replayBuiltinReplayTask({ op, input, actual }) {
   try {
     const expected = computeReference(op, input);
     return { ok: true, expected, matched: deepEqual(expected, actual) };

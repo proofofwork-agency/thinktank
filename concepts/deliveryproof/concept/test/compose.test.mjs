@@ -34,7 +34,7 @@ function composeContract(params) {
     refundRule: 'full-refund-on-fail',
     railId: 'escrow-mock',
     nonce: 'n_compose',
-    createdAt: 0,
+    createdAt: Date.now(),
   };
 }
 
@@ -102,7 +102,7 @@ test('compose verifier: any and threshold modes use explicit predicate algebra',
       verifiers: [
         { kind: 'hash', params: { expectedHash: sha256hex([9, 5, 3, 1]) } },
         { kind: 'schema', params: { schema: { type: 'array', items: { type: 'number' } } } },
-        { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+        { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
       ],
     }),
     evidenceFor([9, 5, 3, 1]),
@@ -116,7 +116,7 @@ test('router: explicit compose contracts cannot be bypassed by low-assurance sch
     mode: 'all',
     verifiers: [
       { kind: 'schema', params: { schema: { type: 'array', items: { type: 'number' } } } },
-      { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+      { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     ],
   });
 
@@ -135,7 +135,7 @@ test('router: compose assurance is derived from child verifier profiles', () => 
     mode: 'any',
     verifiers: [
       { kind: 'schema', params: {} },
-      { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+      { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     ],
   });
   assert.equal(routeVerifier(anyContract, { policy: { minAssurance: 1 } }).routeDecision.selectedAssurance, 1);
@@ -147,7 +147,7 @@ test('router: compose assurance is derived from child verifier profiles', () => 
     verifiers: [
       { kind: 'schema', params: {} },
       { kind: 'hash', params: {} },
-      { kind: 'testsuite', params: { op: 'sort', input: [5, 3, 9, 1] } },
+      { kind: 'builtin-replay', params: { op: 'sort', input: [5, 3, 9, 1] } },
     ],
   });
   assert.equal(routeVerifier(thresholdContract, { policy: { minAssurance: 2 } }).routeDecision.selectedAssurance, 2);
@@ -168,7 +168,7 @@ test('settle: compose trace is signed into the receipt and tamper-evident', asyn
     produceEvidence: () => ({ output }),
     verifier: route.verifier,
     routeDecision: route.routeDecision,
-    rail: createMockEscrowRail(),
+    rail: createMockEscrowRail({ settlementPublicKey: settlementKey.publicKey }),
     settlementKey,
   });
   assert.equal(result.verdict.ok, true);

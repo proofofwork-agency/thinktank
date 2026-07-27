@@ -239,7 +239,7 @@ function makeContract(rail, label) {
     seller: 'seller_conformance',
     intent: `rail conformance ${label}`,
     deliverableType: 'application/json',
-    predicate: { kind: 'testsuite', params: { op: 'identity' } },
+    predicate: { kind: 'builtin-replay', params: { op: 'identity' } },
     price: { amount: 5, currency: 'USDC' },
     sla: { deadlineMs: 60000 },
     refundRule: 'full-refund-on-fail',
