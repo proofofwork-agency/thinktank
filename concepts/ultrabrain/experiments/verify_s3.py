@@ -75,12 +75,42 @@ def audit_leakage(train_path, test_path):
     return len(tr), len(te), tr & te
 
 
+def outcome(r, metric):
+    """Resolve pass@1 / pass@N from whichever fields the executor emitted.
+
+    pass@1 and pass@N are DIFFERENT CLAIMS and the pre-registration requires both. A pass@N gain
+    with flat pass@1 means training improved sampling diversity, not first-guess accuracy — and
+    since the project's claim is cost-per-solved-task, that is the difference between "cheaper"
+    and "no cheaper, just luckier". `solved` alone is ambiguous and is treated as pass@N.
+    """
+    if metric in r:
+        return bool(r[metric])
+    idx = r.get("first_certified_index", "__absent__")
+    if idx != "__absent__":
+        if idx is None:
+            return False
+        return idx == 0 if metric == "pass_at_1" else True
+    if "attempts" in r and isinstance(r["attempts"], list):
+        certified = [a["index"] for a in r["attempts"] if a.get("status") == "certified"]
+        if not certified:
+            return False
+        return min(certified) == 0 if metric == "pass_at_1" else True
+    if "solved" in r:                       # ambiguous legacy field: means pass@N
+        return bool(r["solved"]) if metric == "pass_at_n" else None
+    return None
+
+
 def load(results_path):
     rows = [json.loads(l) for l in open(results_path) if l.strip()]
     for r in rows:
-        for k in ("task_id", "model", "seed", "solved", "split"):
+        for k in ("task_id", "model", "seed", "split"):
             if k not in r:
                 raise SystemExit(f"record missing {k!r}: {r}")
+        if all(outcome(r, m) is None for m in ("pass_at_1", "pass_at_n")):
+            raise SystemExit(
+                "record carries no resolvable outcome — need pass_at_1/pass_at_n, "
+                f"first_certified_index, attempts[], or solved: {r}"
+            )
     return rows
 
 
@@ -103,13 +133,16 @@ def check_budget(rows):
     return problems
 
 
-def analyse(rows, split):
-    """P/S — per-seed paired comparison over discordant pairs."""
+def analyse(rows, split, metric):
+    """P/S — per-seed paired comparison over discordant pairs, for one metric."""
     per_seed = collections.defaultdict(dict)
     for r in rows:
         if r["split"] != split:
             continue
-        per_seed[r["seed"]][(r["task_id"], r["model"])] = bool(r["solved"])
+        val = outcome(r, metric)
+        if val is None:
+            continue
+        per_seed[r["seed"]][(r["task_id"], r["model"])] = val
 
     out = []
     for seed in sorted(per_seed):
@@ -157,8 +190,17 @@ def run(argv=None):
         report["leakage"] = {"train": n_tr, "test": n_te, "overlap": len(overlap),
                              "examples": sorted(overlap)[:5]}
 
-    report["test"] = analyse(rows, "test")
-    report["train"] = analyse(rows, "train")
+    report["metrics"] = {}
+    for metric in ("pass_at_1", "pass_at_n"):
+        report["metrics"][metric] = {
+            "test": analyse(rows, "test", metric),
+            "train": analyse(rows, "train", metric),
+        }
+    # The headline verdict is pass@1: it is the one that supports a cost-per-solved-task claim.
+    report["test"] = report["metrics"]["pass_at_1"]["test"] or report["metrics"]["pass_at_n"]["test"]
+    report["train"] = report["metrics"]["pass_at_1"]["train"] or report["metrics"]["pass_at_n"]["train"]
+    report["headline_metric"] = ("pass_at_1" if report["metrics"]["pass_at_1"]["test"]
+                                 else "pass_at_n")
 
     # D — apply the pre-registered decision rules.
     test_sig = [s["significant"] for s in report["test"]]
@@ -201,11 +243,14 @@ def run(argv=None):
         lk = report["leakage"]
         print(f"L leakage        : {'(not checked)' if not lk else f'''train {lk['train']} / test {lk['test']} / OVERLAP {lk['overlap']}'''}")
         print(f"B budget         : {'OK' if not report['budget_problems'] else report['budget_problems']}")
-        for split in ("test", "train"):
-            print(f"\n{split.upper()} split ({'held-out concepts' if split=='test' else 'in-domain'}):")
-            if not report[split]:
-                print("  (no records)")
-            for s in report[split]:
+        for metric in ("pass_at_1", "pass_at_n"):
+          for split in ("test", "train"):
+            rowset = report["metrics"][metric][split]
+            if not rowset:
+                continue
+            print(f"\n[{metric}] {split.upper()} split "
+                  f"({'held-out concepts' if split=='test' else 'in-domain'}):")
+            for s in rowset:
                 mark = "SIGNIFICANT" if s["significant"] else "not significant"
                 print(f"  seed {s['seed']}: base {s['base_pass']}/{s['n_tasks']} -> "
                       f"trained {s['trained_pass']}/{s['n_tasks']} | "
