@@ -285,6 +285,27 @@ The tainted model runs with zero setup and the clean one needs one `pip install`
 install — a corpus generated from the tainted model is unusable for the thing this project exists
 to ship, and that is discovered too late if it is discovered after training.
 
+**S1b · `--proposer llm` never actually searched — found 2026-07-28, during S3 collection.**
+`LLMProposer.propose(task, n)` issued *n identical HTTP requests with no seed*. Against a
+deterministic server that returns *n identical candidates*, so **`--n` was inert on the LLM path
+for the whole of Slice 2's existence.** Verified search with a real model behind the gate — the
+project's headline mechanism — was silently single-shot.
+
+Confirmed from two directions during S3: every task produced exactly **one** distinct candidate
+across N=8, yielding 544 traces that were eightfold duplicates of 68 distinct candidates and
+**zero preference pairs**; and independently, collection solved 68/252 tasks, which tracks the
+in-domain **pass@1 of 73**, not the pass@8 of 115.
+
+It went unnoticed because the pipeline had never been run end-to-end with a real LLM — `NoisyProposer`
+carries its own RNG, so every test and every prior experiment looked healthy. Fixed by forwarding a
+deterministic per-request seed (`base_seed + request_index`).
+
+> **This is the same defect as `run_verified_search.py:161` and as three bugs in the S3 grader: a
+> knob that appears to control something and does not.** Four instances in one day, across the
+> system under test *and* the instrument built to measure it. The general lesson is stronger than
+> any individual fix — **a compute knob is not verified until you have measured that turning it
+> changes the output.** Distinct-candidate counts belong in every search-path result, permanently.
+
 ### S2 · Difficulty targeting
 
 Keep only tasks in the learnable band — `pass@1 ≈ 0 < pass@N`. Below it, nothing to learn; above
