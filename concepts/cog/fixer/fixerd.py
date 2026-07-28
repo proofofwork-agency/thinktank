@@ -116,16 +116,16 @@ def posted_quotes(models, ids=None):
     return sorted(rows, key=lambda r: r["blended_usd_per_M"])
 
 
-def vw_median(runs):
-    """Volume-weighted median of runs: [{'price': $/M, 'weight': tokens}, ...]."""
-    runs = sorted(runs, key=lambda r: r["price"])
-    total = sum(r["weight"] for r in runs)
-    acc = 0
-    for r in runs:
-        acc += r["weight"]
-        if acc * 2 >= total:
-            return r["price"]
-    return runs[-1]["price"]
+def median_executable_price(runs):
+    """Return one equally weighted executable-price observation per eligible buy.
+
+    The depth protocol fixes the eligibility floor and purchase count: at least
+    K=5 independent buys of at least N=10M tokens each.  Token counts are
+    protocol-selected, not observed market volume, so they MUST NOT weight the
+    result or be described as market-volume weighting.  The protection is
+    admission through the eligibility floor, not weighting.
+    """
+    return statistics.median(run["price"] for run in runs)
 
 
 def buy_run(model_row, api_key, max_tokens):
@@ -336,11 +336,14 @@ def main(argv):
             sys.exit("receipt mode needs OPENROUTER_API_KEY (this mode spends real money)")
         receipts, spent = buy_receipts(candidates, api_key, buys, max_tokens, max_spend)
         if receipts:
-            fix = vw_median([{"price": r["blended_usd_per_M"],
-                              "weight": r["usage"]["prompt_tokens"] + r["usage"]["completion_tokens"]}
-                             for r in receipts])
-            method = (f"volume-weighted median of {len(receipts)} receipted micro-runs "
-                      f"(receipt-lite: existence proof, not the full K=5x10M depth gate)")
+            fix = median_executable_price(
+                [{"price": r["blended_usd_per_M"]} for r in receipts]
+            )
+            method = (
+                f"median executable price across {len(receipts)} receipted micro-runs "
+                f"(receipt-lite: execution evidence only, not the full >= K=5 "
+                f"independent buys of >= N=10M tokens each depth gate)"
+            )
             mode = "receipt-lite"
         else:
             sys.exit("no receipts executed; not publishing")

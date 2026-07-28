@@ -4,13 +4,15 @@ The one place the roadmap says diffusion beats same-scale autoregression is fill
 a bidirectional denoiser conditions on BOTH the prefix and the suffix at once (HumanEval-FIM
 73.8 > 73.3), which a left-to-right AR model cannot do natively. This wires our from-scratch
 masked-diffusion LM (``denoiser.py`` + ``diffusion.py``) in as *just another demoted proposer*:
-it proposes a fill for ``task['prefix'] <hole> task['suffix']`` and the EXISTING hardened gate
-certifies the assembled program. The gate / verifier / ledger / trace pipeline is untouched —
-FIM-ness lives entirely here, which is the proposer-agnostic thesis (thoughts/14, 22) once more.
+it proposes a fill for ``task['prefix'] <hole> task['suffix']`` and the gate certifies the assembled
+program. FIM-ness lives entirely in the proposer (the proposer-agnostic thesis, thoughts/14, 22).
+NOTE: the gate/verifier were LATER REWORKED for the verdict-forgery fix (the forgeable assert runner ->
+parent-owned-oracle ``judge_v1``), so the earlier "pipeline is untouched" framing no longer holds.
 
-SECURITY: a diffusion fill is untrusted model output exactly like an LLM completion, so the CLIs
-run ``--proposer fim`` under OS isolation and FAIL CLOSED, the same policy as ``--proposer llm``
-(see ``run_verified_search.py`` / ``eval_code.py``).
+SECURITY: a diffusion fill is untrusted model output exactly like an LLM completion, so ``--proposer
+fim`` FAILS CLOSED in the CLIs (never writes trusted ledger/SFT; runnable only under ``--unsafe`` for
+diagnostics), the same policy as ``--proposer llm``. rlimits are defense in depth, NOT a host jail;
+sound certification of this output awaits the subordinate-jailed executor (see ``judge.py``).
 
 HONEST SCOPE: the shipped checkpoint (``checkpoints/diffusion.pt``) is Shakespeare-trained, not
 code, so it will NOT fill code holes well — its fills get correctly REJECTED by the gate. That is
@@ -191,14 +193,35 @@ class DiffusionFIMProposer:
             return _UNAVAILABLE.format(reason="fim_bad_boundary: special token leaked into the fill")
         return candidate
 
+    @staticmethod
+    def _fill_lengths(hole: int) -> list:
+        """A few candidate hole sizes ``<=`` the advertised ``hole_tokens``, longest first.
+
+        The real answer is usually SHORTER than the advertised hole (which overshoots), and a
+        fixed-length diffusion fill must otherwise pad the remainder with filler that still has to
+        parse. Sweeping a handful of shorter lengths lets the gate certify whichever one lands — a
+        pure coverage win (the gate, not the proposer, still decides). Bounded and deduplicated.
+
+        CONTRACT (Codex review): this is proposer DIVERSITY across the ``n`` candidates — several
+        distinct proposals the gate judges independently — NOT a silent reframing of a single
+        requested hole. The STRICT overflow guard in ``_fill_once`` is unchanged and still fires per
+        candidate: any swept length whose ``prefix + hole + suffix`` exceeds the model block returns a
+        gate-rejected sentinel rather than being quietly shrunk. All lengths here are ``<= hole_tokens``.
+        """
+        hole = max(1, int(hole))
+        cands = {hole, hole - 2, hole - 4, hole * 3 // 4, hole // 2, max(1, hole // 3)}
+        return sorted((c for c in cands if c >= 1), reverse=True)
+
     def propose(self, task: dict, n: int) -> list:
         if not self.available:
             return [_UNAVAILABLE.format(reason=self._err or "no model")] * n
         prefix = task.get("prefix", "")
         suffix = task.get("suffix", "")
-        fill_len = int(task.get("hole_tokens", self.max_fill_tokens))
+        hole = int(task.get("hole_tokens", self.max_fill_tokens))
+        lengths = self._fill_lengths(hole)  # sweep several hole sizes, cycled across the n samples
         out = []
         for i in range(n):
+            fill_len = lengths[i % len(lengths)]
             try:
                 cand, reason = self._fill_once(prefix, suffix, fill_len, self.seed + i)
             except Exception as exc:  # any sampler failure -> sentinel -> gate rejects -> sound

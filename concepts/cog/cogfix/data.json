@@ -4,7 +4,12 @@
     "tier": "GPT-4-class general capability (frozen threshold; historical points approximated via public MMLU-era scores)",
     "reference_workload": "1,000,000 blended tokens (800k input / 200k output)",
     "blend": "blended_usd_per_M = 0.8 * input_usd_per_M + 0.2 * output_usd_per_M",
-    "fix_rule": "volume-weighted median of receipted qualifying runs, with depth requirement (>= K=5 independent buys of >= N=10M tokens each per window) so a loss-leader sip cannot set the fix; this backtest uses documented launch/posted prices as a proxy (see caveats)",
+    "fix_rule": "documented launch/posted blended prices at dated observations; the backtest retains the lowest non-provisional observation per month and log-linearly interpolates between observation months",
+    "cog_1_settlement_rule": {
+      "spec": "spec/COG-1.md",
+      "rule": "median executable price across qualifying sized purchases (>= K=5 independent buys of >= N=10M tokens each)",
+      "implemented_by_backtest": false
+    },
     "caveats": "Pre-2025 points are documented launch-announcement prices, not receipted runs. Tier qualification is approximate (no frozen COG-1 basket existed historically). Points marked provisional await a qualifying basket run. The backtest shows the shape the fix would have had; it is labeled approximate throughout."
   },
   "frontier_tier_series": [

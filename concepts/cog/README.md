@@ -17,8 +17,8 @@ economy has no stable unit to write standing obligations in.
 
 > **1 cog** = the *depth-verified* market price, on the fix date, of running a frozen
 > reference workload (1M blended tokens, 800k in / 200k out) on any model that passes a
-> frozen capability basket (GPT-4-class tier) — a volume-weighted median of receipted,
-> sized purchases, so a loss-leader sip can't set the fix.
+> frozen capability basket (GPT-4-class tier) — the median executable price across receipted
+> purchases that each clear a minimum size, so a loss-leader sip can't set the fix.
 
 *That is the unit as specified. What this repo has actually published so far is a posted-price
 quote with `receipts: []` — the fix payload and every MCP response label themselves accordingly
@@ -57,6 +57,10 @@ what deflates): same deal at $3,000 fixed + 1,000 cogs still saves the buyer **$
   the unavailability ladder, chain-linking), [`COG-DENOM-EXT-0.1.md`](spec/COG-DENOM-EXT-0.1.md)
   (denominating an x402 payment or an AP2 mandate in cogs), plus JSON Schemas and their hashes.
   The whitepaper argues; the spec binds.
+- [`GOVERNANCE.md`](GOVERNANCE.md) — who controls the discretion around the number, which
+  levers could move somebody's invoice, what we commit to, and the conflict we have not solved
+  (one org writes the exam, buys the inference, computes the fix, holds the only key, and wrote
+  both sides of the demo contract). Read this before signing anything against the index.
 - [`fixer/PROVENANCE.md`](fixer/PROVENANCE.md) — what the published number does and does not
   measure, including the impurities.
 - [`anchor/snapshot/SOURCE.md`](anchor/snapshot/SOURCE.md) — the vendored Epoch AI series we
@@ -247,10 +251,28 @@ already measured the "algorithmic-efficiency premium" we called unpriceable. All
 in [`WHITEPAPER.md §7`](WHITEPAPER.md), and the claim is down to two things: **contract
 denomination mechanics**, and **the depth protocol** that makes a receipt mean something.
 
+**A methodology label was wrong and has been corrected.** Drafts through 0.3 called the fix a
+**volume-weighted median** and credited the weighting with stopping a loss-leader endpoint from
+dragging the index. That was false in a way that inverted the security argument: a fixer picks
+its own purchase sizes, and weighting by a self-selected quantity is not market-volume
+weighting — under the depth gate, where every eligible buy is standardized at ≥ N tokens, the
+weights are equal by construction and the weighting does nothing. What actually excludes the
+sip is the **eligibility floor**: an undersized run never enters the median at all. The rule is
+now called the **median executable price**, in prose and in code, and a test that had pinned the
+defective behaviour as if it were a feature was inverted.
+
+**Basis risk is real and unmeasured.** The fix tracks the marginal public price of the cheapest
+qualifying endpoint; a vendor on committed, regional, private, or reserved capacity does not.
+The fix can fall 50% while a given vendor's true cost falls 10%. `collar`, `region`, and
+fractional indexing exist to bound that, but **we have not published a tracking-error study**,
+so the case that the cog hedges anything specific is an argument, not a result
+([`WHITEPAPER.md §6`](WHITEPAPER.md)).
+
 **What has not been exercised:** the depth requirement is the load-bearing claim and no buy at
-spec size (K=5 × 10M tokens) has ever run. Receipts published so far are `[]`. Until that
-changes this is a specification with a reference implementation, not an operating index — and
-the repo says so rather than implying otherwise.
+spec size (K=5 × 10M tokens) has ever run. Receipts published so far are `[]`. There is one
+publisher, one signing key, and no external attestation ([`GOVERNANCE.md`](GOVERNANCE.md)).
+Until that changes this is a specification with a reference implementation, not an operating
+index — and the repo says so rather than implying otherwise.
 
 ## Licensing
 

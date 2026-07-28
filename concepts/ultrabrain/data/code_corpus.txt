@@ -1,0 +1,1386 @@
+def is_even(n):
+    return n % 2 == 0
+def even(n):
+    return n % 2 == 0
+def is_mod2(n):
+    return n % 2 == 0
+def divisible2(n):
+    return n % 2 == 0
+def divis_by_2(n):
+    return n % 2 == 0
+def is_multiple_2(x):
+    return x % 2 == 0
+def divis_by_3(n):
+    return n % 3 == 0
+def is_multiple_3(x):
+    return x % 3 == 0
+def divis_by_4(n):
+    return n % 4 == 0
+def is_multiple_4(x):
+    return x % 4 == 0
+def divis_by_5(n):
+    return n % 5 == 0
+def is_multiple_5(x):
+    return x % 5 == 0
+def divis_by_7(n):
+    return n % 7 == 0
+def is_multiple_7(x):
+    return x % 7 == 0
+def divis_by_10(n):
+    return n % 10 == 0
+def is_multiple_10(x):
+    return x % 10 == 0
+def is_odd(n):
+    return n % 2 == 1
+def is_odd2(n):
+    return n % 2 != 0
+def absval(x):
+    return x if x >= 0 else -x
+def myabs(x):
+    return x if x >= 0 else -x
+def magnitude(v):
+    return v if v >= 0 else -v
+def absolute(n):
+    return n if n >= 0 else -n
+def max2(a, b):
+    return a if a > b else b
+def larger(a, b):
+    return a if a > b else b
+def bigger(a, b):
+    return a if a > b else b
+def maxi(a, b):
+    return a if a > b else b
+def min2(a, b):
+    return a if a < b else b
+def smaller(a, b):
+    return a if a < b else b
+def mini(a, b):
+    return a if a < b else b
+def total_xs(xs):
+    return sum(xs)
+def add_all_xs(xs):
+    return sum(xs)
+def total_nums(nums):
+    return sum(nums)
+def add_all_nums(nums):
+    return sum(nums)
+def total_items(items):
+    return sum(items)
+def add_all_items(items):
+    return sum(items)
+def total_values(values):
+    return sum(values)
+def add_all_values(values):
+    return sum(values)
+def total_lst(lst):
+    return sum(lst)
+def add_all_lst(lst):
+    return sum(lst)
+def count_vowels(s):
+    return sum(1 for c in s if c in 'aeiou')
+def count_vowels2(s):
+    return sum(1 for ch in s if ch in 'aeiou')
+def count_char(s):
+    return sum(1 for c in s if c == 'a')
+def count_char(s):
+    return sum(1 for c in s if c == 'z')
+def count_char(s):
+    return sum(1 for c in s if c == ' ')
+def count_char(s):
+    return sum(1 for c in s if c == 'e')
+def count_digits(s):
+    return sum(1 for c in s if c in '0123456789')
+def count_pos(xs):
+    return sum(1 for x in xs if x > 0)
+def count_neg(xs):
+    return sum(1 for x in xs if x < 0)
+def cap_first(s):
+    return s[:1].upper() + s[1:]
+def upper_first(s):
+    return s[:1].upper() + s[1:]
+def lower_first(s):
+    return s[:1].lower() + s[1:]
+def reverse(s):
+    return s[::-1]
+def drop_first(s):
+    return s[1:]
+def first_char(s):
+    return s[:1]
+def first_neg(xs):
+    for i, v in enumerate(xs):
+        if v < 0:
+            return i
+    return -1
+def first_zero(xs):
+    for i, v in enumerate(xs):
+        if v == 0:
+            return i
+    return -1
+def first_pos(xs):
+    for i, v in enumerate(xs):
+        if v > 0:
+            return i
+    return -1
+def index_of(xs, target):
+    for i, v in enumerate(xs):
+        if v == target:
+            return i
+    return -1
+def dedupe(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def unique(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def distinct(items):
+    seen = set()
+    out = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def running_max(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else max(best, x)
+        out.append(best)
+    return out
+def running_min(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else min(best, x)
+        out.append(best)
+    return out
+def running_sum(xs):
+    out = []
+    total = 0
+    for x in xs:
+        total = total + x
+        out.append(total)
+    return out
+def clamp(x, lo, hi):
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+def clip(v, lo, hi):
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+def bound(x, low, high):
+    if x < low:
+        return low
+    if x > high:
+        return high
+    return x
+def label3(n):
+    return 'fizz' if n % 3 == 0 else str(n)
+def label5(n):
+    return 'buzz' if n % 5 == 0 else str(n)
+def label2(n):
+    return 'even' if n % 2 == 0 else 'odd'
+def inc(x):
+    return x + 1
+def double(x):
+    return x * 2
+def square(x):
+    return x * x
+def negate(x):
+    return -x
+def half(x):
+    return x // 2
+def is_empty(xs):
+    return len(xs) == 0
+def length(xs):
+    return len(xs)
+def head(xs):
+    return xs[0]
+def tail(xs):
+    return xs[1:]
+def last(xs):
+    return xs[-1]
+def contains(xs, target):
+    return target in xs
+def add(a, b):
+    return a + b
+def sub(a, b):
+    return a - b
+def mul(a, b):
+    return a * b
+def eq(a, b):
+    return a == b
+def both(a, b):
+    return a and b
+def either(a, b):
+    return a or b
+def running_sum(xs):
+    out = []
+    total = 0
+    for x in xs:
+        total = total + x
+        out.append(total)
+    return out
+def count_vowels(s):
+    return sum(1 for c in s if c in 'aeiou')
+def is_even(n):
+    return n % 2 == 0
+def total_xs(xs):
+    return sum(xs)
+def add_all_lst(lst):
+    return sum(lst)
+def total_items(items):
+    return sum(items)
+def upper_first(s):
+    return s[:1].upper() + s[1:]
+def reverse(s):
+    return s[::-1]
+def even(n):
+    return n % 2 == 0
+def is_odd(n):
+    return n % 2 == 1
+def count_neg(xs):
+    return sum(1 for x in xs if x < 0)
+def head(xs):
+    return xs[0]
+def max2(a, b):
+    return a if a > b else b
+def count_char(s):
+    return sum(1 for c in s if c == 'e')
+def running_max(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else max(best, x)
+        out.append(best)
+    return out
+def is_empty(xs):
+    return len(xs) == 0
+def contains(xs, target):
+    return target in xs
+def inc(x):
+    return x + 1
+def magnitude(v):
+    return v if v >= 0 else -v
+def is_multiple_2(x):
+    return x % 2 == 0
+def tail(xs):
+    return xs[1:]
+def cap_first(s):
+    return s[:1].upper() + s[1:]
+def count_char(s):
+    return sum(1 for c in s if c == 'z')
+def first_pos(xs):
+    for i, v in enumerate(xs):
+        if v > 0:
+            return i
+    return -1
+def eq(a, b):
+    return a == b
+def bound(x, low, high):
+    if x < low:
+        return low
+    if x > high:
+        return high
+    return x
+def divis_by_5(n):
+    return n % 5 == 0
+def bigger(a, b):
+    return a if a > b else b
+def add_all_nums(nums):
+    return sum(nums)
+def is_odd2(n):
+    return n % 2 != 0
+def absolute(n):
+    return n if n >= 0 else -n
+def total_nums(nums):
+    return sum(nums)
+def is_multiple_7(x):
+    return x % 7 == 0
+def double(x):
+    return x * 2
+def negate(x):
+    return -x
+def count_char(s):
+    return sum(1 for c in s if c == ' ')
+def either(a, b):
+    return a or b
+def larger(a, b):
+    return a if a > b else b
+def last(xs):
+    return xs[-1]
+def count_digits(s):
+    return sum(1 for c in s if c in '0123456789')
+def index_of(xs, target):
+    for i, v in enumerate(xs):
+        if v == target:
+            return i
+    return -1
+def sub(a, b):
+    return a - b
+def label3(n):
+    return 'fizz' if n % 3 == 0 else str(n)
+def drop_first(s):
+    return s[1:]
+def both(a, b):
+    return a and b
+def dedupe(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def clip(v, lo, hi):
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+def add_all_items(items):
+    return sum(items)
+def add(a, b):
+    return a + b
+def min2(a, b):
+    return a if a < b else b
+def absval(x):
+    return x if x >= 0 else -x
+def label2(n):
+    return 'even' if n % 2 == 0 else 'odd'
+def total_values(values):
+    return sum(values)
+def is_mod2(n):
+    return n % 2 == 0
+def divis_by_10(n):
+    return n % 10 == 0
+def unique(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def maxi(a, b):
+    return a if a > b else b
+def distinct(items):
+    seen = set()
+    out = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def add_all_values(values):
+    return sum(values)
+def divisible2(n):
+    return n % 2 == 0
+def total_lst(lst):
+    return sum(lst)
+def running_min(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else min(best, x)
+        out.append(best)
+    return out
+def count_vowels2(s):
+    return sum(1 for ch in s if ch in 'aeiou')
+def mini(a, b):
+    return a if a < b else b
+def is_multiple_10(x):
+    return x % 10 == 0
+def length(xs):
+    return len(xs)
+def first_neg(xs):
+    for i, v in enumerate(xs):
+        if v < 0:
+            return i
+    return -1
+def square(x):
+    return x * x
+def add_all_xs(xs):
+    return sum(xs)
+def divis_by_4(n):
+    return n % 4 == 0
+def first_char(s):
+    return s[:1]
+def first_zero(xs):
+    for i, v in enumerate(xs):
+        if v == 0:
+            return i
+    return -1
+def is_multiple_5(x):
+    return x % 5 == 0
+def divis_by_2(n):
+    return n % 2 == 0
+def smaller(a, b):
+    return a if a < b else b
+def clamp(x, lo, hi):
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+def is_multiple_3(x):
+    return x % 3 == 0
+def half(x):
+    return x // 2
+def count_pos(xs):
+    return sum(1 for x in xs if x > 0)
+def divis_by_7(n):
+    return n % 7 == 0
+def label5(n):
+    return 'buzz' if n % 5 == 0 else str(n)
+def is_multiple_4(x):
+    return x % 4 == 0
+def divis_by_3(n):
+    return n % 3 == 0
+def mul(a, b):
+    return a * b
+def lower_first(s):
+    return s[:1].lower() + s[1:]
+def myabs(x):
+    return x if x >= 0 else -x
+def count_char(s):
+    return sum(1 for c in s if c == 'a')
+def clamp(x, lo, hi):
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+def larger(a, b):
+    return a if a > b else b
+def even(n):
+    return n % 2 == 0
+def first_zero(xs):
+    for i, v in enumerate(xs):
+        if v == 0:
+            return i
+    return -1
+def bound(x, low, high):
+    if x < low:
+        return low
+    if x > high:
+        return high
+    return x
+def divis_by_7(n):
+    return n % 7 == 0
+def divis_by_3(n):
+    return n % 3 == 0
+def count_char(s):
+    return sum(1 for c in s if c == 'z')
+def square(x):
+    return x * x
+def is_odd(n):
+    return n % 2 == 1
+def magnitude(v):
+    return v if v >= 0 else -v
+def add_all_xs(xs):
+    return sum(xs)
+def total_lst(lst):
+    return sum(lst)
+def add_all_nums(nums):
+    return sum(nums)
+def myabs(x):
+    return x if x >= 0 else -x
+def sub(a, b):
+    return a - b
+def first_neg(xs):
+    for i, v in enumerate(xs):
+        if v < 0:
+            return i
+    return -1
+def contains(xs, target):
+    return target in xs
+def total_items(items):
+    return sum(items)
+def count_pos(xs):
+    return sum(1 for x in xs if x > 0)
+def is_empty(xs):
+    return len(xs) == 0
+def running_max(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else max(best, x)
+        out.append(best)
+    return out
+def drop_first(s):
+    return s[1:]
+def either(a, b):
+    return a or b
+def is_even(n):
+    return n % 2 == 0
+def add_all_lst(lst):
+    return sum(lst)
+def absolute(n):
+    return n if n >= 0 else -n
+def label3(n):
+    return 'fizz' if n % 3 == 0 else str(n)
+def divis_by_2(n):
+    return n % 2 == 0
+def count_digits(s):
+    return sum(1 for c in s if c in '0123456789')
+def head(xs):
+    return xs[0]
+def eq(a, b):
+    return a == b
+def divis_by_10(n):
+    return n % 10 == 0
+def bigger(a, b):
+    return a if a > b else b
+def running_min(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else min(best, x)
+        out.append(best)
+    return out
+def min2(a, b):
+    return a if a < b else b
+def add(a, b):
+    return a + b
+def count_char(s):
+    return sum(1 for c in s if c == 'a')
+def smaller(a, b):
+    return a if a < b else b
+def reverse(s):
+    return s[::-1]
+def is_odd2(n):
+    return n % 2 != 0
+def total_values(values):
+    return sum(values)
+def lower_first(s):
+    return s[:1].lower() + s[1:]
+def mini(a, b):
+    return a if a < b else b
+def unique(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def both(a, b):
+    return a and b
+def first_pos(xs):
+    for i, v in enumerate(xs):
+        if v > 0:
+            return i
+    return -1
+def cap_first(s):
+    return s[:1].upper() + s[1:]
+def maxi(a, b):
+    return a if a > b else b
+def is_multiple_10(x):
+    return x % 10 == 0
+def count_neg(xs):
+    return sum(1 for x in xs if x < 0)
+def inc(x):
+    return x + 1
+def absval(x):
+    return x if x >= 0 else -x
+def clip(v, lo, hi):
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+def is_multiple_7(x):
+    return x % 7 == 0
+def divisible2(n):
+    return n % 2 == 0
+def total_nums(nums):
+    return sum(nums)
+def label2(n):
+    return 'even' if n % 2 == 0 else 'odd'
+def label5(n):
+    return 'buzz' if n % 5 == 0 else str(n)
+def divis_by_5(n):
+    return n % 5 == 0
+def max2(a, b):
+    return a if a > b else b
+def total_xs(xs):
+    return sum(xs)
+def mul(a, b):
+    return a * b
+def is_mod2(n):
+    return n % 2 == 0
+def last(xs):
+    return xs[-1]
+def upper_first(s):
+    return s[:1].upper() + s[1:]
+def add_all_values(values):
+    return sum(values)
+def index_of(xs, target):
+    for i, v in enumerate(xs):
+        if v == target:
+            return i
+    return -1
+def count_vowels(s):
+    return sum(1 for c in s if c in 'aeiou')
+def is_multiple_3(x):
+    return x % 3 == 0
+def tail(xs):
+    return xs[1:]
+def distinct(items):
+    seen = set()
+    out = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def add_all_items(items):
+    return sum(items)
+def is_multiple_5(x):
+    return x % 5 == 0
+def divis_by_4(n):
+    return n % 4 == 0
+def dedupe(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def half(x):
+    return x // 2
+def running_sum(xs):
+    out = []
+    total = 0
+    for x in xs:
+        total = total + x
+        out.append(total)
+    return out
+def length(xs):
+    return len(xs)
+def count_char(s):
+    return sum(1 for c in s if c == 'e')
+def count_char(s):
+    return sum(1 for c in s if c == ' ')
+def count_vowels2(s):
+    return sum(1 for ch in s if ch in 'aeiou')
+def negate(x):
+    return -x
+def double(x):
+    return x * 2
+def is_multiple_4(x):
+    return x % 4 == 0
+def is_multiple_2(x):
+    return x % 2 == 0
+def first_char(s):
+    return s[:1]
+def divis_by_2(n):
+    return n % 2 == 0
+def total_values(values):
+    return sum(values)
+def count_digits(s):
+    return sum(1 for c in s if c in '0123456789')
+def add_all_nums(nums):
+    return sum(nums)
+def is_empty(xs):
+    return len(xs) == 0
+def is_mod2(n):
+    return n % 2 == 0
+def add_all_values(values):
+    return sum(values)
+def double(x):
+    return x * 2
+def maxi(a, b):
+    return a if a > b else b
+def length(xs):
+    return len(xs)
+def mini(a, b):
+    return a if a < b else b
+def count_vowels(s):
+    return sum(1 for c in s if c in 'aeiou')
+def bound(x, low, high):
+    if x < low:
+        return low
+    if x > high:
+        return high
+    return x
+def is_multiple_10(x):
+    return x % 10 == 0
+def contains(xs, target):
+    return target in xs
+def label2(n):
+    return 'even' if n % 2 == 0 else 'odd'
+def absval(x):
+    return x if x >= 0 else -x
+def label3(n):
+    return 'fizz' if n % 3 == 0 else str(n)
+def total_lst(lst):
+    return sum(lst)
+def count_char(s):
+    return sum(1 for c in s if c == 'z')
+def drop_first(s):
+    return s[1:]
+def half(x):
+    return x // 2
+def is_odd2(n):
+    return n % 2 != 0
+def first_neg(xs):
+    for i, v in enumerate(xs):
+        if v < 0:
+            return i
+    return -1
+def clamp(x, lo, hi):
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+def first_char(s):
+    return s[:1]
+def is_multiple_5(x):
+    return x % 5 == 0
+def count_char(s):
+    return sum(1 for c in s if c == 'e')
+def last(xs):
+    return xs[-1]
+def smaller(a, b):
+    return a if a < b else b
+def unique(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def running_sum(xs):
+    out = []
+    total = 0
+    for x in xs:
+        total = total + x
+        out.append(total)
+    return out
+def upper_first(s):
+    return s[:1].upper() + s[1:]
+def dedupe(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def eq(a, b):
+    return a == b
+def add_all_items(items):
+    return sum(items)
+def count_neg(xs):
+    return sum(1 for x in xs if x < 0)
+def index_of(xs, target):
+    for i, v in enumerate(xs):
+        if v == target:
+            return i
+    return -1
+def count_char(s):
+    return sum(1 for c in s if c == 'a')
+def square(x):
+    return x * x
+def even(n):
+    return n % 2 == 0
+def total_items(items):
+    return sum(items)
+def divis_by_5(n):
+    return n % 5 == 0
+def either(a, b):
+    return a or b
+def distinct(items):
+    seen = set()
+    out = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def absolute(n):
+    return n if n >= 0 else -n
+def negate(x):
+    return -x
+def running_min(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else min(best, x)
+        out.append(best)
+    return out
+def is_multiple_2(x):
+    return x % 2 == 0
+def inc(x):
+    return x + 1
+def sub(a, b):
+    return a - b
+def head(xs):
+    return xs[0]
+def total_xs(xs):
+    return sum(xs)
+def total_nums(nums):
+    return sum(nums)
+def first_zero(xs):
+    for i, v in enumerate(xs):
+        if v == 0:
+            return i
+    return -1
+def mul(a, b):
+    return a * b
+def add_all_xs(xs):
+    return sum(xs)
+def larger(a, b):
+    return a if a > b else b
+def add_all_lst(lst):
+    return sum(lst)
+def max2(a, b):
+    return a if a > b else b
+def is_odd(n):
+    return n % 2 == 1
+def count_vowels2(s):
+    return sum(1 for ch in s if ch in 'aeiou')
+def clip(v, lo, hi):
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+def cap_first(s):
+    return s[:1].upper() + s[1:]
+def tail(xs):
+    return xs[1:]
+def is_multiple_4(x):
+    return x % 4 == 0
+def divisible2(n):
+    return n % 2 == 0
+def count_pos(xs):
+    return sum(1 for x in xs if x > 0)
+def divis_by_7(n):
+    return n % 7 == 0
+def label5(n):
+    return 'buzz' if n % 5 == 0 else str(n)
+def myabs(x):
+    return x if x >= 0 else -x
+def is_even(n):
+    return n % 2 == 0
+def both(a, b):
+    return a and b
+def divis_by_3(n):
+    return n % 3 == 0
+def count_char(s):
+    return sum(1 for c in s if c == ' ')
+def divis_by_10(n):
+    return n % 10 == 0
+def magnitude(v):
+    return v if v >= 0 else -v
+def first_pos(xs):
+    for i, v in enumerate(xs):
+        if v > 0:
+            return i
+    return -1
+def min2(a, b):
+    return a if a < b else b
+def divis_by_4(n):
+    return n % 4 == 0
+def bigger(a, b):
+    return a if a > b else b
+def is_multiple_3(x):
+    return x % 3 == 0
+def reverse(s):
+    return s[::-1]
+def add(a, b):
+    return a + b
+def running_max(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else max(best, x)
+        out.append(best)
+    return out
+def is_multiple_7(x):
+    return x % 7 == 0
+def lower_first(s):
+    return s[:1].lower() + s[1:]
+def divisible2(n):
+    return n % 2 == 0
+def divis_by_10(n):
+    return n % 10 == 0
+def is_mod2(n):
+    return n % 2 == 0
+def divis_by_7(n):
+    return n % 7 == 0
+def add_all_values(values):
+    return sum(values)
+def inc(x):
+    return x + 1
+def absolute(n):
+    return n if n >= 0 else -n
+def larger(a, b):
+    return a if a > b else b
+def is_odd2(n):
+    return n % 2 != 0
+def first_neg(xs):
+    for i, v in enumerate(xs):
+        if v < 0:
+            return i
+    return -1
+def myabs(x):
+    return x if x >= 0 else -x
+def magnitude(v):
+    return v if v >= 0 else -v
+def clip(v, lo, hi):
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+def running_sum(xs):
+    out = []
+    total = 0
+    for x in xs:
+        total = total + x
+        out.append(total)
+    return out
+def either(a, b):
+    return a or b
+def divis_by_2(n):
+    return n % 2 == 0
+def add(a, b):
+    return a + b
+def bigger(a, b):
+    return a if a > b else b
+def drop_first(s):
+    return s[1:]
+def absval(x):
+    return x if x >= 0 else -x
+def is_multiple_3(x):
+    return x % 3 == 0
+def is_odd(n):
+    return n % 2 == 1
+def count_vowels2(s):
+    return sum(1 for ch in s if ch in 'aeiou')
+def sub(a, b):
+    return a - b
+def add_all_nums(nums):
+    return sum(nums)
+def head(xs):
+    return xs[0]
+def first_pos(xs):
+    for i, v in enumerate(xs):
+        if v > 0:
+            return i
+    return -1
+def clamp(x, lo, hi):
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+def length(xs):
+    return len(xs)
+def add_all_items(items):
+    return sum(items)
+def total_nums(nums):
+    return sum(nums)
+def smaller(a, b):
+    return a if a < b else b
+def cap_first(s):
+    return s[:1].upper() + s[1:]
+def total_items(items):
+    return sum(items)
+def divis_by_3(n):
+    return n % 3 == 0
+def half(x):
+    return x // 2
+def lower_first(s):
+    return s[:1].lower() + s[1:]
+def running_min(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else min(best, x)
+        out.append(best)
+    return out
+def square(x):
+    return x * x
+def total_values(values):
+    return sum(values)
+def count_digits(s):
+    return sum(1 for c in s if c in '0123456789')
+def bound(x, low, high):
+    if x < low:
+        return low
+    if x > high:
+        return high
+    return x
+def add_all_xs(xs):
+    return sum(xs)
+def add_all_lst(lst):
+    return sum(lst)
+def count_vowels(s):
+    return sum(1 for c in s if c in 'aeiou')
+def label2(n):
+    return 'even' if n % 2 == 0 else 'odd'
+def count_char(s):
+    return sum(1 for c in s if c == 'a')
+def dedupe(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def total_lst(lst):
+    return sum(lst)
+def is_multiple_4(x):
+    return x % 4 == 0
+def even(n):
+    return n % 2 == 0
+def divis_by_4(n):
+    return n % 4 == 0
+def first_char(s):
+    return s[:1]
+def double(x):
+    return x * 2
+def label3(n):
+    return 'fizz' if n % 3 == 0 else str(n)
+def is_multiple_2(x):
+    return x % 2 == 0
+def count_neg(xs):
+    return sum(1 for x in xs if x < 0)
+def unique(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def contains(xs, target):
+    return target in xs
+def label5(n):
+    return 'buzz' if n % 5 == 0 else str(n)
+def eq(a, b):
+    return a == b
+def last(xs):
+    return xs[-1]
+def reverse(s):
+    return s[::-1]
+def is_multiple_5(x):
+    return x % 5 == 0
+def count_char(s):
+    return sum(1 for c in s if c == 'z')
+def first_zero(xs):
+    for i, v in enumerate(xs):
+        if v == 0:
+            return i
+    return -1
+def max2(a, b):
+    return a if a > b else b
+def negate(x):
+    return -x
+def tail(xs):
+    return xs[1:]
+def upper_first(s):
+    return s[:1].upper() + s[1:]
+def is_multiple_10(x):
+    return x % 10 == 0
+def mul(a, b):
+    return a * b
+def both(a, b):
+    return a and b
+def is_empty(xs):
+    return len(xs) == 0
+def is_even(n):
+    return n % 2 == 0
+def running_max(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else max(best, x)
+        out.append(best)
+    return out
+def min2(a, b):
+    return a if a < b else b
+def count_char(s):
+    return sum(1 for c in s if c == ' ')
+def maxi(a, b):
+    return a if a > b else b
+def distinct(items):
+    seen = set()
+    out = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def total_xs(xs):
+    return sum(xs)
+def is_multiple_7(x):
+    return x % 7 == 0
+def mini(a, b):
+    return a if a < b else b
+def divis_by_5(n):
+    return n % 5 == 0
+def count_pos(xs):
+    return sum(1 for x in xs if x > 0)
+def count_char(s):
+    return sum(1 for c in s if c == 'e')
+def index_of(xs, target):
+    for i, v in enumerate(xs):
+        if v == target:
+            return i
+    return -1
+def mul(a, b):
+    return a * b
+def divis_by_5(n):
+    return n % 5 == 0
+def drop_first(s):
+    return s[1:]
+def smaller(a, b):
+    return a if a < b else b
+def count_vowels2(s):
+    return sum(1 for ch in s if ch in 'aeiou')
+def last(xs):
+    return xs[-1]
+def clip(v, lo, hi):
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+def both(a, b):
+    return a and b
+def count_char(s):
+    return sum(1 for c in s if c == 'z')
+def first_neg(xs):
+    for i, v in enumerate(xs):
+        if v < 0:
+            return i
+    return -1
+def count_char(s):
+    return sum(1 for c in s if c == ' ')
+def is_empty(xs):
+    return len(xs) == 0
+def square(x):
+    return x * x
+def sub(a, b):
+    return a - b
+def add(a, b):
+    return a + b
+def divis_by_10(n):
+    return n % 10 == 0
+def contains(xs, target):
+    return target in xs
+def add_all_values(values):
+    return sum(values)
+def negate(x):
+    return -x
+def is_multiple_5(x):
+    return x % 5 == 0
+def label5(n):
+    return 'buzz' if n % 5 == 0 else str(n)
+def unique(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def divisible2(n):
+    return n % 2 == 0
+def is_multiple_4(x):
+    return x % 4 == 0
+def total_xs(xs):
+    return sum(xs)
+def divis_by_3(n):
+    return n % 3 == 0
+def upper_first(s):
+    return s[:1].upper() + s[1:]
+def inc(x):
+    return x + 1
+def count_digits(s):
+    return sum(1 for c in s if c in '0123456789')
+def absolute(n):
+    return n if n >= 0 else -n
+def is_mod2(n):
+    return n % 2 == 0
+def first_zero(xs):
+    for i, v in enumerate(xs):
+        if v == 0:
+            return i
+    return -1
+def total_lst(lst):
+    return sum(lst)
+def maxi(a, b):
+    return a if a > b else b
+def label2(n):
+    return 'even' if n % 2 == 0 else 'odd'
+def min2(a, b):
+    return a if a < b else b
+def divis_by_4(n):
+    return n % 4 == 0
+def count_neg(xs):
+    return sum(1 for x in xs if x < 0)
+def lower_first(s):
+    return s[:1].lower() + s[1:]
+def running_min(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else min(best, x)
+        out.append(best)
+    return out
+def is_odd(n):
+    return n % 2 == 1
+def total_items(items):
+    return sum(items)
+def tail(xs):
+    return xs[1:]
+def count_pos(xs):
+    return sum(1 for x in xs if x > 0)
+def add_all_xs(xs):
+    return sum(xs)
+def add_all_items(items):
+    return sum(items)
+def reverse(s):
+    return s[::-1]
+def either(a, b):
+    return a or b
+def is_odd2(n):
+    return n % 2 != 0
+def count_char(s):
+    return sum(1 for c in s if c == 'e')
+def clamp(x, lo, hi):
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+def first_char(s):
+    return s[:1]
+def add_all_lst(lst):
+    return sum(lst)
+def add_all_nums(nums):
+    return sum(nums)
+def count_vowels(s):
+    return sum(1 for c in s if c in 'aeiou')
+def magnitude(v):
+    return v if v >= 0 else -v
+def mini(a, b):
+    return a if a < b else b
+def divis_by_2(n):
+    return n % 2 == 0
+def dedupe(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def running_sum(xs):
+    out = []
+    total = 0
+    for x in xs:
+        total = total + x
+        out.append(total)
+    return out
+def cap_first(s):
+    return s[:1].upper() + s[1:]
+def even(n):
+    return n % 2 == 0
+def half(x):
+    return x // 2
+def index_of(xs, target):
+    for i, v in enumerate(xs):
+        if v == target:
+            return i
+    return -1
+def divis_by_7(n):
+    return n % 7 == 0
+def is_multiple_2(x):
+    return x % 2 == 0
+def total_values(values):
+    return sum(values)
+def bigger(a, b):
+    return a if a > b else b
+def total_nums(nums):
+    return sum(nums)
+def length(xs):
+    return len(xs)
+def is_multiple_7(x):
+    return x % 7 == 0
+def running_max(xs):
+    out = []
+    best = None
+    for x in xs:
+        best = x if best is None else max(best, x)
+        out.append(best)
+    return out
+def eq(a, b):
+    return a == b
+def label3(n):
+    return 'fizz' if n % 3 == 0 else str(n)
+def bound(x, low, high):
+    if x < low:
+        return low
+    if x > high:
+        return high
+    return x
+def count_char(s):
+    return sum(1 for c in s if c == 'a')
+def is_multiple_3(x):
+    return x % 3 == 0
+def double(x):
+    return x * 2
+def is_multiple_10(x):
+    return x % 10 == 0
+def distinct(items):
+    seen = set()
+    out = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+def absval(x):
+    return x if x >= 0 else -x
+def max2(a, b):
+    return a if a > b else b
+def myabs(x):
+    return x if x >= 0 else -x
+def is_even(n):
+    return n % 2 == 0
+def head(xs):
+    return xs[0]
+def larger(a, b):
+    return a if a > b else b
+def first_pos(xs):
+    for i, v in enumerate(xs):
+        if v > 0:
+            return i
+    return -1

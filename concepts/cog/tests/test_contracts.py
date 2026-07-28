@@ -86,6 +86,32 @@ class CanonAndCdoTests(unittest.TestCase):
                 term={"start": "2026-01-01", "end": "2026-12-31", "period": "month"},
             )
 
+    def test_optional_basis_and_publisher_terms_are_explicit_only(self):
+        baseline = obligation()
+        for key in ("region", "correction_window_days", "on_publisher_cessation"):
+            self.assertNotIn(key, baseline["settlement"])
+
+        governed = obligation(
+            region="EU",
+            correction_window_days=30,
+            on_publisher_cessation="fallback-publisher",
+        )
+        self.assertEqual(governed["settlement"]["region"], "EU")
+        self.assertEqual(governed["settlement"]["correction_window_days"], 30)
+        self.assertEqual(
+            governed["settlement"]["on_publisher_cessation"],
+            "fallback-publisher",
+        )
+        self.assertTrue(verify_obligation_id(governed))
+
+        nullable = obligation(region=None, correction_window_days=None)
+        self.assertIsNone(nullable["settlement"]["region"])
+        self.assertIsNone(nullable["settlement"]["correction_window_days"])
+
+    def test_schema_rejects_unknown_publisher_cessation_rule(self):
+        with self.assertRaises(SchemaValidationError):
+            obligation(on_publisher_cessation="silently-change-the-fix")
+
 
 class SettlementTests(unittest.TestCase):
     def setUp(self):

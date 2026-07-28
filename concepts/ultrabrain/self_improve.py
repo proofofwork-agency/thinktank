@@ -15,8 +15,14 @@ HONEST NOTE: real training (step 2) needs a CUDA GPU (e.g. an RTX 5080) or a ren
 ``train_qlora`` exits non-zero on a non-CUDA host. So the default here is ``--dry_run``, which runs
 collect+eval everywhere and validates the training data/config without touching a GPU. With the
 mock proposer the policy does not actually change between rounds (it is zero-ML), so the dry-run
-trajectory measures loop plumbing, not learning; point ``--proposer llm`` at a served model and drop
-``--dry_run`` on a GPU box to measure real round-over-round improvement.
+trajectory measures loop plumbing, not learning.
+
+BLOCKED (Codex final review): collecting verified traces from a REAL model (``--proposer llm/fim``)
+now FAILS CLOSED — untrusted model output cannot be soundly certified into trusted training data by
+the in-process judge (the candidate shares the worker interpreter with the signer). The closed
+self-improvement loop is therefore blocked on the subordinate-jailed EXECUTOR (candidate in its own
+process, decider outside); only ``--proposer mock`` (our own reference code) collects today. Do not
+read this as a working real-model loop until that executor exists.
 
   python self_improve.py                                   # 1 dry round, mock proposer (safe anywhere)
   python self_improve.py --rounds 3 --n 8 --json
@@ -148,10 +154,12 @@ def run(argv=None):
     t0 = time.time()
     for r in range(args.rounds):
         collect = _collect(args, r, quiet)
-        if isinstance(collect, int):  # run_verified_search failed closed (missing secret / no isolation)
+        if isinstance(collect, int):  # run_verified_search failed closed (missing secret / untrusted proposer)
             msg = (f"collect failed (exit {collect}) at round {r}: trace collection needs a private "
-                   f"ledger secret (--ledger_secret / ULTRABRAIN_LEDGER_SECRET); --proposer llm also "
-                   f"needs OS isolation. Aborting before train/eval.")
+                   f"ledger secret (--ledger_secret / ULTRABRAIN_LEDGER_SECRET). --proposer llm/fim is "
+                   f"UNTRUSTED and fails closed — trusted real-model collection is BLOCKED pending the "
+                   f"subordinate candidate executor (verdict integrity) plus an outer host jail (host "
+                   f"containment); OS isolation alone is NOT sufficient. Aborting before train/eval.")
             if args.json:
                 print(json.dumps({"error": "collect_failed", "exit_code": collect, "round": r,
                                   "hint": msg}, indent=2, sort_keys=True))
@@ -160,13 +168,15 @@ def run(argv=None):
             return collect
         train_rc = _train(args, quiet)
         metrics = _eval(args, quiet)
-        if isinstance(metrics, dict) and metrics.get("error"):  # eval fail-closed (e.g. no isolation)
+        if isinstance(metrics, dict) and metrics.get("error"):  # eval fail-closed (untrusted proposer)
             if args.json:
                 print(json.dumps({"error": "eval_failed", "detail": metrics["error"], "round": r},
                                  indent=2, sort_keys=True))
             else:
-                print(f"ERROR: eval failed (round {r}): {metrics['error']} — executing model output "
-                      f"needs OS isolation. Aborting.", file=sys.stderr)
+                print(f"ERROR: eval failed (round {r}): {metrics['error']} — executing untrusted model "
+                      f"output is fail-closed; sound execution needs the subordinate candidate executor "
+                      f"plus an outer host jail (OS isolation alone is NOT sufficient). Aborting.",
+                      file=sys.stderr)
             return 2
         trajectory.append({
             "round": r,

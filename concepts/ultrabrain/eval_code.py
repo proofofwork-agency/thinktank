@@ -40,7 +40,8 @@ sys.path.insert(0, ROOT)
 from ultrabrain.propose import DiffusionFIMProposer, NoisyProposer  # noqa: E402
 from ultrabrain.propose.llm import LLMProposer  # noqa: E402
 from ultrabrain.verify import (  # noqa: E402
-    CASVerifier, CodeTestVerifier, Gate, ISOLATION_AVAILABLE, harden, run_tests_isolated,
+    CASVerifier, CodeTestVerifier, Gate, ISOLATION_AVAILABLE, StructuredCodeVerifier, harden,
+    run_tests_isolated,
 )
 
 
@@ -63,10 +64,13 @@ def build_proposer(args):
 
 
 def verifier_for(task, isolated=False):
-    """Airtight CAS for cas tasks; hardened execution for code — OS-isolated when untrusted (llm)."""
+    """Airtight CAS for cas; parent-owned-oracle judge_v1 for code (the sound certifier, incl. the
+    assembled FIM program). JUDGE-ONLY: a code task WITHOUT a judge spec ABSTAINS rather than certify
+    via the forgeable assert runner — which would report false metrics (Codex final review). All
+    shipped tasks carry judge specs; ``isolated`` no longer applies (the judge isolates its worker)."""
     if task.get("kind") == "cas":
         return CASVerifier()
-    return CodeTestVerifier(harden(task), runner=run_tests_isolated if isolated else None)
+    return StructuredCodeVerifier()
 
 
 def _normalize(candidate: str) -> str:
@@ -169,22 +173,38 @@ def run(argv=None):
     ap.add_argument("--temperature", type=float, default=0.8)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--unsafe", action="store_true",
-                    help="DANGEROUS: skip the OS-isolation requirement for --proposer llm")
+                    help="DANGEROUS: execute untrusted --proposer llm/fim output for DIAGNOSTICS. "
+                         "rlimits are NOT a host jail; run only in a throwaway environment. Metrics "
+                         "are diagnostics only, not trustworthy.")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
-    isolated = (args.proposer in ("llm", "fim")) and not args.unsafe
-    if isolated and not ISOLATION_AVAILABLE:
-        print("ERROR: OS isolation unavailable but required to execute untrusted model output "
-              "(--proposer llm/fim). Use a container or pass --unsafe (DANGEROUS).", file=sys.stderr)
-        return {"error": "isolation_unavailable"}
+    # HOST CONTAINMENT (Codex final review): --proposer llm/fim EXECUTES untrusted model code. rlimits
+    # bound CPU/memory but do NOT contain the filesystem/network — a candidate can write host files or
+    # open sockets (e.g. via a stdlib reflection gadget that execs with full builtins). So this does
+    # NOT run by default: fail closed unless --unsafe (explicit throwaway diagnostics) or a real host
+    # jail is provided out of band. Metrics from --unsafe are diagnostics only, never trustworthy.
+    untrusted = args.proposer in ("llm", "fim")
+    if untrusted and not args.unsafe:
+        print("ERROR: --proposer llm/fim EXECUTES untrusted model code. rlimits are not a host jail "
+              "(a candidate can still write files / open sockets), so this does not run by default. "
+              "Pass --unsafe to execute for DIAGNOSTICS in a throwaway environment, or run under a real "
+              "host jail (container / separate uid / seccomp / no network).", file=sys.stderr)
+        return {"error": "untrusted_execution_requires_unsafe_or_host_jail"}
 
     tasks = load_jsonl(args.tasks)
     proposer = build_proposer(args)
-    metrics = evaluate(tasks, proposer, args.n, isolated)
+    metrics = evaluate(tasks, proposer, args.n, isolated=untrusted)
     metrics["proposer"] = args.proposer
     metrics["tasks_path"] = args.tasks
     metrics["verdict"] = verdict_for(metrics)
+    # Past the gate, an untrusted proposer only ran under --unsafe: label the metrics diagnostics-only
+    # and qualify the verdict so a reader cannot mistake them for a trustworthy result (Codex).
+    metrics["trusted"] = not untrusted
+    if untrusted:
+        metrics["diagnostics_only"] = True
+        metrics["verdict"] = ("DIAGNOSTICS ONLY — untrusted proposer under --unsafe (rlimits are not a "
+                              "host jail; these certificates are not trustworthy). " + metrics["verdict"])
 
     if args.json:
         print(json.dumps(metrics, indent=2, sort_keys=True))

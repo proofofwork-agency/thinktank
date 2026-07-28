@@ -35,7 +35,8 @@ from typing import Optional
 
 try:  # normal package import (``import ultrabrain.orchestrate``)
     from .verify import (
-        CodeTestVerifier, Gate, ISOLATION_AVAILABLE, Ledger, Outcome, harden, run_tests_isolated,
+        CodeTestVerifier, Gate, ISOLATION_AVAILABLE, Ledger, Outcome, StructuredCodeVerifier,
+        harden, run_tests_isolated,
     )
 except ImportError:  # run directly as a script (``python ultrabrain/orchestrate.py``), mirror eval.py
     import os as _os
@@ -43,7 +44,8 @@ except ImportError:  # run directly as a script (``python ultrabrain/orchestrate
 
     _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
     from ultrabrain.verify import (
-        CodeTestVerifier, Gate, ISOLATION_AVAILABLE, Ledger, Outcome, harden, run_tests_isolated,
+        CodeTestVerifier, Gate, ISOLATION_AVAILABLE, Ledger, Outcome, StructuredCodeVerifier,
+        harden, run_tests_isolated,
     )
 
 
@@ -103,6 +105,8 @@ class CompositeResult:
     seconds: float = 0.0
     composition_verified: Optional[bool] = None        # whole-artifact re-check: True/False, None if no composite tests
     composition_detail: str = ""
+    trusted: bool = True                               # False -> untrusted proposer, DIAGNOSTICS ONLY:
+    #                                                    certs are not trustworthy, no ledger was written
 
     @property
     def n_certified(self) -> int:
@@ -115,6 +119,7 @@ class CompositeResult:
     def as_dict(self) -> dict:
         return {
             "id": self.id,
+            "trusted": self.trusted,   # False -> DIAGNOSTICS ONLY: overall_solved is not a trusted solve
             "overall_solved": self.overall_solved,
             "subproblems_solved": self.subproblems_solved,
             "composition_verified": self.composition_verified,
@@ -136,14 +141,23 @@ class CompositeResult:
         }
 
 
-# Zero-ML controls whose output IS our own reference/distractor code (trusted, like the mock CLI
-# proposer). Anything else is an untrusted proposer whose output must execute OS-isolated.
+# Zero-ML controls whose output IS our own reference/distractor code. Retained for reference/docs
+# only: runtime provenance uses CONTROL FLOW (caller-supplied vs orchestrate-created), NOT this tuple
+# — object identity (isinstance/type/subclass/mutated method) is bypassable, so it must never gate
+# execution or trust. See the host-containment gate in ``orchestrate()``.
 _TRUSTED_PROPOSERS = (MockProposer, WrongProposer)
 
 
 def _verifier_for(sub: dict, runner=None):
-    """The hardened accept gate's verifier for one subproblem (weak + hidden + property tests).
-    ``runner`` is the execution backend; pass ``run_tests_isolated`` for UNTRUSTED proposer output."""
+    """The accept gate's verifier for one subproblem.
+
+    A subproblem carrying a judge_v1 spec is certified by the parent-owned-oracle
+    :class:`StructuredCodeVerifier` (the SOUND path — the candidate runs in a scrubbed child that
+    returns only values; the trusted parent decides; it isolates its own worker). A subproblem
+    without a judge spec falls back to the hardened assert runner as deny-list defense in depth
+    (``runner`` is the backend; ``run_tests_isolated`` for UNTRUSTED proposer output)."""
+    if isinstance(sub.get("judge"), dict):
+        return StructuredCodeVerifier()
     return CodeTestVerifier(harden(sub), runner=runner)
 
 
@@ -203,6 +217,7 @@ def orchestrate(
     n: int = 8,
     ledger: Optional[Ledger] = None,
     isolated: Optional[bool] = None,
+    unsafe: bool = False,
 ) -> CompositeResult:
     """DECOMPOSE-THEN-VERIFY over a composite ``{id, subproblems:[sub_task, ...]}``.
 
@@ -223,25 +238,46 @@ def orchestrate(
     """
     import time
 
+    # HOST CONTAINMENT (Codex final review): provenance is CONTROL FLOW, not object identity — a
+    # MockProposer SUBCLASS or a mutated instance passes every isinstance/type check yet emits untrusted
+    # code (``EvilMock(MockProposer)`` wrote a host file under the old isinstance gate). So the ONLY
+    # proposer trusted to RUN without an opt-in is the default control orchestrate creates ITSELF when
+    # the caller omitted the argument. Every CALLER-SUPPLIED proposer requires unsafe=True (throwaway
+    # diagnostics) or a real host jail — enforced BEFORE the proposer is invoked, so no candidate code
+    # runs and no host write can occur. rlimits are NOT a host jail; they are only defense in depth.
+    caller_supplied = proposer is not None
     if proposer is None:
         proposer = MockProposer()
+    if caller_supplied and not unsafe:
+        raise RuntimeError(
+            "orchestrate: a caller-supplied proposer emits UNTRUSTED code and executing it under rlimits "
+            "is NOT a host jail (it can write files / open sockets). Pass unsafe=True for throwaway "
+            "diagnostics, or run under a real host jail (container / separate uid / seccomp / no network). "
+            "Only the built-in default proposer (omit the argument) runs without this.")
 
-    # Untrusted proposer output (anything but our zero-ML controls) executes OS-isolated and fails
-    # closed, exactly like the --proposer llm/fim CLIs (Codex + workflow review: orchestrate is the
-    # one untrusted-execution path that was missing this). Explicit isolated= overrides the inference.
+    # rlimits (defense in depth, NOT a jail) for any run that is not the built-in default control.
     if isolated is None:
-        isolated = not isinstance(proposer, _TRUSTED_PROPOSERS)
+        isolated = caller_supplied
+
+    # SINK GATE (Codex final review): orchestration writes NO trusted ledger in v0.1 — the in-process
+    # judge is forgeable and there is no runtime proposer provenance, so composite beliefs are never
+    # appended until a subordinate-jailed EXECUTOR exists. ``overall_solved`` / ``composition_verified``
+    # are therefore DIAGNOSTICS ONLY (``trusted=False``), never a trusted solve.
+    ledger = None
+
     runner = None
     if isolated:
         if not ISOLATION_AVAILABLE:
             raise RuntimeError(
-                "orchestrate: OS isolation is REQUIRED to execute untrusted proposer output but is "
-                "unavailable here. Run where the `resource` module works / in a container, pass a "
-                "trusted proposer, or set isolated=False explicitly (DANGEROUS).")
+                "orchestrate: rlimit sandboxing (the `resource` module) is unavailable, so the "
+                "defense-in-depth resource caps cannot be applied to this diagnostics run (rlimits are "
+                "NOT a host jail regardless). Run where `resource` works, or omit the proposer to use "
+                "the built-in default control.")
         runner = run_tests_isolated
 
     subproblems = list(composite.get("subproblems", []))
     result = CompositeResult(id=composite.get("id", "?"))
+    result.trusted = False  # v0.1: orchestration is DIAGNOSTICS ONLY (forgeable judge, no sound provenance)
 
     t0 = time.time()
     for sub in subproblems:
@@ -254,21 +290,26 @@ def orchestrate(
     # Whole-artifact re-verification (Codex): per-subproblem certs do NOT prove the parts work
     # together. overall_solved (= whole-artifact verified) REQUIRES composite-level tests that the
     # COMPOSED solution passes; without them the whole is NOT verified (only subproblems_solved).
+    has_judge = isinstance(composite.get("judge"), dict)
     composite_tests = (
         harden(composite)
         if any(composite.get(k) for k in ("weak_tests", "hidden_tests", "property_tests"))
         else list(composite.get("tests", []))
     )
-    if not composite_tests:
+    if not (has_judge or composite_tests):
         result.composition_verified = None
-        result.composition_detail = "no composite-level tests -> whole artifact NOT verified (subproblems_solved only)"
+        result.composition_detail = "no composite-level judge/tests -> whole artifact NOT verified (subproblems_solved only)"
         result.overall_solved = False
     elif not (result.subproblems_solved and result.solution.strip()):
         result.composition_verified = False
         result.composition_detail = "subproblems not all certified; composition not verified"
         result.overall_solved = False
     else:
-        whole = CodeTestVerifier(composite_tests, runner=runner).verify(composite, result.solution)
+        # Prefer the parent-owned-oracle judge for the whole artifact when the composite carries a
+        # judge_v1 spec (SOUND); else the hardened assert runner (deny-list defense in depth).
+        whole_verifier = (StructuredCodeVerifier() if has_judge
+                          else CodeTestVerifier(composite_tests, runner=runner))
+        whole = whole_verifier.verify(composite, result.solution)
         result.composition_verified = whole.certified
         result.composition_detail = whole.detail
         result.overall_solved = whole.certified

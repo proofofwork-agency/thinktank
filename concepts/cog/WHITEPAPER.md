@@ -152,7 +152,7 @@ the lumen of intelligence into a *unit you can owe in* is the gap, and it is the
 
 > **1 cog** = the *depth-verified* market price, on the fix date, of running the
 > **COG-1 Reference Workload** on any model that passes the **COG-1 Capability Basket** —
-> the volume-weighted median of receipted qualifying runs, not the cheapest sip.
+> the median executable price across receipted qualifying runs, not the cheapest sip.
 
 Three frozen components:
 
@@ -176,9 +176,20 @@ rates nobody can actually transact at — the LIBOR disease. Instead:
 > and publish **execution receipts** — request hashes, token counts, billing evidence, and
 > eval-pass evidence. A price enters the fix only with **depth, not a sip**: at least
 > K independent purchases (draft K = 5) of at least N tokens each (draft N = 10M), spread
-> across the fix window. The fix is the **volume-weighted median** of receipted qualifying
-> runs — never the cheapest single run — smoothed as a 7-day median and, with multiple
-> independent fixers, taken as the cross-fixer median.
+> across the fix window. The fix is the **median executable price** across receipted
+> qualifying runs — never the cheapest single run — smoothed as a 7-day median and, with
+> multiple independent fixers, taken as the cross-fixer median.
+
+*A note on what does the work.* Earlier drafts called this a **volume-weighted** median and
+credited the weighting with keeping a cheap endpoint from dragging the fix. That was wrong,
+and the error is worth stating plainly because it inverts the security argument. A fixer
+chooses its own purchase sizes; weighting by a quantity you select yourself is not market-volume
+weighting, and under the depth gate — where every eligible buy is standardized at ≥ N tokens —
+the weights are equal by construction, so the weighting is a no-op. What actually excludes the
+loss-leader sip is the **eligibility floor**: a run under N tokens never enters the median at
+all. The protection is admission, not weighting. True volume weighting would require trustworthy
+data on what *independent* buyers actually purchased at each price, which no fixer has. The
+label has been corrected everywhere it appeared, in prose and in code.
 
 The depth requirement is what makes the number mean *capacity*, not a promotional sip: a
 cheap 1M-token run proves a price existed for one request; K sized buys across the window
@@ -320,8 +331,10 @@ core to qualify cheaply, or subsidizes a below-cost endpoint to drag the index. 
 private audit divergence check; the **depth requirement** (the gamed or subsidized model
 must actually serve K sized buys at the quoted price, on demand, across the window — a
 loss-leader pays real money to serve *every* taker, every day, for as long as it wants to
-move the fix); and **volume-weighting**, which caps how far any single cheap endpoint can
-pull the median. Multi-fixer procurement hits production endpoints, not demo endpoints.
+move the fix); and the **eligibility floor**, which keeps a sub-N-token sip out of the median
+entirely rather than merely down-weighting it. (An earlier draft credited *volume-weighting*
+here. It does not do this work — see §3 — and the claim has been withdrawn.)
+Multi-fixer procurement hits production endpoints, not demo endpoints.
 Residual risk: real, managed, versioned away when detected — same as CPI substitution bias,
 a managed nuisance rather than a refutation.
 
@@ -377,6 +390,48 @@ submission-based.
 LIBOR measured marginal interbank rates, not sweetheart deals. Contracts can specify
 fix-relative pricing (e.g. "0.85 × fix") exactly as floating-rate debt specifies
 "SOFR + 120bp."
+
+**Basis risk — the index and your actual exposure do not move together.** This is the most
+important failure mode in this section and the first question any competent CFO will ask, so
+it gets a straight answer rather than a mitigation. The fix measures the *marginal public
+price of the cheapest qualifying endpoint*. A vendor's real cost may sit on a committed
+enterprise contract, a private or dedicated deployment, an EU- or region-pinned endpoint, a
+guaranteed-latency or high-availability reservation, a regulated or confidential-computing
+environment, or a fine-tune. None of those track the public marginal price closely. **The cog
+fix can fall 50% in a period in which a given vendor's true cognition cost falls 10%, or does
+not fall at all.** A vendor who signs a fully-indexed cognition leg against a fix that does
+not track its cost structure has sold a basis it may not be able to hedge.
+
+This is not a defect the index can engineer away — it is intrinsic, and it is the central
+tradeoff of *every* indexed contract, including the UF and every fuel-adjustment clause ever
+written. Generality and tracking accuracy trade off directly: the broader the index, the less
+precisely it tracks any single supplier; the tighter you specify it (by model class, region,
+latency, modality, security tier), the more indexes must be maintained and the thinner each
+one's depth becomes. There is no setting of that dial that removes the risk.
+
+What the contracting layer can do is let the parties *price and bound* the basis rather than
+pretend it away, which is why these are first-class fields in the CDO schema rather than
+footnotes:
+
+- **`collar`** (`floor`, `ceiling`, `period_change_cap_pct`) — caps how far and how fast the
+  indexed leg can move in either party's favour. A vendor that cannot hedge the basis should
+  not sign an uncollared cognition leg; this is the single most load-bearing term in the schema.
+- **`region`** — a global cheapest-qualifying fix is the wrong index for an EU-only or
+  private-deployment buyer, and the obligation should say so on its face.
+- **participation, not pass-through** — the hybrid template's fixed people-leg plus a
+  *fractional* indexed leg (e.g. `0.6 ×` the cog quantity) shares the move instead of
+  transferring all of it, which is usually what both parties actually wanted.
+- **`min_tier`** — refuses to settle against the weaker fallback rungs, so basis risk is never
+  compounded by evidence risk.
+
+**We have not measured the tracking error, and until we do this remains an argument rather
+than a result.** The honest next milestone is not more specification: it is a published study
+comparing the cog fix against the realized cognition costs of several kinds of AI business —
+correlation, tracking error, volatility, provider concentration, the gap between posted,
+executable and negotiated prices, and how often the fallback ladder fires. If the tracking
+error turns out to be large for every realistic counterparty, the correct conclusion is that
+the cog belongs in a narrower class of contract than §4 claims, and we would rather find that
+out and publish it than sell an index nobody should sign.
 
 **Tokens-per-task drift (the "token cost illusion").** Per-token prices fall, but newer
 models often spend *more* tokens per task — longer context, reasoning traces, tool calls —
@@ -519,8 +574,8 @@ evidence.
 | Capability threshold | GPT-4-class general tier (frozen eval core + threshold published at v1.0) |
 | Reference workload | 1M blended tokens: 800k in / 200k out (4:1), frozen task-mix |
 | Qualifying evidence | Public-core pass + private-audit divergence < ε + production endpoint |
-| Fix | Volume-weighted median of receipted qualifying runs; 7-day median smoothing; cross-fixer median with multiple fixers |
-| Depth requirement | ≥ K = 5 independent purchases of ≥ N = 10M tokens each per window (draft) — a sip cannot set the fix |
+| Fix | Median executable price across qualifying sized purchases, equally weighted; 7-day median smoothing; cross-fixer median with multiple fixers |
+| Depth requirement | ≥ K = 5 independent purchases of ≥ N = 10M tokens each per window (draft) — the eligibility floor, not weighting, is what stops a sip setting the fix |
 | Contract template | Hybrid: $F/month fixed (non-AI legs) + N cogs/month (cognition leg) |
 | Publication | Daily, signed JSON: `{date, fix_usd, model, receipts[], basket: "COG-1"}` |
 | Version trigger | Audit divergence > ε, saturation, or task-mix obsolescence review |
