@@ -99,6 +99,36 @@ Prototype: `scratchpad/forge_probe.py` (~40 lines, real unmodified `CASVerifier`
 parse errors.** ~11 tasks/sec → 10k tasks in ~15 min on CPU, $0. Against **34 hand-written tasks
 in the repo's lifetime.**
 
+**S0b · The grammar is far smaller than I claimed — measured.** "200 tasks in 18s" is true and
+"unlimited" is **not**. The shipped `_sample_F` grammar reaches only **3,984 distinct tasks**, and
+the distribution is brutally lopsided:
+
+| family | reachable | note |
+|---|---|---|
+| `poly` | 3,900 | **98% of the entire space** |
+| `prod` | 24 | shares `exp` atoms with the `exp` family |
+| `trig` | 18 | |
+| `exp` | 18 | |
+| `chain` | 18 | shares `sin` with `trig` — not a disjoint family |
+| `log` | **6** | `a*log(x)`, a∈1..6. That is the whole family |
+
+Three consequences, all mine to fix:
+
+1. **`mint(n)` hangs for n > 3,984.** `while len(out) < n` plus dedup against an exhausted space is
+   an infinite loop. A real bug, not a limit — needs bounded attempts and a loud "space exhausted".
+2. **A 1,000-task corpus is ~98% polynomial integration.** Training on it teaches the power rule
+   and almost nothing else. The transcendental families contribute **84 distinct tasks in total**.
+3. **S3's held-out-family gate is thin but not empty.** The families are not disjoint (`chain`⊂`trig`
+   via `sin`, `prod`⊂`exp` via `exp`), so the one *genuine* split available is by transcendental
+   class: train on `{poly, trig, chain}`, test on `{exp, prod, log}` — "can it integrate
+   exponentials and logs having seen only polynomials and trig?" That is a real question, on ~48
+   test tasks. Thin. Enrich the grammar before leaning on it.
+
+The inversion principle is unaffected — *a verifier run backwards is still a task generator*. What
+is limited is this particular six-branch grammar, which was written to demonstrate the mechanism,
+not to carry a corpus. Widening it (more coefficients, nested compositions, integration by parts,
+partial fractions, `cas_equivalent` identities) is cheap and is the real S0 work.
+
 Extend along the same inversion: `cas_equivalent` (algebraic identities), then
 `verify/scientific.py`'s conservation/unitarity checks (pick an invariant → mint simulation
 tasks). Mutation-inverse for code waits for **S4**.
