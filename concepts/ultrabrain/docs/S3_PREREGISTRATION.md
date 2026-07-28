@@ -254,6 +254,25 @@ are discussed.
 model certified no product-family candidate at all. An observed yield limitation; manufacturing
 coverage to fill it would corrupt the corpus.
 
+## Prediction from the training regime — recorded before the trained eval
+
+SFT completed: 200 iters × batch 4 = **800 examples seen over a 112-example set ≈ 7.1 epochs.**
+Train loss 0.886 → 0.021 (−98%); validation loss 2.010 → 0.070 (−96%).
+
+**Read:** near-zero loss on both after seven epochs of a 112-example set is the **memorisation
+regime**. And the validation set cannot speak to the question being asked — its 14 examples are
+split by *task identity* but drawn from the *same families* and the same forge, so low val loss
+shows the model learned the output format and the family patterns, not that it generalises to
+unseen concept classes. The held-out families are a different question entirely.
+
+> **Prediction, before the trained numbers exist: strong in-domain gain, weak-to-zero held-out
+> gain** — i.e. the pre-registered **NEGATIVE (memorisation)** outcome. If held-out *does* move
+> beyond threshold, that is a genuinely stronger result than this loss curve predicts, and it will
+> be reported as such.
+
+Stating it now so the eventual result cannot be retrofitted into whatever the numbers happen to
+show. A prediction made after the fact is not a prediction.
+
 ## What each outcome means
 
 | Held-out result | Reading |
