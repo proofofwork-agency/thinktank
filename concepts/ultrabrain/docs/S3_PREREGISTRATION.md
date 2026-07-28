@@ -175,6 +175,32 @@ Conversion of the gap is well-powered: even **8** of the 15 tasks converting is 
 (8 discordant pairs, critical 8); 12 of 15 gives critical 10. So the paired test can resolve a
 partial effect, not only a total one.
 
+**Correction 5 — collection moved from HTTP to direct-batched (pre-training).** The first
+collection produced **one distinct candidate per task across N=8** — 544 traces that were eightfold
+duplicates of 68 candidates, and zero preference pairs. Confirmed independently: collection solved
+68/252, tracking in-domain **pass@1 (73)** rather than pass@8 (115).
+
+A per-request seed was the obvious fix and was **empirically disproven** by a stratified smoke test.
+Stratifying by the baseline's own difficulty tiers is what made it decisive — on the six
+`pass@8-but-not-pass@1` tasks, where sampling diversity is load-bearing by construction:
+
+| path | distinct candidates / 8 |
+|---|---|
+| HTTP, seeded | `{1:6}` — **mean 1.00** |
+| direct batched | `{3:1, 4:3, 5:1, 6:1}` — **mean 4.33** |
+
+Same tasks, same N, same model. Collection therefore moves to the **same direct-batched generator
+the two evaluations use**, so one sampler serves all three phases. Found pre-training, not
+result-driven; both failed artifacts retained as evidence.
+
+*Near-miss worth recording:* the in-domain baseline already generated 252 × 8 batched candidates
+through the gate — structurally identical to collection — but retained `candidate_sha` and a
+certified **count**, not text. Correct under the sanitisation rule for a measurement artifact, so
+no shortcut existed. **Clarification applied:** the sanitisation rule governs *evidence and signal*
+fields, not the SFT payload. The training example *is* the candidate; CAS candidates are
+whitelist-validated math expressions, not executable code, so retaining their text carries none of
+the `judge_v1` risk.
+
 ## Both hard gates passed
 
 **Determinism — PASSED.** The truncation-instrumented rerun of held-out seed 0 reproduced the
