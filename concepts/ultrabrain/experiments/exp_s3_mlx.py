@@ -7,6 +7,7 @@ The experiment is staged so the control cannot be reconstructed after training:
 
   freeze       deterministically write leakage-audited train/test manifests
   eval         append raw per-(task, model, seed) verifier outcomes
+  collect      generate diverse TRAIN candidates through the same direct-batched MLX sampler
   prepare-sft  reverify trusted traces and build MLX prompt/completion JSONL
 
 Training itself uses the released ``mlx_lm.lora`` CLI, whose exact command/config belongs in the
@@ -32,7 +33,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from ultrabrain.propose.llm import clean_expr, prompt_for  # noqa: E402
-from ultrabrain.verify import CASVerifier, CERTIFIED  # noqa: E402
+from run_verified_search import (  # noqa: E402
+    _append_jsonl,
+    _cas_preference_pairs,
+    _digest_text,
+)
+from ultrabrain.verify import CASVerifier, CERTIFIED, Gate, Ledger, REJECTED  # noqa: E402
 
 X = sp.Symbol("x")
 TRAIN_FAMILIES = ("poly", "trig", "chain", "exp", "prod", "log", "mixed")
@@ -361,6 +367,83 @@ def _parse_seeds(text: str) -> tuple[int, ...]:
     return seeds
 
 
+def _load_mlx_runtime(
+    model_path: str,
+    adapter_path: str | None,
+    temperature: float,
+    top_p: float,
+):
+    """Load the one MLX sampling implementation shared by collection and both eval arms."""
+    import importlib
+
+    from mlx_lm import load
+    from mlx_lm.sample_utils import make_sampler
+
+    generate_mod = importlib.import_module("mlx_lm.generate")
+    model, tokenizer = load(model_path, adapter_path=adapter_path)
+    sampler = make_sampler(temp=temperature, top_p=top_p)
+    return generate_mod, model, tokenizer, sampler
+
+
+def _prompt_tokens(tasks: list[dict], tokenizer) -> tuple[list[str], list[list[int]]]:
+    texts = [prompt_for(task) for task in tasks]
+    tokens = [
+        tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            tokenize=True,
+            add_generation_prompt=True,
+        )
+        for prompt in texts
+    ]
+    return texts, tokens
+
+
+def _generate_batched(
+    *,
+    generate_mod,
+    model,
+    tokenizer,
+    sampler,
+    prompt_tokens: list[list[int]],
+    n: int,
+    max_tokens: int,
+    batch_size: int,
+    seed: int,
+) -> tuple[list[tuple[int, int, list[int]]], list[dict]]:
+    """Generate task-major N-way samples through the exact path used by S3 evaluation."""
+    import mlx.core as mx
+
+    mx.random.seed(seed)
+    entries = [
+        (task_index, sample_index, prompt_tokens[task_index])
+        for task_index in range(len(prompt_tokens))
+        for sample_index in range(n)
+    ]
+    generated = []
+    for offset in range(0, len(entries), batch_size):
+        chunk = entries[offset:offset + batch_size]
+        response = generate_mod.batch_generate(
+            model,
+            tokenizer,
+            [entry[2] for entry in chunk],
+            max_tokens=max_tokens,
+            sampler=sampler,
+            verbose=False,
+        )
+        for text in response.texts:
+            output_tokens = len(tokenizer.encode(text))
+            truncated = output_tokens >= max_tokens
+            generated.append({
+                "text": text,
+                "output_tokens": output_tokens,
+                "finish_reason": "length_inferred" if truncated else "stop_inferred",
+                "truncated": truncated,
+            })
+    if len(generated) != len(entries):
+        raise RuntimeError("MLX generation count mismatch")
+    return entries, generated
+
+
 def evaluate(
     *,
     tasks_dir: Path,
@@ -377,17 +460,14 @@ def evaluate(
     train_seeds: tuple[int, ...],
 ) -> dict:
     """Append verifier-derived raw outcomes. The model never sees gold/reference fields."""
-    import importlib
-
-    import mlx.core as mx
-    from mlx_lm import load
-    from mlx_lm.sample_utils import make_sampler
-
-    generate_mod = importlib.import_module("mlx_lm.generate")
     CASVerifier.require_available()
-    model, tokenizer = load(model_path, adapter_path=adapter_path)
+    generate_mod, model, tokenizer, sampler = _load_mlx_runtime(
+        model_path,
+        adapter_path,
+        temperature,
+        top_p,
+    )
     verifier = CASVerifier()
-    sampler = make_sampler(temp=temperature, top_p=top_p)
 
     existing = set()
     if outcomes_path.exists():
@@ -402,48 +482,23 @@ def evaluate(
     for split in ("test", "train"):
         tasks = _load_jsonl(tasks_dir / f"{split}_tasks.jsonl")
         seeds = test_seeds if split == "test" else train_seeds
-        prompt_texts = [prompt_for(task) for task in tasks]
-        prompt_tokens = [
-            tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt}],
-                tokenize=True,
-                add_generation_prompt=True,
-            )
-            for prompt in prompt_texts
-        ]
+        prompt_texts, prompt_tokens = _prompt_tokens(tasks, tokenizer)
         for seed in seeds:
             for task in tasks:
                 key = (task["id"], model_label, seed)
                 if key in existing:
                     raise RuntimeError(f"refusing duplicate outcome: {key}")
-            mx.random.seed(seed)
-            entries = [
-                (task_index, sample_index, prompt_tokens[task_index])
-                for task_index in range(len(tasks))
-                for sample_index in range(n)
-            ]
-            generated = []
-            for offset in range(0, len(entries), batch_size):
-                chunk = entries[offset:offset + batch_size]
-                response = generate_mod.batch_generate(
-                    model,
-                    tokenizer,
-                    [entry[2] for entry in chunk],
-                    max_tokens=max_tokens,
-                    sampler=sampler,
-                    verbose=False,
-                )
-                for text in response.texts:
-                    output_tokens = len(tokenizer.encode(text))
-                    truncated = output_tokens >= max_tokens
-                    generated.append({
-                        "text": text,
-                        "output_tokens": output_tokens,
-                        "finish_reason": "length_inferred" if truncated else "stop_inferred",
-                        "truncated": truncated,
-                    })
-            if len(generated) != len(entries):
-                raise RuntimeError("MLX generation count mismatch")
+            entries, generated = _generate_batched(
+                generate_mod=generate_mod,
+                model=model,
+                tokenizer=tokenizer,
+                sampler=sampler,
+                prompt_tokens=prompt_tokens,
+                n=n,
+                max_tokens=max_tokens,
+                batch_size=batch_size,
+                seed=seed,
+            )
 
             attempts_by_task = defaultdict(list)
             for (task_index, sample_index, _tokens), generation in zip(entries, generated):
@@ -532,6 +587,186 @@ def evaluate(
     }
 
 
+def _emit_verified_collection(
+    *,
+    tasks: list[dict],
+    candidates_by_task: list[list[str]],
+    traces_path: Path,
+    pairs_path: Path,
+    ledger_path: Path,
+    ledger_secret: str,
+) -> dict:
+    """Route generated expressions through the reviewed Gate/Ledger/pair projection unchanged."""
+    if len(candidates_by_task) != len(tasks):
+        raise RuntimeError("candidate/task count mismatch")
+    if any(task.get("kind") != "cas" for task in tasks):
+        raise RuntimeError("direct-batched collection is CAS-only")
+    if len({path.resolve() for path in (traces_path, pairs_path, ledger_path)}) != 3:
+        raise RuntimeError("traces, pairs, and ledger must use distinct paths")
+    for path in (traces_path, pairs_path, ledger_path):
+        if path.exists():
+            raise RuntimeError(f"refusing to append collection artifact: {path}")
+
+    ledger = Ledger(str(ledger_path), secret=ledger_secret)
+    verifier = CASVerifier()
+    traces, pairs = [], []
+    status_counts = Counter()
+    distinct_candidates_by_task = {}
+    certified_digests, rejected_digests = set(), set()
+
+    for task, candidates in zip(tasks, candidates_by_task):
+        gate = Gate(verifier, ledger)
+        projected = []
+        task_digests = set()
+        for candidate in candidates:
+            task_digests.add(_digest_text(candidate))
+            outcome = gate.judge(task, candidate)
+            status_counts[outcome.verdict.status] += 1
+            signal = outcome.cas_training_signal()
+            projected.append({"candidate": candidate, "signal": signal})
+            if signal["status"] == CERTIFIED:
+                certified_digests.add(signal["evidence"]["candidate_digest"])
+                traces.append({
+                    "task_id": task.get("id"),
+                    "kind": "cas",
+                    "prompt": prompt_for(task),
+                    "solution": candidate,
+                    "verify_detail": outcome.verdict.detail,
+                    "verification_basis": {
+                        "candidate_handling": signal["evidence"]["candidate_handling"],
+                        "parser_safety_basis": signal["evidence"]["parser_safety_basis"],
+                    },
+                    "verifier_evidence": signal["evidence"],
+                })
+            elif signal["status"] == REJECTED:
+                rejected_digests.add(signal["evidence"]["candidate_digest"])
+        distinct_candidates_by_task[task["id"]] = len(task_digests)
+        pairs.extend(_cas_preference_pairs(task, projected))
+
+    _append_jsonl(str(traces_path), traces)
+    _append_jsonl(str(pairs_path), pairs)
+    expected_head = ledger.head()
+    chain_ok = ledger.verify_chain(
+        expected_count=len(traces),
+        expected_head=expected_head,
+    )
+    if not chain_ok:
+        raise RuntimeError("collection ledger verification failed")
+    return {
+        "attempts": sum(len(candidates) for candidates in candidates_by_task),
+        "certified_attempts": len(traces),
+        "outcome_counts": dict(sorted(status_counts.items())),
+        "traces_written": len(traces),
+        "pairs_written": len(pairs),
+        "distinct_pair_digests": len({pair["pair_digest"] for pair in pairs}),
+        "distinct_certified_candidates": len(certified_digests),
+        "distinct_rejected_candidates": len(rejected_digests),
+        "candidate_digests_by_task": {
+            task["id"]: [_digest_text(candidate) for candidate in candidates]
+            for task, candidates in zip(tasks, candidates_by_task)
+        },
+        "distinct_candidates_by_task": distinct_candidates_by_task,
+        "mean_distinct_candidates_per_task": round(
+            sum(distinct_candidates_by_task.values()) / len(distinct_candidates_by_task),
+            3,
+        ) if distinct_candidates_by_task else 0.0,
+        "solved_tasks": len({trace["task_id"] for trace in traces}),
+        "ledger_count": ledger.count(),
+        "ledger_head": expected_head,
+        "ledger_chain_ok": chain_ok,
+        "traces": str(traces_path),
+        "pairs": str(pairs_path),
+        "pairs_trusted": False,
+        "ledger": str(ledger_path),
+    }
+
+
+def collect(
+    *,
+    tasks_path: Path,
+    traces_path: Path,
+    pairs_path: Path,
+    ledger_path: Path,
+    ledger_secret: str,
+    model_path: str,
+    adapter_path: str | None,
+    n: int,
+    temperature: float,
+    top_p: float,
+    max_tokens: int,
+    batch_size: int,
+    seed: int,
+    task_ids: tuple[str, ...] = (),
+) -> dict:
+    """Collect CAS SFT/pair artifacts with the same diverse direct-batched sampler as eval."""
+    CASVerifier.require_available()
+    tasks = _load_jsonl(tasks_path)
+    if task_ids:
+        requested = set(task_ids)
+        tasks = [task for task in tasks if task.get("id") in requested]
+        missing = requested - {task.get("id") for task in tasks}
+        if missing:
+            raise RuntimeError(f"unknown collection task ids: {sorted(missing)}")
+    if not tasks:
+        raise RuntimeError("no tasks selected for collection")
+
+    generate_mod, model, tokenizer, sampler = _load_mlx_runtime(
+        model_path,
+        adapter_path,
+        temperature,
+        top_p,
+    )
+    _prompt_texts, prompt_tokens = _prompt_tokens(tasks, tokenizer)
+    t0 = time.time()
+    entries, generated = _generate_batched(
+        generate_mod=generate_mod,
+        model=model,
+        tokenizer=tokenizer,
+        sampler=sampler,
+        prompt_tokens=prompt_tokens,
+        n=n,
+        max_tokens=max_tokens,
+        batch_size=batch_size,
+        seed=seed,
+    )
+    candidates_by_task = [[] for _ in tasks]
+    for (task_index, _sample_index, _tokens), generation in zip(entries, generated):
+        candidates_by_task[task_index].append(clean_expr(generation["text"]))
+    if any(len(candidates) != n for candidates in candidates_by_task):
+        raise RuntimeError("per-task MLX generation count mismatch")
+
+    report = _emit_verified_collection(
+        tasks=tasks,
+        candidates_by_task=candidates_by_task,
+        traces_path=traces_path,
+        pairs_path=pairs_path,
+        ledger_path=ledger_path,
+        ledger_secret=ledger_secret,
+    )
+    report.update({
+        "schema": "ultrabrain.s3.direct_batched_collection.v1",
+        "collection_source": "mlx_lm.generate.batch_generate",
+        "model_path": model_path,
+        "adapter_path": adapter_path,
+        "tasks": len(tasks),
+        "sampling": {
+            "n": n,
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": max_tokens,
+            "batch_size": batch_size,
+            "seed": seed,
+        },
+        "wall_seconds": round(time.time() - t0, 3),
+        "preregistration_correction_5": (
+            "collection moved from HTTP to direct-batched after request seeding was empirically "
+            "disproven pre-training; the HTTP pass@8-not-pass@1 smoke had mean distinct 1.00 "
+            "versus 4.33 for direct batching on the same six tasks"
+        ),
+    })
+    return report
+
+
 def prepare_sft(
     *,
     train_tasks_path: Path,
@@ -546,7 +781,8 @@ def prepare_sft(
     verifier = CASVerifier()
     by_task = defaultdict(dict)
     rejected = 0
-    for trace in _load_jsonl(traces_path):
+    trace_rows = _load_jsonl(traces_path)
+    for trace in trace_rows:
         task_id = trace.get("task_id")
         task = tasks.get(task_id)
         if task is None or trace.get("kind") != "cas":
@@ -590,7 +826,8 @@ def prepare_sft(
     _write_jsonl(out_dir / "valid.jsonl", valid_rows)
     report = {
         "schema": "ultrabrain.s3.sft_dataset.v1",
-        "traces_read": sum(len(items) for items in by_task.values()),
+        "traces_read": len(trace_rows),
+        "unique_certified_examples": sum(len(items) for items in by_task.values()),
         "tasks_with_certified_trace": len(by_task),
         "max_examples_per_task": max_per_task,
         "train_examples": len(train_rows),
@@ -624,6 +861,27 @@ def run(argv=None):
     eval_parser.add_argument("--test-seeds", default=",".join(map(str, DEFAULT_TEST_SEEDS)))
     eval_parser.add_argument("--train-seeds", default=",".join(map(str, DEFAULT_TRAIN_SEEDS)))
 
+    collect_parser = sub.add_parser("collect")
+    collect_parser.add_argument("--tasks", required=True)
+    collect_parser.add_argument("--traces", required=True)
+    collect_parser.add_argument("--pairs", required=True)
+    collect_parser.add_argument("--ledger", required=True)
+    collect_parser.add_argument("--ledger-secret", required=True)
+    collect_parser.add_argument("--report", default=None)
+    collect_parser.add_argument("--model-path", default=str(DEFAULT_MODEL))
+    collect_parser.add_argument("--adapter-path", default=None)
+    collect_parser.add_argument("--n", type=int, default=DEFAULT_N)
+    collect_parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
+    collect_parser.add_argument("--top-p", type=float, default=DEFAULT_TOP_P)
+    collect_parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
+    collect_parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
+    collect_parser.add_argument("--seed", type=int, default=0)
+    collect_parser.add_argument(
+        "--task-ids",
+        default="",
+        help="optional comma-separated frozen task ids for a preflight smoke",
+    )
+
     sft_parser = sub.add_parser("prepare-sft")
     sft_parser.add_argument("--train-tasks", required=True)
     sft_parser.add_argument("--traces", required=True)
@@ -651,6 +909,25 @@ def run(argv=None):
             test_seeds=_parse_seeds(args.test_seeds),
             train_seeds=_parse_seeds(args.train_seeds),
         )
+    elif args.command == "collect":
+        if args.n < 1 or args.batch_size < 1 or args.max_tokens < 1:
+            parser.error("n, batch-size, and max-tokens must be positive")
+        result = collect(
+            tasks_path=Path(args.tasks),
+            traces_path=Path(args.traces),
+            pairs_path=Path(args.pairs),
+            ledger_path=Path(args.ledger),
+            ledger_secret=args.ledger_secret,
+            model_path=args.model_path,
+            adapter_path=args.adapter_path,
+            n=args.n,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            max_tokens=args.max_tokens,
+            batch_size=args.batch_size,
+            seed=args.seed,
+            task_ids=tuple(item for item in args.task_ids.split(",") if item),
+        )
     else:
         result = prepare_sft(
             train_tasks_path=Path(args.train_tasks),
@@ -659,6 +936,10 @@ def run(argv=None):
             max_per_task=args.max_per_task,
             seed=args.seed,
         )
+    if getattr(args, "report", None):
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(result, indent=2, sort_keys=True))
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

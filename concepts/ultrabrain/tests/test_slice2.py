@@ -7,7 +7,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from ultrabrain.propose.llm import clean_expr, extract_code, prompt_for
+from ultrabrain.propose.llm import LLMProposer, clean_expr, extract_code, prompt_for
 from ultrabrain.verify import (
     ABSTAIN,
     CASVerifier,
@@ -37,6 +37,31 @@ def test_clean_expr_and_prompts():
     assert "foo" in code_p and "python" in code_p.lower()
     cas_p = prompt_for({"kind": "cas", "prompt": "integral", "var": "t"})
     assert "t" in cas_p
+
+
+def test_llm_proposer_records_explicit_sampling_contract():
+    proposer = LLMProposer(temperature=0.7, top_p=0.9, max_tokens=64, seed=11)
+    assert proposer.temperature == 0.7
+    assert proposer.top_p == 0.9
+    assert proposer.max_tokens == 64
+    assert proposer.seed == 11
+
+
+def test_llm_proposer_fails_loudly_when_multi_sample_search_is_inert(monkeypatch):
+    proposer = LLMProposer()
+    monkeypatch.setattr(proposer, "_complete", lambda _task: "x**2")
+
+    assert proposer.propose({"kind": "cas"}, 1) == ["x**2"]
+    with pytest.raises(RuntimeError, match="1 distinct candidate.*direct-batched"):
+        proposer.propose({"kind": "cas"}, 8)
+
+
+def test_llm_proposer_accepts_genuinely_distinct_multi_sample_search(monkeypatch):
+    proposer = LLMProposer()
+    candidates = iter(["x", "x**2", "x"])
+    monkeypatch.setattr(proposer, "_complete", lambda _task: next(candidates))
+
+    assert proposer.propose({"kind": "cas"}, 3) == ["x", "x**2", "x"]
 
 
 def test_verified_search_collects_only_verified_traces(tmp_path):

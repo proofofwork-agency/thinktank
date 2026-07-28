@@ -51,7 +51,11 @@ from ultrabrain.verify import (  # noqa: E402
 )
 
 _TASK_ERROR_ARCHETYPES = {"scalar_multiple", "plus_x", "derivative"}
-_TASK_FAMILIES = {"poly", "prod", "trig", "exp", "chain", "log", "unlabelled"}
+_TASK_FAMILIES = {
+    "poly", "prod", "trig", "exp", "chain", "log", "mixed",
+    "loglin", "arctan", "arcsin", "sqrtpow", "byparts", "hyper", "trigpow", "ratio",
+    "unlabelled",
+}
 
 
 def load_jsonl(path):
@@ -163,7 +167,14 @@ def _cas_preference_pairs(task: dict, projected_candidates) -> list[dict]:
 
 def build_proposer(args):
     if args.proposer == "llm":
-        return LLMProposer(base_url=args.base_url, model=args.model, temperature=args.temperature)
+        return LLMProposer(
+            base_url=args.base_url,
+            model=args.model,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            max_tokens=args.max_tokens,
+            seed=args.seed,
+        )
     if args.proposer == "fim":
         kw = {"temperature": args.temperature, "seed": args.seed}
         if args.fim_checkpoint:
@@ -218,6 +229,8 @@ def run(argv=None):
     ap.add_argument("--fim_tokenizer", default=None,
                     help="tokenizer json for --proposer fim (default: checkpoints/tokenizer.json)")
     ap.add_argument("--temperature", type=float, default=0.8)
+    ap.add_argument("--top_p", type=float, default=1.0)
+    ap.add_argument("--max_tokens", type=int, default=512)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=os.path.join(ROOT, "data", "verified_traces.jsonl"))
     ap.add_argument(
@@ -233,8 +246,8 @@ def run(argv=None):
                          "jail; use a throwaway environment.")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
-    if args.n < 1:
-        print("ERROR: --n must be >= 1", file=sys.stderr)
+    if args.n < 1 or args.max_tokens < 1:
+        print("ERROR: --n and --max_tokens must be >= 1", file=sys.stderr)
         return 2
     if os.path.abspath(args.pairs_out) in {
         os.path.abspath(args.out),
@@ -341,13 +354,20 @@ def run(argv=None):
                 elif signal["status"] == REJECTED:
                     rejected_candidate_digests.add(signal["evidence"]["candidate_digest"])
             if outcome.certified:
-                traces.append({
+                trace = {
                     "task_id": task.get("id"),
                     "kind": task.get("kind", "code"),
                     "prompt": prompt_for(task),
                     "solution": candidate,
                     "verify_detail": outcome.verdict.detail,
-                })
+                }
+                if is_cas:
+                    trace["verification_basis"] = {
+                        "candidate_handling": signal["evidence"]["candidate_handling"],
+                        "parser_safety_basis": signal["evidence"]["parser_safety_basis"],
+                    }
+                    trace["verifier_evidence"] = signal["evidence"]
+                traces.append(trace)
                 certified_attempts += 1
                 task_solved = True
                 if not is_cas:
@@ -391,6 +411,13 @@ def run(argv=None):
     task_family_counts = Counter(_task_family(task) for task in tasks if task.get("kind") == "cas")
     result = {
         "proposer": args.proposer,
+        "sampling": {
+            "n": args.n,
+            "temperature": args.temperature,
+            "top_p": args.top_p,
+            "max_tokens": args.max_tokens,
+            "seed": args.seed,
+        },
         "rlimits_applied": isolated,          # POSIX rlimits — defense in depth, NOT a jail
         "trusted_writes": not suppress_trusted,
         "tasks": len(tasks),
