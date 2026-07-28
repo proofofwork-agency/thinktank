@@ -148,10 +148,14 @@ def analyse(rows, split, metric):
     for seed in sorted(per_seed):
         d = per_seed[seed]
         tasks = {t for (t, _m) in d}
-        both = won = lost = neither = 0
+        both = won = lost = neither = unpaired = 0
         for t in tasks:
             b, tr = d.get((t, "base")), d.get((t, "trained"))
             if b is None or tr is None:
+                # A task present for one model and not the other cannot be paired. Silently
+                # dropping it is how a manifest divergence turns into a confident verdict over
+                # whatever happened to survive — so it is counted and surfaced, never swallowed.
+                unpaired += 1
                 continue
             if b and tr:
                 both += 1
@@ -170,6 +174,7 @@ def analyse(rows, split, metric):
             "p": round(sign_test_p(won, disc), 4),
             "base_pass": both + lost, "trained_pass": both + won,
             "significant": bool(disc and crit and won >= crit),
+            "unpaired_dropped": unpaired,
         })
     return out
 
@@ -216,8 +221,17 @@ def run(argv=None):
     # inert run from one that trained weakly.
     train_any_discordant = any(s["discordant"] for s in report["train"])
 
+    worst_unpaired = max((s["unpaired_dropped"] for m in report["metrics"].values()
+                          for sp_ in m.values() for s in sp_), default=0)
+    total_seen = max((s["n_tasks"] for m in report["metrics"].values()
+                      for sp_ in m.values() for s in sp_), default=0)
+    report["max_unpaired_dropped"] = worst_unpaired
+
     if report["leakage"] and report["leakage"]["overlap"]:
         verdict = "INVALID — train/test leakage detected"
+    elif worst_unpaired and worst_unpaired > 0.05 * max(total_seen + worst_unpaired, 1):
+        verdict = (f"INVALID — {worst_unpaired} tasks appear for only one model and could not be "
+                   "paired (>5%). The two runs did not evaluate the same manifest.")
     elif report["budget_problems"]:
         verdict = "INVALID — inference budget differs between models"
     elif len(report["test"]) < 3:
