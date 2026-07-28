@@ -175,6 +175,28 @@ Conversion of the gap is well-powered: even **8** of the 15 tasks converting is 
 (8 discordant pairs, critical 8); 12 of 15 gives critical 10. So the paired test can resolve a
 partial effect, not only a total one.
 
+## Both hard gates passed
+
+**Determinism — PASSED.** The truncation-instrumented rerun of held-out seed 0 reproduced the
+earlier checkpoint **exactly**: pass@1 26/244, pass@8 41/244. Generation is deterministic given
+(seed, params, task), so *base-vs-trained at matched seeds is a controlled comparison* and the
+paired design is valid. This was assumed by the whole design and is now verified rather than
+assumed — for free, because a restart happened to make the comparison available.
+
+**Truncation confound — MEASURED AND NEGLIGIBLE.** 3 of 1,952 candidates hit the 64-token cap:
+**0.154%**. Worst case, if the trained model truncated zero times *and* every base truncation cost
+a solve, the maximum manufacturable gain is **3 tasks** — while significance requires 8 wins of 8
+discordant pairs. **A truncation artefact cannot reach the threshold.**
+
+Honest accounting of that flag: it was correct methodology and it cost two restarts and roughly
+twenty minutes to establish that the effect it guards against is empirically absent here. That is
+still a result — the confound is now *measured* rather than assumed away — but the cost was real
+and the answer was "no confound." Worth recording both halves.
+
+**Pace, observed rather than projected:** 11.2 min/block × 8 blocks = 90 min eval, plus ~12 min
+collection and ~8 min training ≈ **109 min (~1.8 h)**. Under the 2-hour stop line. Continuing
+unchanged.
+
 ## What each outcome means
 
 | Held-out result | Reading |
