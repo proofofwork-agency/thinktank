@@ -1,233 +1,194 @@
-# UltraBrain — Roadmap: the self-improving verifier↔generator loop (toy → full-scale)
+# UltraBrain — Roadmap
 
-> **One idea.** The **Writer** (generator) and the **Examiner** (verifier) are not two projects —
-> they are the two halves of a single **closed loop that improves itself without a teacher**. The
-> Examiner is the *invariant* that makes self-improvement safe and un-fakeable: **only
-> verifier-certified outputs ever become training data**, so the Writer can only ever learn from its
-> own *proven* successes. The Writer is what *scales*. This document is that loop — drawn as a graph,
-> with the **recovery edges** that keep it from corrupting itself and the **improvement edges** that
-> carry it from a toy to a full-scale LLM.
->
-> Motto: **no evidence → no trusted belief → no training example.**
+**Status: verifier built and hardened. Writer is a museum piece. Trainer has never been run.
+Zero evidence of capability gain exists.**
 
-This is a plan you *run*, not a list you check off. Each section is a node or an edge of one graph.
+Companion to [`README.md`](README.md) (what is built) and
+[`docs/BECOMING_AN_LLM.md`](docs/BECOMING_AN_LLM.md) (why the current shape cannot scale, and the
+four assumptions to drop). House lifecycle: **spar → prototype → verdict.** Kill gates are real.
+A red node means *stop and write the verdict*, not *try harder*.
 
 ---
 
-## 0. Where we are (honest snapshot)
+## 0. The correction this roadmap encodes
 
-| Half | State today | The gap to "works" |
+The old critical path was **subordinate executor → real fine-tunes**. Everything queued behind a
+security fix, and nothing has been learned about whether the core thesis works at all.
+
+Two measurements change the ordering:
+
+1. **The forge is capped at 34 examples and its compute knob is inert.** At `--n 64` it generates
+   384 candidates, judges **7**, keeps 6, discards 377 unverified — 176 of them purpose-built hard
+   negatives. `--n 8` does identical work. `run_verified_search.py:161` + the `break`.
+2. **The symbolic path is sound today and infinitely generative.** `CASVerifier` never executes
+   the candidate — AST whitelist, then sympify, verdict decided wholly in the parent, no worker,
+   no signed channel. A ~40-line forge minted **200 tasks in 18s: 200/200 golds certified, 595
+   distractors, 0 false certifications.**
+
+An earlier draft of this roadmap claimed reject-harvesting on the *code* path was sound because
+forgery can only manufacture false accepts. **Codex falsified that** (ledger `c91f536e`): a
+correct function forced an authenticated false REJECT, a genuine 0/10 forged a signed 7/10, and
+candidate text plus *parent expected values* flow verbatim into `Verdict.detail`. Self-sabotage
+is rational when poisoning the next model is the goal. That claim is withdrawn.
+
+> **New critical path: mint tasks where verification never executes (S0) → uncap the search there
+> (S1) → aim it (S2) → actually train (S3).** All four are days of work, cost ~$0, and are
+> currently sitting behind a security blocker that gates only the *code* slice.
+
+---
+
+## 1. The critical path
+
+```mermaid
+flowchart TD
+    S0["<b>S0 · Symbolic task forge</b><br/>invert the CAS verifier: pick F,<br/>differentiate → integrand, keep F as gold<br/><i>demonstrated: 200 tasks/18s, 0 false certs</i>"]
+    G0{"10k minted —<br/>still sound at scale,<br/>and LEARNABLE?"}
+    K0["<b>KILL</b><br/>VERDICT.md: 'the forge only makes trivia<br/>(or breaks at scale). No source of<br/>variation exists — the loop goes dry<br/>after one pass.'"]
+
+    S0 --> G0
+    G0 -->|"pass@1 &gt; 90% · or C3/C4 broken"| K0
+    G0 -->|"real difficulty spread"| S1
+
+    S1["<b>S1 · Uncap the search</b><br/>drop the certified-only filter + break<br/><b>symbolic path only</b> — verdicts are<br/>parent-decided, sanitized to fixed schema"]
+    G1{"≥500 usable contrastive<br/>pairs, real diversity?"}
+    K1["<b>KILL</b><br/>VERDICT.md: 'search is degenerate —<br/>the proposer collapses to one candidate.<br/>Verified self-improvement is dead.'"]
+
+    S1 --> G1
+    G1 -->|"&lt; 500 · low diversity"| K1
+    G1 -->|"≥ 500"| S2
+
+    S2["<b>S2 · Difficulty targeting</b><br/>keep only the learnable band<br/>pass@1 ≈ 0 &lt; pass@N<br/>auto-curriculum, no humans"]
+    S2 --> S3
+
+    S3["<b>S3 · Actually train</b><br/>train_qlora.py for real, first time<br/>DPO on pairs + SFT on certified"]
+    G3{"<b>THE REAL GATE</b><br/>on a HELD-OUT task family,<br/>beats base at equal inference budget?"}
+    K3["<b>KILL — the whole thesis</b><br/>VERDICT.md: 'verified search does not<br/>transfer. The gym does not build muscle.<br/>UltraBrain is a good verifier, nothing more.'<br/>Cost to learn this: ~$0."]
+
+    S3 --> G3
+    G3 -->|"no gain · or in-sample only"| K3
+    G3 -->|"gain on held-out"| S4
+    G3 -->|"gain on held-out"| S5
+
+    S4["<b>S4 · Subordinate executor</b><br/>candidate in its OWN process, signer +<br/><i>scorer</i> OUTSIDE it, value-only channel<br/>unlocks the CODE slice — for LEARNING,<br/>not just for shipping certificates"]
+    S5["<b>S5 · Language verifier zoo</b><br/>round-trip · self-consistency ·<br/>constraint-sat · entailment<br/>ranks only, never certifies"]
+
+    S4 --> D
+    S5 --> D
+    D["<b>D · The demo</b><br/>commodity 14B + UltraBrain beats a<br/>frontier model on the verifiable slice,<br/>at 1/100th cost per solved task"]
+
+    style K0 fill:#c62828,color:#fff
+    style K1 fill:#c62828,color:#fff
+    style K3 fill:#c62828,color:#fff
+    style G3 stroke:#c62828,stroke-width:3px
+    style S0 stroke:#2e7d32,stroke-width:2px
+    style S1 stroke:#2e7d32,stroke-width:2px
+```
+
+---
+
+## 2. The slices
+
+### S0 · Symbolic task forge — *the scaling axis, sound today*
+
+The task list is not the input; it is the output of a verifier run backwards. Pick `F`,
+differentiate to get the integrand, keep `F` as a gold **the parent held before the candidate
+existed**. No untrusted computation contributes to the label.
+
+Prototype: `scratchpad/forge_probe.py` (~40 lines, real unmodified `CASVerifier`) —
+**200 tasks in 18s, 200/200 golds certified, 595 auto-distractors, 0 false certifications, 0
+parse errors.** ~11 tasks/sec → 10k tasks in ~15 min on CPU, $0. Against **34 hand-written tasks
+in the repo's lifetime.**
+
+Extend along the same inversion: `cas_equivalent` (algebraic identities), then
+`verify/scientific.py`'s conservation/unitarity checks (pick an invariant → mint simulation
+tasks). Mutation-inverse for code waits for **S4**.
+
+Output is **uncontaminated by construction**, which also retires the in-sample caveat that
+currently invalidates the repo's only writer result.
+
+**S0a · Harden the symbolic verifier first** — Codex's adversarial review (ledger `30847b56`)
+returned **C3 = BROKEN TODAY, C4 = HOLDS-WITH-CONDITIONS**. The architecture survives — *no
+AST-whitelist code-execution bypass was found, and the symbolic path needs no subordinate
+executor because candidate code is never executed* — but four local defects must be fixed before
+it can mint a trusted corpus:
+
+| # | Defect | Fix |
 |---|---|---|
-| **Examiner** (`ultrabrain/verify/judge_v1`) | Sound *pattern* (parent-owned oracle + HMAC + fail-closed harness). Certifies trusted/your-own proposers today. | A candidate sharing the worker's process can still forge a signed verdict (`adversarial_soundness=False`, one strict-xfail). Untrusted-model certification is **fail-closed** = blocked. |
-| **Writer** (masked-diffusion FIM) | Trains from scratch on a laptop; does infilling; certifies **2/11** code fills through the gate. | That 2/11 is **contaminated** (corpus contains the eval golds). No held-out capability yet. |
+| 1 | `oo`, `log(0)`, `1/0`, `0/0` **certify** as antiderivatives of `0` (sympy differentiates `oo`/`zoo`/`nan` to zero); `0**0 ≡ 1` | reject non-finite/undefined candidates — not the intended removable-singularity slack |
+| 2 | Unbounded evaluation **hangs the trusted parent** inside the allowed grammar: `factorial(999999)` (>8s, reproduced), `gamma(10¹²)`, `Float(Rational(1,3),10⁸)`, `factorial(factorial(1000))` → uncaught `RecursionError` | bound text/nodes/depth/arity/cost; resource-limited CAS worker; **timeout ⇒ ABSTAIN** (`Verdict` already supports it) |
+| 3 | `detail` **leaks the gold**: candidate `0` vs gold `x**2+3*x+7` → `residual -x**2 - 3*x - 7 != 0` | persist enums/counts/digests only — never residuals or exception text |
+| 4 | Unrestricted minting is degenerate: `F=oo` (invalid gold), `F=x-x`/`sin²+cos²` (trivial), `F=floor/gamma/Abs` (derivative outside the verifier grammar → ABSTAIN) | closed finite differentiable grammar + degeneracy rejection + round-trip validation |
+| 5 | Uncertain equality is treated as a decision | prefer **exact witnesses**; an inconclusive `.equals`/numeric probe must **ABSTAIN, never reject** — the zoo's own grade-1 rule |
 
-The loop **runs today with the zero-ML `mock` proposer** (`self_improve.py`). It is **blocked from
-consuming a real model** by exactly one thing (§4, S1). Everything below is the path from that block
-to a self-sustaining engine.
+Defects 1 and 4 do not bite the shipped forge — it skips `integrand.is_number` and uses a closed
+grammar, which is why it survives at 1000 — but they are live in the **verifier**, so a candidate
+can still exploit 1, and any grammar extension re-opens 4.
 
----
+> **KILL GATE.** Two conditions. *(a)* S0a's four fixes land and the forge stays sound at 10k.
+> *(b)* Minted tasks solved at `pass@1 > 90%` are trivia: no variation, no signal, Ceiling 4
+> reasserts and the loop goes dry after one pass. **Verified so far:** 1000 minted → 1000/1000
+> golds certified, 2995 distractors, **0 false certifications**, 8 tasks/sec.
 
-## 1. The engine — the core loop
+### S1 · Uncap the search — *symbolic path only*
 
-The whole system is one cycle. The forward edges *improve*; the dashed edges *recover* (they never
-throw trusted state away — they roll back to it).
+`gate.py:41` and `run_verified_search.py:161` both filter on `certified`; the `break` makes
+`--n` inert. Drop the filter, drop the `break`, append rather than `open(..., "w")`.
 
-```mermaid
-flowchart LR
-    P["① PROPOSE<br/>Writer samples N candidates"] --> X["② EXECUTE<br/>candidate in a JAILED child<br/>(subordinate executor)"]
-    X --> V["③ VERIFY<br/>judge_v1 parent-owned oracle<br/>certify | reject | abstain"]
-    V --> H["④ HARVEST<br/>certified-only → HMAC ledger<br/>+ verified-trace corpus"]
-    H --> T["⑤ TRAIN<br/>ReST-EM / QLoRA on OWN<br/>verified successes"]
-    T --> E["⑥ EVAL<br/>held-out gate: solve-rate,<br/>cost/solved, false-cert rate"]
-    E -->|"stronger → next turn"| P
+Scoped **to the symbolic path**, where the verdict is parent-decided and no candidate code runs.
+Emit contrastive pairs — (prompt, certified, rejected) — for DPO.
 
-    %% self-RECOVERING edges (dashed) — never corrupt trusted state
-    V -. "false-cert suspected" .-> PATCH["HALT writes • patch the GATE<br/>(the asset) • add a regression • resume"]
-    PATCH -. resume .-> V
-    E -. "regression / overfit" .-> ROLL["ROLLBACK to last certified<br/>checkpoint + ledger head"]
-    ROLL -. resume .-> P
-    H -. "too few traces" .-> WIDE["WIDEN: raise N • DECOMPOSE<br/>the task • escalate proposer"]
-    WIDE -. resume .-> P
-    X -. "boundary breach / non-finite" .-> FC["FAIL CLOSED<br/>(no belief, no host write)"]
-    FC -. quarantine .-> P
+**Sanitization is mandatory, not optional** (Codex, ledger `c91f536e`): persist only
+fixed-schema counts, enums and case digests. **Never** raw child output, exception text, candidate
+return strings, or parent expected values — the last leaks the hidden oracle into the training
+corpus and destroys the held-out property S3 depends on. The collector should hold no signing
+secret at all.
 
-    style V fill:#1f6feb,color:#fff
-    style X fill:#8957e5,color:#fff
-    style PATCH fill:#3fb950,color:#fff
-    style ROLL fill:#3fb950,color:#fff
-    style FC fill:#da3633,color:#fff
-```
+Harvesting on the **code** path is available today only as explicitly `trusted=false`, sanitized,
+secrets-free **diagnostics** — useful for testing whether DPO rankings correlate with holdout
+performance, but it is not the trusted loop and must never be labelled as one.
 
-**Read it as:** the Writer proposes → a **jailed** executor runs the code → the **Examiner** decides →
-only *certified* outputs are harvested → the Writer trains on its *own proven wins* → a held-out gate
-measures the gain → repeat, stronger. Any anomaly takes a **dashed edge** back to a known-good state
-instead of poisoning the corpus.
+> **KILL GATE.** 34 tasks × N=16 = 544 attempts must yield **≥500 usable pairs** with real
+> candidate diversity. If the proposer emits near-identical candidates there is no signal in the
+> rejects, and verified self-improvement is dead — a genuine, cheap falsification.
 
----
+### S2 · Difficulty targeting
 
-## 2. Why it is *self-recovering* (the invariants)
+Keep only tasks in the learnable band — `pass@1 ≈ 0 < pass@N`. Below it, nothing to learn; above
+it, hopeless. This is the auto-curriculum, and it converts S0's volume into signal.
 
-Recovery is not a feature bolted on; it is what the architecture *is*. Five invariants can never break,
-so there is always a known-good state to fall back to:
+### S3 · Actually train — *and the gate that decides everything*
 
-1. **The trust anchor is data, not weights.** Capability lives in the *verifier* + the append-only,
-   tamper-evident **ledger** (`ledger.py`) and the last **certified checkpoint** — not in the model
-   weights. So a bad training run is disposable: `ROLLBACK` to the last checkpoint; the ledger is
-   untouched. You can lose a model and lose nothing that was *proven*.
-2. **The gate fails closed, in isolation.** A suspected false-certification **halts writes**, not the
-   system. You patch the *verifier* (the durable asset) and resume — the Writer's weights were never
-   the trust boundary, so nothing certified is retroactively at risk. (This is exactly how the
-   `judge_v1` rework happened: a vector was found, the gate was fixed, the invariant held.)
-3. **No contamination, by construction.** A held-out train/test split is an invariant. If overlap is
-   detected, that cycle's data is **quarantined** — never trained on. (The current toy 2/11 violates
-   this on purpose, as a smoke test; §5 fixes it.)
-4. **Untrusted execution cannot corrupt the loop.** Once the subordinate executor (§4, S1) lands, a
-   candidate can neither forge a verdict nor write the host — a poisoned proposal can only be
-   *rejected*, never *ingested*.
-5. **`abstain` is a first-class outcome.** Undecidable → the loop skips, it does not guess. Uncertainty
-   never becomes a trusted belief.
+`train_qlora.py` has never run outside `--dry_run`. Run it: DPO on S1's pairs, SFT on certified.
 
-> **Rollback anchor = `(ledger.head(), last_certified_checkpoint)`.** Every node can return here.
+> **THE REAL KILL GATE.** On a **held-out task family** (not a held-out split of the same family),
+> does the trained model beat the base **at equal inference budget**? If not — or if the gain is
+> in-sample only — the thesis is dead and you learned it for about $0. The project has never
+> reached this gate; every slice above exists to reach it cheaply.
+
+### S4 · Subordinate executor — *promoted: it gates learning, not just shipping*
+
+Candidate in its own process; decider, **scorer** and signer outside it; value-only authenticated
+channel. Codex's falsification promoted this: without it, *rejects and partial scores* are
+forgeable too, so the entire code slice is unusable for training — not merely uncertifiable.
+
+Not a research problem — `subprocess` + a pipe with the oracle and the scoring in the parent. It
+has stalled because the fix keeps being attempted **inside** the worker instead of **above** it.
+
+### S5 · Language verifier zoo — *the bridge out of code*
+
+Round-trip reconstruction, self-consistency across paraphrases, constraint satisfaction,
+entailment against a cited source. All grade-2/3: they rank, they never certify — and after the
+Bias-2 correction that distinction must be enforced in code, not just in prose.
 
 ---
 
-## 3. Why it is *self-improving* (the ratchet)
+## 3. What is deliberately not on this roadmap
 
-Three compounding mechanisms turn each cycle into more capability — with no teacher, hence no ceiling:
-
-- **ReST-EM (train on your own verified wins).** The policy is reinforced *only* on verifier-certified
-  successes → improvement is monotone in expectation and cannot drift into unverified behaviour.
-- **The verifier is a curriculum generator.** *Raise the Examiner* each cycle — more oracles, harder
-  held-out cases, mutation / differential / property tests — and the bar rises, which *forces* the
-  Writer up. The asset that guarantees safety is the same asset that sets the next challenge.
-- **Coverage → capability → cheaper coverage.** Verified search (sample N, keep any that certify)
-  turns a *weak* proposer's coverage into solved tasks **now**; training *internalizes* those wins so
-  `pass@1` rises **next** cycle; then N can shrink and cost/solved falls. That is the ratchet:
-  **spend search to buy weights, spend weights to buy back search.**
-
-```mermaid
-flowchart LR
-    C["coverage@N<br/>(search buys solves)"] --> W["train on verified wins<br/>(solves buy weights)"]
-    W --> Q["pass@1 up →<br/>lower N needed"]
-    Q --> C
-    R["raise the Examiner<br/>(harder held-out)"] -.forces.-> C
-```
-
----
-
-## 4. The scale ladder — toy → full-scale (each rung is one turn of the loop, larger)
-
-Every rung has an **ENTRY gate** (what must be true to start), the **LOOP** at that scale, an **EXIT
-gate** (a *measured* criterion to advance), and a **RECOVERY** edge (what to do if the exit gate fails —
-you never get stuck, you drop back a rung).
-
-```mermaid
-flowchart TB
-    S0["S0 · TOY (DONE)<br/>judge_v1 sound · diffusion FIM<br/>loop runs with mock · real-model BLOCKED"]
-    S1["S1 · UNBLOCK TRUST<br/>build the SUBORDINATE EXECUTOR"]
-    S2["S2 · HONEST BASELINE<br/>held-out benchmark, no contamination"]
-    S3["S3 · BOOTSTRAP THE WRITER<br/>run the loop on a real base"]
-    S4["S4 · CO-SCALE<br/>corpus + params + difficulty + verifier reach"]
-    S5["S5 · FULL-SCALE<br/>self-sustaining verifier-grounded code LLM"]
-    S0 --> S1 --> S2 --> S3 --> S4 --> S5
-    S3 -. "solve-rate flat → widen search / raise verifier" .-> S3
-    S4 -. "frontier stops growing → back to S3 curriculum" .-> S3
-    S5 -. "regression on held-out → rollback + re-enter S4" .-> S4
-    style S0 fill:#238636,color:#fff
-    style S1 fill:#da3633,color:#fff
-    style S5 fill:#1f6feb,color:#fff
-```
-
-### S0 — Toy *(done)*
-Parent-owned-oracle gate is sound; the Writer is a from-scratch byte-level diffusion LM; the verified
-loop runs with the zero-ML control. **Exit already met.**
-
-### S1 — Unblock trust *(the one real blocker)* 🔴
-**Entry:** S0. **Build:** the **subordinate candidate executor** — the candidate runs in its *own*
-process; the signer/decider/oracle live *outside* it; they speak only over a **value-only, authenticated
-channel** the candidate cannot reach into. Wrap it in a real **host jail** (separate uid / container /
-seccomp-no-exec-no-ptrace / no network / read-only mounts).
-**Exit gate (measured):** the strict-xfail forgery test *flips to contained*; `adversarial_soundness`
-becomes defensible; `run_verified_search --proposer llm/fim` can write trusted traces again.
-**Recovery:** if a fully general Python executor can't be made sound, **restrict the task ABI** to a
-call-schema / DSL (inputs → values only) — the loop still runs, just over a narrower language.
-
-### S2 — Honest baseline
-**Entry:** S1. **Do:** author a **held-out** benchmark (≥ 4 task families, ~50 each) **disjoint** from
-any training/trace corpus, with independently-written hidden/property oracles.
-**Exit gate:** a real, uncontaminated `pass@1` + coverage@N + **cost-per-solved-task** for (a) the base
-coder and (b) the Writer. This replaces the contaminated 2/11 with a number you can trust.
-**Recovery:** if the baseline is ~0, shrink task difficulty until the proposer has a foothold (the
-26–35% subproblem regime), then decompose.
-
-### S3 — Bootstrap the Writer
-**Entry:** S1 + S2. **Do:** run the **full loop** on a real base — Qwen3-Coder-14B behind the proposer
-protocol *and/or* the diffusion FIM head — on the RTX 5080: `verified traces → QLoRA → eval → gate`,
-each round via `self_improve.py`.
-**Exit gate:** held-out solve-rate rises **cycle-over-cycle** (the ratchet turns) with false-cert rate
-≈ 0 on an external holdout.
-**Recovery:** flat/declining solve-rate → `ROLLBACK` + **widen search** (raise N, decompose) *or*
-**raise the verifier** (the curriculum was too easy / too hard). Overfit → rollback + more data / regularize.
-
-### S4 — Co-scale
-**Entry:** S3 turning. **Do:** scale the four dials **together** — corpus size, model params, task
-difficulty, and **verifier reach** (new sound oracles for the domains you're entering). The verifiable
-frontier expands as the Writer does.
-**Exit gate:** the *set of tasks the loop can verifiably solve* grows each cycle (frontier, not just accuracy).
-**Recovery:** frontier stalls → drop to S3 curriculum on the stalled family; if the wall is
-*verifiability* (cheap-sound checks run out), that family is out of scope — record it honestly.
-
-### S5 — Full-scale
-**Entry:** sustained S4. **Result:** a self-sustaining loop whose capability is bounded by the
-**verifier's reach**, not by a teacher — the Writer graduates from FIM-toy to a **full-scale,
-verifier-grounded code LLM**. **Recovery:** any held-out regression rolls back and re-enters S4; the
-loop is the product, and it maintains itself.
-
----
-
-## 5. Getting the *Writer* to actually work — the near-term, runnable slice
-
-You do **not** have to wait for S1 to start improving the Writer on the **trusted path** (your own
-corpus is trusted code, so the executor gap doesn't block *training-data hygiene*, only *untrusted
-certification*). Immediate, honest steps:
-
-1. **Kill the contamination.** Build `data/code_corpus_train.txt` **disjoint** from `tasks/*.jsonl`
-   (generate/collect functions in the same *idiom families* but not the eval functions themselves).
-2. **Retrain** byte-level, span-heavy, small→bigger: `python train.py --corpus data/code_corpus_train.txt
-   --merges 0 --span_prob 0.6 …` (minutes on CPU/MPS).
-3. **Measure on held-out** FIM tasks the model never saw: `eval_code.py --proposer fim … --unsafe`
-   (diagnostics). A certified-fill number *above* contaminated-2/11 on **held-out** tasks is the first
-   real capability signal.
-4. **Improve the sampler, not just the model:** length-sweep (shipped), confidence-ordered unmasking,
-   more denoising steps — pure coverage wins the gate decides.
-5. **Then plug the FIM head into the loop** as a proposer the moment the S1 executor lands.
-
-`self_improve.py` is already the loop's skeleton (`collect → train → eval`). The roadmap is literally:
-**make every node of `self_improve` recoverable (§2) and raise the verifier every round (§3).**
-
----
-
-## 6. Failure → recovery, at a glance
-
-| Where | Failure mode | Recovery edge (never lose trusted state) |
-|---|---|---|
-| ② Execute | candidate escapes / writes host | **fail closed**; quarantine proposal; (S1) subordinate executor prevents it |
-| ③ Verify | false-certification vector found | **halt writes**, patch the gate, add regression, resume — weights unaffected |
-| ④ Harvest | too few / no certified traces | **widen search** (N↑), **decompose** the task, escalate proposer |
-| ④ Harvest | train/test overlap detected | **quarantine** the cycle's data; never train on it |
-| ⑤ Train | overfit / regression | **rollback** to last certified checkpoint + ledger head |
-| ⑥ Eval | solve-rate flat | **raise or lower** the verifier's difficulty (curriculum); re-enter the loop |
-| ⑥ Eval | frontier stalls (S4) | family may be *unverifiable* → record honestly, out of scope |
-
----
-
-## 7. The single invariant that makes all of this safe to run unattended
-
-> **A cycle may improve the Writer or waste a GPU-hour, but it can NEVER corrupt what has been proven.**
-> Every trusted write is gated by a sound verifier; every trusted state is append-only and rollback-able;
-> every untrusted action fails closed. That is why this loop can be left to run — and why "self-improving"
-> here is a safety claim, not just a capability one.
-
-**Next commit on the critical path:** the **subordinate candidate executor** (§4, S1). It flips
-untrusted-model certification from *fail-closed* to *usable* and turns this diagram from a plan into a
-running engine. Start there.
+- **Pretraining a base model.** Seven orders of magnitude in data, ~8 GPU-years in FLOPs.
+  Arithmetically excluded. The base is rented and swapped, not built.
+- **The diffusion LM as *the writer*.** It stays as the FIM/infill proposer — the one role where a
+  bidirectional denoiser genuinely beats same-scale AR — and nothing more.
+- **World knowledge and taste.** No verifier reaches them. Permanently conceded.
+- **Sound certification of prose.** S5 ranks; it does not certify, and nothing may imply it does.
+- **Any claim that the code path is sound before S4.** Certification, rejection and scoring are
+  all forgeable there. Reproduced, not theorised.
