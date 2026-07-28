@@ -229,8 +229,12 @@ def test_symbolic_forge_labels_families_and_fails_loudly_past_finite_space(capsy
 
     tasks = forge.mint(12, seed=7)
     assert len(tasks) == 12
-    assert all(task["task_family"] in {"poly", "prod", "trig", "exp", "chain", "log"}
-               for task in tasks)
+    # Reference the DECLARED family set rather than a hardcoded copy, so widening the grammar
+    # does not silently rot this test (it did exactly that on the 2026-07-28 widening).
+    assert all(task["task_family"] in set(forge._FORGE_FAMILIES) for task in tasks)
+    # The widening exists to buy CONCEPTUAL coverage, so a small corpus must already span
+    # several families — a single-family corpus is the degeneracy S0b was fixing.
+    assert len({task["task_family"] for task in tasks}) >= 4
     assert all(
         len(task["distractors"]) == len(task["distractor_archetypes"])
         and set(task["distractor_archetypes"]) <= {
@@ -243,7 +247,7 @@ def test_symbolic_forge_labels_families_and_fails_loudly_past_finite_space(capsy
     assert forge.run(["--n", str(forge._MEASURED_FORGE_SPACE + 1), "--json"]) == 2
     error = json.loads(capsys.readouterr().out)
     assert error["error"] == "forge_space_exhausted"
-    assert "3984" in error["detail"]
+    assert str(forge._MEASURED_FORGE_SPACE) in error["detail"]
 
 
 def test_train_qlora_dry_run(tmp_path):

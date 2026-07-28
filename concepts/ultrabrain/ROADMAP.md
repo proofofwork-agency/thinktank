@@ -112,9 +112,30 @@ the distribution is brutally lopsided:
 | `chain` | 18 | shares `sin` with `trig` — not a disjoint family |
 | `log` | **6** | `a*log(x)`, a∈1..6. That is the whole family |
 
+> **RESOLVED 2026-07-28 — the grammar is widened and this gate is cleared.** Nine new families
+> (`loglin`, `arctan`, `arcsin`, `sqrtpow`, `byparts`, `hyper`, `trigpow`, `mixed`, `ratio`) add
+> *concepts*, not coefficients. **All 15 families certify 100%** against the real verifier — every
+> derivative lands inside `_ALLOWED_FUNCS`, per Codex's C4 conditions. Measured:
+>
+> | | before | after |
+> |---|---|---|
+> | non-polynomial reach | **84** | **624** (7.4×) |
+> | total reach | 3,984 | 4,524 |
+> | corpus at n=300 | 58% poly | **14% poly** |
+> | held-out test families | 48 forms | **252 forms** |
+>
+> Forge stays sound: 150/150 golds certified, 0/446 false certifications. The held-out split is now
+> real — train `{poly, trig, chain, exp, prod, log, mixed}`, test `{arctan, arcsin, sqrtpow,
+> byparts, hyper, trigpow, loglin, ratio}`: 252 forms of **entirely unseen concepts** (inverse-trig,
+> fractional powers, integration by parts, hyperbolic, log-of-linear, rational). That is a genuine
+> question — *can it integrate concept classes it never saw?* — where before there were 48 forms
+> sharing atoms with the training set.
+>
+> *The historical measurement below is kept because the reasoning error in it is instructive.*
+
 **Space skew ≠ sample skew** — a distinction I got wrong twice before measuring it. `_sample_F`
 picks the **family** uniformly, not a form from the space, so you cannot infer corpus composition
-from the 98% figure. Measured composition of an actual `mint(seed=7)` corpus:
+from the 98% figure. Measured composition of the *original six-family* `mint(seed=7)` corpus:
 
 | n | poly | non-poly |
 |---|---|---|

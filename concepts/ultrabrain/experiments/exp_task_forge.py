@@ -36,13 +36,34 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ultrabrain.verify.verifiers import CASVerifier, CERTIFIED  # noqa: E402
 
 X = sp.Symbol("x")
-_MEASURED_FORGE_SPACE = 3_984
+# Measured, not estimated (120k draws + per-family enumeration). poly 3900 + the 14 other
+# families 624 = 4524. Before the 2026-07-28 widening this was 3984 with only 84 non-polynomial
+# forms, so conceptual coverage grew 7.4x while the polynomial reach is unchanged.
+_MEASURED_FORGE_SPACE = 4_524
+_MEASURED_NONPOLY_SPACE = 624
+
+
+# Widened 2026-07-28. The original six families reached 3,984 forms of which 3,900 were
+# polynomial: only 84 conceptually distinct tasks, exhausting at n~84 so every task beyond that
+# was more power-rule practice (ROADMAP.md S0b). The families below add CONCEPTS, not coefficients
+# — inverse-trig, rational, fractional powers, by-parts, hyperbolic, log-of-linear, mixed sums.
+#
+# Every branch must satisfy Codex's C4 conditions: closed, finite, differentiable, with the
+# DERIVATIVE landing inside verifiers.py `_ALLOWED_FUNCS` (so the gold is checkable) and no
+# nonfinite atom or identically-zero derivative. floor/ceiling/gamma/Abs are excluded on purpose:
+# they differentiate to Derivative/polygamma/sign forms outside the verifier grammar and ABSTAIN.
+_FORGE_FAMILIES = (
+    "poly", "trig", "exp", "log", "prod", "chain",          # original six
+    "loglin", "arctan", "arcsin", "sqrtpow", "byparts",     # added
+    "hyper", "trigpow", "mixed", "ratio",
+)
 
 
 def _sample_F(rng: random.Random):
-    """A small grammar of antiderivatives. Every branch has an elementary derivative."""
-    kind = rng.choice(["poly", "trig", "exp", "log", "prod", "chain"])
+    """The grammar of antiderivatives. Every branch has an elementary, in-grammar derivative."""
+    kind = rng.choice(list(_FORGE_FAMILIES))
     a, n = rng.randint(1, 6), rng.randint(2, 5)
+    m, c = rng.randint(2, 4), rng.randint(1, 4)
     if kind == "poly":
         return sum(rng.randint(1, 5) * X**k for k in range(1, n + 1)), kind
     if kind == "trig":
@@ -53,7 +74,31 @@ def _sample_F(rng: random.Random):
         return a * sp.log(X), kind
     if kind == "prod":
         return a * X**n * sp.exp(X), kind
-    return a * sp.sin(rng.randint(2, 4) * X), kind        # chain rule
+    if kind == "chain":
+        return a * sp.sin(rng.randint(2, 4) * X), kind
+    # --- added families: each introduces a distinct integration concept ---
+    if kind == "loglin":                                   # -> a*m/(m*x + c)
+        return a * sp.log(m * X + c), kind
+    if kind == "arctan":                                   # -> a/(x**2 + 1)
+        return a * sp.atan(rng.choice([X, m * X])), kind
+    if kind == "arcsin":                                   # -> a/sqrt(1 - x**2)
+        return a * sp.asin(X), kind
+    if kind == "sqrtpow":                                  # -> fractional power
+        return a * X**sp.Rational(rng.choice([3, 5, 7]), 2), kind
+    if kind == "byparts":                                  # -> x*cos(x) | log(x) | x*exp(x)
+        return a * rng.choice([
+            X * sp.sin(X) + sp.cos(X),
+            X * sp.log(X) - X,
+            (X - 1) * sp.exp(X),
+        ]), kind
+    if kind == "hyper":                                    # -> a*cosh(x) | a*sinh(x)
+        return a * rng.choice([sp.sinh(X), sp.cosh(X)]), kind
+    if kind == "trigpow":                                  # -> sec**2 / sin*cos
+        return a * rng.choice([sp.tan(m * X), sp.sin(X) ** 2, sp.cos(X) ** 2]), kind
+    if kind == "mixed":                                    # linearity across two families
+        return (rng.randint(1, 4) * X**rng.randint(2, 4)
+                + a * rng.choice([sp.sin(X), sp.cos(X), sp.exp(X), sp.log(X)])), kind
+    return a * X / (m * X + c), kind                       # ratio -> a*c/(m*x + c)**2
 
 
 def _perturb(F, rng: random.Random):
