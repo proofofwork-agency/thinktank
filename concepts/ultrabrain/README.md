@@ -1,5 +1,9 @@
 # UltraBrain — a verifier-grounded scientific coder
 
+> 🗺️ **Roadmap: [`ROADMAP.md`](ROADMAP.md)** — the Writer (generator) and Examiner (verifier) as one
+> **self-recovering, self-improving loop**, and the rung-by-rung path from today's toy to a full-scale,
+> verifier-grounded code LLM. Start there for *where this is going*; read on for *what exists now*.
+
 > 🚧 **Work in progress — active research prototype, not a finished product.** The verifier-gate
 > architecture and the four code slices below are built and tested locally ($0, all on CPU/MPS),
 > but the headline claim (a *cost-per-solved-task* win) has **not yet been measured against a real
