@@ -273,6 +273,43 @@ unseen concept classes. The held-out families are a different question entirely.
 Stating it now so the eventual result cannot be retrofitted into whatever the numbers happen to
 show. A prediction made after the fact is not a prediction.
 
+## Format confound ruled out — and my prediction looks wrong (seed 0)
+
+**Trained held-out seed 0: pass@1 26→37 (+11), pass@8 41→55 (+14), truncation 0.**
+
+Before reading that as a win, I ran the diagnostic my own prediction commit demanded — *"if
+held-out gain appears despite a training regime this deep into memorisation, look for a leak
+before celebrating."* The obvious non-mathematical explanation is **format compliance**: SFT
+teaches the bare-expression output format, so the model might simply be emitting parseable answers
+it could always have computed.
+
+**Base failure modes on held-out seed 0** (all 1,952 candidates):
+
+| | count | share |
+|---|---|---|
+| mathematically evaluated and **wrong** (`exact_counterexample`) | 1,344 | **68.9%** |
+| format/parse failures (`disallowed_name`, `syntax`, …) | 386 | 19.8% |
+| certified | 212 | 10.9% |
+
+**Upper bound on the format explanation: 4 tasks.** Of the 203 held-out tasks the base failed at
+pass@8, only **4** had *every* candidate fail on format — those are the sole tasks where a perfect
+format fix could produce a new solve. Everywhere else the model was already emitting valid
+expressions that were mathematically wrong.
+
+> **4 < 11.** Format cannot account for the pass@1 gain. And pass@8 rising 41→55 crosses the line
+> this document drew in advance: *"pass@8 above 41 → the model learned to solve problems it
+> previously could not, at any budget."*
+
+**My prediction was wrong**, on this seed. I predicted strong in-domain gain with weak-to-zero
+held-out gain — the memorisation outcome — from a 7.1-epoch, 112-example training regime. The
+held-out split moved substantially instead, and the leading alternative explanation is bounded at
+roughly a third of the effect.
+
+**Holding to my own rule: one seed is not a result.** Seeds 1 and 2 plus the in-domain block are
+still outstanding, and the verdict stands or falls on all three. Recording this now so the
+diagnostic is timestamped *before* the remaining seeds land rather than assembled around whatever
+they show.
+
 ## What each outcome means
 
 | Held-out result | Reading |
