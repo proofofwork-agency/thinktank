@@ -120,6 +120,31 @@ so and change the task difficulty — **not** to train anyway and report whateve
 to be. A gain measured against a floor or a ceiling is an artifact of the range, not evidence
 about verified search.
 
+## Baseline landed — in band, and the effect is now decomposed in advance
+
+*Provisional log checkpoint, held-out seed 0, base model, before any adapter exists:*
+**pass@1 26/244 (10.7%) · pass@8 41/244 (16.8%).**
+
+**Headroom check against the band committed in `cb2dc87`, written before this number:** 10.7% is
+**inside the informative band** — at its lower edge, but inside. The experiment can resolve an
+effect and no task-difficulty change is warranted. Recording this as a pass rather than a judgement
+call is the entire reason the band was fixed in advance.
+
+**The decomposition, recorded before any trained number exists.** The base model already solves
+**41** tasks within 8 samples but finds only **26** on the first try. That 15-task gap is the room
+a "find it sooner" effect can occupy, and it splits the possible outcomes cleanly:
+
+| Trained result | Reading |
+|---|---|
+| pass@1 rises toward **41**, pass@8 flat | **Cheaper, not smarter.** Distillation of coverage the model already had — up to 26→41, a 58% relative pass@1 gain, while solving nothing new. This *is* the cost-per-solved-task claim, and it is the outcome the architecture actually predicts. |
+| pass@1 rises **above 41** | **Genuinely new capability.** Beyond redistributing existing coverage. A stronger result than the thesis requires. |
+| pass@8 rises above 41 | The model learned to solve problems it previously could not, at any budget. |
+| neither moves | Verified search did not transfer to unseen concept classes. |
+
+Conversion of the gap is well-powered: even **8** of the 15 tasks converting is significant
+(8 discordant pairs, critical 8); 12 of 15 gives critical 10. So the paired test can resolve a
+partial effect, not only a total one.
+
 ## What each outcome means
 
 | Held-out result | Reading |
