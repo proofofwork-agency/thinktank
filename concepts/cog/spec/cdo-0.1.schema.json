@@ -105,6 +105,22 @@
         "min_tier": {
           "enum": ["receipted-depth", "venue-quote", "venue-quote-live"]
         },
+        "region": {
+          "anyOf": [{"type": "string"}, {"type": "null"}]
+        },
+        "correction_window_days": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "on_publisher_cessation": {
+          "enum": [
+            "fallback-publisher",
+            "convert-at-last-fix",
+            "renegotiate"
+          ]
+        },
         "collar": {
           "type": "object",
           "additionalProperties": false,

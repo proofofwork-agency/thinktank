@@ -12,7 +12,8 @@ rounded to six decimal places and payable amounts to two decimal places with
 
 The Settlement Fix is the median of eligible daily COG-1 fixes in the seven
 calendar days ending on the invoice date. Four or more observations produce
-status `normal`.
+status `normal`. Each eligible daily fix contributes one observation; market
+volume does not weight the Settlement Fix.
 
 ## 3. Unavailability ladder
 

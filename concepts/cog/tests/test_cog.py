@@ -82,12 +82,12 @@ class TestFixerd(unittest.TestCase):
         self.assertEqual([r["model"] for r in rows], ["cheap/model", "mid/model", "pricey/model"])
         self.assertAlmostEqual(rows[0]["blended_usd_per_M"], 0.8 * 0.1 + 0.2 * 0.2)
 
-    def test_vw_median(self):
+    def test_median_executable_price_counts_each_eligible_buy_once(self):
         runs = [{"price": 1.0, "weight": 1}, {"price": 2.0, "weight": 1}, {"price": 9.0, "weight": 1}]
-        self.assertEqual(fixerd.vw_median(runs), 2.0)
-        # heavy cheap run pulls the median down
+        self.assertEqual(fixerd.median_executable_price(runs), 2.0)
+        # The fixer selected these sizes; a larger token count is not market volume.
         runs = [{"price": 1.0, "weight": 10}, {"price": 2.0, "weight": 1}, {"price": 9.0, "weight": 1}]
-        self.assertEqual(fixerd.vw_median(runs), 1.0)
+        self.assertEqual(fixerd.median_executable_price(runs), 2.0)
 
     def test_load_qualification_missing_falls_back(self):
         ids, meta = fixerd.load_qualification("2026-06-10")
@@ -281,6 +281,13 @@ class TestBlendIsDefinedOnce(unittest.TestCase):
         prose = cogfix.DATA["spec"]["blend"]
         self.assertIn(f"{cogfix.BLEND_IN} * input_usd_per_M", prose)
         self.assertIn(f"{cogfix.BLEND_OUT} * output_usd_per_M", prose)
+
+    def test_backtest_rule_is_not_conflated_with_settlement_rule(self):
+        spec = cogfix.DATA["spec"]
+        self.assertIn("documented launch/posted", spec["fix_rule"])
+        self.assertNotIn("volume-weighted", spec["fix_rule"])
+        self.assertIn("median executable price", spec["cog_1_settlement_rule"]["rule"])
+        self.assertFalse(spec["cog_1_settlement_rule"]["implemented_by_backtest"])
 
     def test_every_series_point_blends_correctly(self):
         # Stored to 4dp: the 2026 points came off a live feed and were rounded for

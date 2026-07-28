@@ -4,9 +4,10 @@ The one place the roadmap says diffusion beats same-scale autoregression is fill
 a bidirectional denoiser conditions on BOTH the prefix and the suffix at once (HumanEval-FIM
 73.8 > 73.3), which a left-to-right AR model cannot do natively. This wires our from-scratch
 masked-diffusion LM (``denoiser.py`` + ``diffusion.py``) in as *just another demoted proposer*:
-it proposes a fill for ``task['prefix'] <hole> task['suffix']`` and the EXISTING hardened gate
-certifies the assembled program. The gate / verifier / ledger / trace pipeline is untouched —
-FIM-ness lives entirely here, which is the proposer-agnostic thesis (thoughts/14, 22) once more.
+it proposes a fill for ``task['prefix'] <hole> task['suffix']`` and the gate certifies the assembled
+program. FIM-ness lives entirely in the proposer (the proposer-agnostic thesis, thoughts/14, 22).
+NOTE: the gate/verifier were LATER REWORKED for the verdict-forgery fix (the forgeable assert runner ->
+parent-owned-oracle ``judge_v1``), so the earlier "pipeline is untouched" framing no longer holds.
 
 SECURITY: a diffusion fill is untrusted model output exactly like an LLM completion, so ``--proposer
 fim`` FAILS CLOSED in the CLIs (never writes trusted ledger/SFT; runnable only under ``--unsafe`` for

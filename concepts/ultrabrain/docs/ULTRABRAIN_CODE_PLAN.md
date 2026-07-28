@@ -30,7 +30,7 @@ The trust boundary (`thoughts/22`) made concrete for code:
 | Verifier / orchestrator | **Mac 36 GB** (MLX) | sandbox, test execution, SymPy/CAS, loop orchestration; can host a 27–32B proposer |
 | Cloud | optional, on-demand spot ($1–15/job) | only for >14B fine-tunes or massive trace generation; **$0 for the first milestones** |
 | Identity | "certified output" | learned/token parts are proposers/rankers; only verifier-certified outputs are trusted |
-| From-scratch remnant | masked-diffusion LM → the **FIM/infill proposer** (Slice 2b, DONE) | the one role where diffusion beats same-scale AR (HumanEval-FIM 73.8 > 73.3); wired in behind the unchanged gate |
+| From-scratch remnant | masked-diffusion LM → the **FIM/infill proposer** (Slice 2b, DONE) | the one role where diffusion beats same-scale AR (HumanEval-FIM 73.8 > 73.3); wired in behind the gate (later reworked to judge_v1 for the verdict-forgery fix) |
 
 **Why not the alternatives:** from-scratch-as-coder loses (sub-10% HumanEval at small scale);
 distillation-from-a-frontier-API caps the ceiling at the teacher *and* taints redistribution
@@ -69,7 +69,7 @@ vector found"; that claim was **FALSE and has been withdrawn**. A later Claude�
 **found and fixed** a real verdict-forgery vector: the assert-string runner exec'd the untrusted
 candidate in the SAME interpreter frame that held the verdict state, so a candidate that reached `sys`
 could frame-walk (or patch a shared module) and forge a `CERTIFIED` verdict for code whose tests
-actually failed (three independent exploits, working even under OS isolation — a logical, not a
+actually failed (three independent exploits, working even under rlimits — a logical, not a
 resource, escape).
 
 The rework (`ultrabrain/verify/judge.py`, `judge_v1`): code is certified by a **parent-owned-oracle**
@@ -94,7 +94,7 @@ channel. That is **not built**. Until it exists the trust CLIs **fail closed** f
 (`llm`/`fim`): they NEVER write the ledger/SFT — no env flag enables it (an earlier `ULTRABRAIN_OS_SANDBOX`
 attestation was itself unsound and removed); `--unsafe` is diagnostics-only. `orchestrate` writes no
 trusted ledger and flags results `trusted=false`. The certificate is **behavioral-on-cases** with
-`os_boundary=False` in evidence, never a global-correctness or adversarial-soundness claim.
+`adversarial_soundness=False` in evidence, never a global-correctness or adversarial-soundness claim.
 
 **This blocks the core loop.** Certifying *real model* output into trusted verified-trace training data —
 the project's central mechanism — cannot be done soundly in-process; it works today only with the zero-ML
@@ -119,9 +119,11 @@ fine-tunes / code-corpus training on YOUR hardware, and a held-out task split fo
   assembled `prefix+fill+suffix` to the EXISTING gate. The one role where diffusion beats same-scale
   AR (HumanEval-FIM 73.8 > 73.3): a bidirectional denoiser conditions on both sides at once, which a
   left-to-right model cannot. `--proposer fim` is wired into all three CLIs (`run_verified_search`,
-  `eval_code`, `self_improve`) and, like `--proposer llm`, runs OS-isolated + fails closed (a
-  diffusion fill is untrusted model output). The gate / verifier / ledger / trace pipeline is
-  UNCHANGED — FIM-ness lives entirely in the proposer (the proposer-agnostic thesis, thoughts/14, 22).
+  `eval_code`, `self_improve`) and, like `--proposer llm`, is UNTRUSTED model output that now FAILS
+  CLOSED (diagnostics-only under `--unsafe`; rlimits are not a jail). NOTE: the gate/verifier were
+  LATER REWORKED for the verdict-forgery fix (the forgeable assert runner → parent-owned-oracle
+  `judge_v1`; see the "Verdict-forgery" section above), so the earlier "pipeline is UNCHANGED" framing
+  no longer holds — FIM-ness still lives in the proposer.
   `tasks/micro_fim.jsonl` (11 infill tasks) + `tests/test_fim.py` (10 tests) cover the trust boundary,
   not network quality: an oracle denoiser reconstructs a known fill end-to-end
   (diffusion→decode→assemble→isolated gate→ledger), Codex + workflow boundary-hardening is enforced
@@ -133,8 +135,9 @@ fine-tunes / code-corpus training on YOUR hardware, and a held-out task split fo
   holes" capability is one code-training command away (`train.py --corpus`; RUNBOOK § 2b).
 - **Slice 3 — scientific zoo + decompose-then-verify orchestrator. DONE + hardened.** the verifier
   zoo for numerical/physics/quantum (conservation, unitarity, convergence) + the decompose-then-verify
-  orchestrator (SciCode subproblem granularity). The orchestrator executes untrusted proposer output
-  OS-isolated + fail-closed, like the CLIs (Codex + workflow review).
+  orchestrator (SciCode subproblem granularity). NOTE (later hardening): the orchestrator now FAILS
+  CLOSED on untrusted proposer output (a caller-supplied proposer raises unless `unsafe=True`) and
+  writes NO trusted ledger; rlimits are defense in depth, not a host jail. See the residual note.
 
 ## Slice 1 spec
 

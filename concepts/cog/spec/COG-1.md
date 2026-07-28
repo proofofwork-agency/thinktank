@@ -32,7 +32,20 @@ An upstream price using a different input/output mix MUST disclose the mismatch.
 If the component prices are unavailable, normalization MUST set `exact:false`
 and publish an uncertainty interval.
 
-## 4. Versioning
+## 4. Fix rule and depth eligibility
+
+A `receipted-depth` COG-1 price fix MUST be the median executable price across
+qualifying sized purchases. A publication window is eligible only after at
+least `K=5` independent purchases of at least `N=10,000,000` blended tokens
+each. After a purchase clears that eligibility floor, it contributes one price
+observation regardless of its token count.
+
+Publishers MUST NOT describe this rule as volume-weighted or market-volume
+weighted. The purchase sizes are selected by the protocol rather than observed
+from market activity. The eligibility floor, not weighting, is the mechanism
+that prevents a loss-leader sip from setting the fix.
+
+## 5. Versioning
 
 Basket changes create a new specification version. A standing obligation MUST
 name the specification URI and SHA-256 digest it uses. Retirement SHOULD use a

@@ -103,10 +103,11 @@ def test_end_to_end_gate_ledger_only_gold_written():
 
 def test_certificate_records_honest_scope():
     # Evidence must carry the honest scope so a downstream consumer cannot mistake it for adversarial
-    # soundness or global correctness (os_boundary=False; behavioral-on-cases).
+    # soundness or global correctness (adversarial_soundness=False; behavioral-on-cases).
     ev = judge_v1(IS_EVEN, GOLD).evidence
-    assert ev["os_boundary"] is False
+    assert ev["adversarial_soundness"] is False       # no flag confers trust
     assert "behavioral-on-cases" in ev["scope"]
+    assert "subordinate" in ev["scope"].lower()        # names the actual verdict-integrity fix
     assert ev["judge"] == "judge_v1"
 
 
@@ -115,8 +116,9 @@ def test_certificate_records_honest_scope():
     "process that HMAC-signs the response, so a same-address-space candidate can frame-walk via an "
     "unbounded set of stdlib reflection gadgets (here typing.evaluate_forward_ref with globals={} -> "
     "full builtins) and mutate the very 'out' the worker signs. Deny-listing gadgets is whack-a-mole; "
-    "the only sound fix is the OS capability boundary (separate uid / container / seccomp). This test "
-    "asserts the DESIRED end-state (forgery contained) and xfails until that boundary exists — strict "
+    "the only sound fix is a SUBORDINATE candidate executor (candidate process separate from the "
+    "signer/decider) — an outer OS boundary is host containment, not this fix. This test "
+    "asserts the DESIRED end-state (forgery contained) and xfails until that executor exists — strict "
     "so an unexpected pass flags that the residual closed and the xfail should be removed. It is NOT "
     "green evidence that untrusted in-process execution is safe."))
 def test_same_address_space_forgery_is_a_known_residual():
@@ -137,7 +139,7 @@ def test_same_address_space_forgery_is_a_known_residual():
         "typing.evaluate_forward_ref(ref, globals={})",
     ]) + "\n"
     task = {"judge": {"entry_point": "add", "cases": [{"args": [1, 2], "expect": 3}]}}
-    # DESIRED post-OS-boundary: the forgery is contained -> wrong code is NOT certified. Until then
+    # DESIRED post-subordinate-executor: the forgery is contained -> wrong code is NOT certified. Until then
     # this ASSERTION FAILS (the wrong add certifies through the MAC-authenticated judge), so the test
     # xfails — documenting the residual without being counted as a passing safety guarantee.
     assert judge_v1(task, src).status != CERTIFIED

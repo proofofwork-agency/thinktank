@@ -31,16 +31,21 @@ GUARANTEE, STATED PRECISELY (Codex adversarial review — do not overclaim):
     ``typing.evaluate_forward_ref`` with ``globals={}``, ``dataclasses._create_fn`` where exposed, ...),
     frame-walk into the worker and mutate the very ``out``/``requests`` the worker then HMAC-signs.
     Codex reproduced a wrong ``add`` certifying THROUGH the MAC-authenticated judge. Deny-listing these
-    gadgets is whack-a-mole (the class is open-ended); the ONLY sound fix is to stop the candidate and
-    the signer/oracle sharing an address space — i.e. the OS capability boundary in ``isolate.py``
-    (separate uid / container / seccomp-no-exec-no-ptrace / no network / read-only mounts). Until that
-    is in place, genuinely UNTRUSTED proposer output (llm / fim) must NOT be trusted as certified.
+    gadgets is whack-a-mole (the class is open-ended). The ONLY sound fix for VERDICT INTEGRITY is to
+    stop the candidate and the signer/decider sharing an address space: a SUBORDINATE CANDIDATE EXECUTOR
+    — the candidate runs in its OWN process, the signer/oracle/decider lives OUTSIDE it, and they speak
+    only over a value-only channel the candidate cannot reach into. That is NOT built and is NOT the
+    same as an outer OS boundary: a container / separate uid / seccomp is ADDITIONAL HOST CONTAINMENT
+    (it stops the candidate damaging the host) but does NOT separate candidate from signer WITHIN the
+    worker, so it does NOT repair verdict integrity. Both are required and neither is built; until the
+    subordinate executor exists, genuinely UNTRUSTED proposer output (llm / fim) must NOT be trusted as
+    certified. No environment flag confers this trust.
   * Scope of the HMAC: it detects post-exec/file tampering ONLY IF the key was not exfiltrated before
     image replacement; an in-process gadget that reads the key first, or a ``fork`` that inherits it,
     defeats it. So it is a real but PARTIAL backstop, not a boundary.
   * The certificate is therefore BEHAVIORAL-ON-CASES under this judge ABI (version + case digest +
-    ``os_boundary=False`` recorded in evidence), never a claim of global function correctness or of
-    adversarial soundness against untrusted code.
+    ``adversarial_soundness=False`` recorded in evidence), never a claim of global function correctness
+    or of adversarial soundness against untrusted code.
 
 TASK SCHEMA (``task['judge']``) — DECLARATIVE DATA ONLY, never code from JSON:
   {
@@ -332,7 +337,7 @@ def main():
     # any candidate code. An execve/spawnv escape wipes this key from memory and the fd is already
     # closed, so a fresh-image survivor cannot recompute the response MAC (Codex-designed). The key is
     # never written to argv/env/file. (A fork survivor inherits memory -> the key; that residual is
-    # covered by the policy ban on fork and ultimately requires the OS capability boundary.)
+    # covered by the policy ban on fork and ultimately requires the subordinate candidate executor.)
     chunks = []
     while True:
         b = os.read(key_fd, 4096)
@@ -576,9 +581,12 @@ def judge_v1(task: dict, candidate: str, *, timeout: float = 5.0, mem_mb: int = 
         json.dumps({"judge": JUDGE_VERSION, "spec": spec}, sort_keys=True, default=str).encode()
     ).hexdigest()[:16]
     ev = {"judge": JUDGE_VERSION, "n_checks": len(checks), "n_calls": len(requests),
-          "case_digest": digest, "os_boundary": False,
-          "scope": "behavioral-on-cases; same-address-space in-process execution is NOT adversarially "
-                   "sound without an OS capability boundary (Codex review)"}
+          "case_digest": digest, "adversarial_soundness": False,
+          "scope": "behavioral-on-cases; NOT sound vs adversarial same-address-space code. Sound "
+                   "verdict integrity requires a SUBORDINATE candidate executor (candidate in its own "
+                   "process, separate from the signer/decider so it cannot mutate what is signed); host "
+                   "containment additionally requires an outer OS boundary (uid/container/seccomp). "
+                   "Neither is built (Codex review). No flag confers trust."}
 
     if anomaly is not None:
         return Verdict(ABSTAIN, f"judge could not decide: {anomaly}", ev)

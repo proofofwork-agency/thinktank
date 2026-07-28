@@ -36,7 +36,8 @@
 >   --fim_checkpoint checkpoints/diffusion_code.pt --fim_tokenizer checkpoints/tokenizer_code.json --unsafe`.
 > - **Slice 3 — scientific zoo + decompose-then-verify orchestrator, DONE.**
 >   `ultrabrain/verify/scientific.py` + `ultrabrain/orchestrate.py` (`python ultrabrain/orchestrate.py`;
->   the orchestrator isolates untrusted proposer output too). Eval/loop entry points: `eval_code.py`,
+>   the orchestrator now FAILS CLOSED on untrusted proposer output — a caller-supplied proposer needs
+>   `unsafe=True` and writes no trusted ledger). Eval/loop entry points: `eval_code.py`,
 >   `self_improve.py`.
 > - **Verdict-forgery: found, reworked, and honestly scoped (was: "no false-certification vector
 >   found" — that claim was FALSE and is withdrawn).** A Claude↔Codex adversarial pass found the
@@ -57,15 +58,16 @@
 >   CLIs **fail closed** for untrusted proposers (`llm`/`fim`): they NEVER write the ledger/SFT (no env
 >   flag enables it — an earlier `ULTRABRAIN_OS_SANDBOX` attestation was itself unsound and removed);
 >   `--unsafe` runs diagnostics-only (no writes). `orchestrate` likewise writes no trusted ledger and
->   flags results `trusted=false`. Certificates carry `os_boundary=false`, behavioral-on-cases only.
+>   flags results `trusted=false`. Certificates carry `adversarial_soundness=false`, behavioral-on-cases only.
 >   The 3 original exploits are regressions; the residual is a strict-xfail documenting the limit.
 > - **The verified-trace loop is BLOCKED on that executor.** Certifying *real model* output into
 >   trusted training data — the project's core mechanism — cannot be done soundly in-process. It works
 >   today only with the zero-ML `mock` proposer (our own reference code). This is the gating next step.
 > - **Roadmap.** Slices 1, 2, 2b, 3 built + tested (`python -m pytest tests` → all green incl. the
 >   xfail residual) + Codex-reviewed. What remains: the real fine-tunes / code-training on your
->   hardware, and — REQUIRED before trusting untrusted-proposer certificates — the OS capability
->   boundary.
+>   hardware, and — REQUIRED before trusting untrusted-proposer certificates — a **subordinate
+>   candidate executor** (candidate process separate from the signer, for verdict integrity), plus an
+>   outer OS boundary for host containment. These are distinct; an outer boundary alone does not suffice.
 >
 > Everything is local and tested (`python -m pytest tests`). The masked-diffusion LM described
 > below is a **research component** — now wired in behind the gate as the Slice 2b FIM proposer

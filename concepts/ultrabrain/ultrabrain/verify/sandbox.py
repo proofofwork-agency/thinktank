@@ -39,9 +39,11 @@ ALLOWED_IMPORTS = {
 # Several of these modules expose reflection gadgets that reach arbitrary objects while hiding the
 # dangerous name inside a string (``string.Formatter().get_field`` — ``string`` is removed above
 # for exactly this reason — ``dataclasses._create_fn`` on interpreters that expose it, etc.). The
-# class is unbounded; a determined same-uid candidate can still reach reflection. Sound execution of
-# genuinely UNTRUSTED code REQUIRES the OS capability boundary in ``isolate.py`` (separate uid /
-# container / seccomp / no network), NOT this list. See judge.py for the scoped certificate.
+# class is unbounded; a determined same-uid candidate can still reach reflection. Sound VERDICT
+# INTEGRITY over genuinely UNTRUSTED code requires a SUBORDINATE candidate executor (candidate in its
+# own process, separate from the signer/decider), and HOST CONTAINMENT additionally requires an outer
+# OS boundary (uid/container/seccomp/no network) — neither is this list, and neither is built. See
+# judge.py for the scoped certificate.
 BANNED_CALLS = {
     "eval", "exec", "compile", "__import__", "open", "input", "breakpoint", "exit", "quit",
     "globals", "locals", "vars", "getattr", "setattr", "delattr", "dir",

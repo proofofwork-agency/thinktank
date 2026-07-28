@@ -59,7 +59,8 @@ def teardown_function(_):
 
 
 def _both_runners(source, tests, **kw):
-    """Drive a code attack through both the plain AST sandbox and the OS-isolated sandbox."""
+    """Drive a code attack through both the plain AST sandbox and the rlimit-sandboxed runner
+    (rlimits are defense in depth, not a jail)."""
     return [run_tests(source, tests, timeout=kw.get("timeout", 5.0)),
             run_tests_isolated(source, tests, **kw)]
 
@@ -174,7 +175,7 @@ def test_stdout_forgery_does_not_forge_verdict():
 # 4b. VERDICT FORGERY — the confirmed false-certification vectors (Claude+Codex adversarial review).
 #     A candidate that reaches ``sys`` can walk frames to the runner's live verdict state, or patch a
 #     shared module the runner calls, and forge a CERTIFIED verdict for blatantly wrong code — even
-#     under OS isolation (a LOGICAL escape, not a resource one, so rlimits are irrelevant). Each
+#     under rlimits (a LOGICAL escape, not a resource one, so rlimits are irrelevant). Each
 #     vector below must be CONTAINED: never certified, never ``ExecResult.ok``, and — end to end
 #     through a real Gate + HMAC Ledger — never written as a trusted belief.
 # --------------------------------------------------------------------------------------------------
@@ -369,7 +370,7 @@ def test_isolation_available_or_warns(recwarn):
 
 
 def test_isolated_matches_plain_runner_on_benign_code():
-    # The OS-isolated path must be behaviorally identical to the plain runner for honest candidates:
+    # The rlimit-sandboxed path must be behaviorally identical to the plain runner for honest candidates:
     # same pass/fail accounting, no spurious rejects introduced by the rlimits.
     src = "import math\ndef f(n):\n    return math.factorial(n)\n"
     tests = ["assert f(0) == 1", "assert f(5) == 120"]

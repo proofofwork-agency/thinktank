@@ -154,10 +154,12 @@ def run(argv=None):
     t0 = time.time()
     for r in range(args.rounds):
         collect = _collect(args, r, quiet)
-        if isinstance(collect, int):  # run_verified_search failed closed (missing secret / no isolation)
+        if isinstance(collect, int):  # run_verified_search failed closed (missing secret / untrusted proposer)
             msg = (f"collect failed (exit {collect}) at round {r}: trace collection needs a private "
-                   f"ledger secret (--ledger_secret / ULTRABRAIN_LEDGER_SECRET); --proposer llm also "
-                   f"needs OS isolation. Aborting before train/eval.")
+                   f"ledger secret (--ledger_secret / ULTRABRAIN_LEDGER_SECRET). --proposer llm/fim is "
+                   f"UNTRUSTED and fails closed — trusted real-model collection is BLOCKED pending the "
+                   f"subordinate candidate executor (verdict integrity) plus an outer host jail (host "
+                   f"containment); OS isolation alone is NOT sufficient. Aborting before train/eval.")
             if args.json:
                 print(json.dumps({"error": "collect_failed", "exit_code": collect, "round": r,
                                   "hint": msg}, indent=2, sort_keys=True))
@@ -166,13 +168,15 @@ def run(argv=None):
             return collect
         train_rc = _train(args, quiet)
         metrics = _eval(args, quiet)
-        if isinstance(metrics, dict) and metrics.get("error"):  # eval fail-closed (e.g. no isolation)
+        if isinstance(metrics, dict) and metrics.get("error"):  # eval fail-closed (untrusted proposer)
             if args.json:
                 print(json.dumps({"error": "eval_failed", "detail": metrics["error"], "round": r},
                                  indent=2, sort_keys=True))
             else:
-                print(f"ERROR: eval failed (round {r}): {metrics['error']} — executing model output "
-                      f"needs OS isolation. Aborting.", file=sys.stderr)
+                print(f"ERROR: eval failed (round {r}): {metrics['error']} — executing untrusted model "
+                      f"output is fail-closed; sound execution needs the subordinate candidate executor "
+                      f"plus an outer host jail (OS isolation alone is NOT sufficient). Aborting.",
+                      file=sys.stderr)
             return 2
         trajectory.append({
             "round": r,

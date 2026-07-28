@@ -6,8 +6,9 @@
 The cog: a capability-indexed unit of account for the intelligence economy.
 1 cog = the depth-verified market price of executing the COG-1 Reference Workload
 (1M blended tokens, 800k in / 200k out) on a model that passes the frozen
-COG-1 capability basket — volume-weighted median of receipted sized runs, never
-a single cheapest sip. See WHITEPAPER.md.
+COG-1 capability basket — median executable price across qualifying sized
+purchases (>= K=5 independent buys of >= N=10M tokens each), never a single
+cheapest sip. See WHITEPAPER.md.
 
 Usage:
   python3 cogfix.py                          # fix series, current fix, worked examples
