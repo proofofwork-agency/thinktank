@@ -120,6 +120,36 @@ so and change the task difficulty — **not** to train anyway and report whateve
 to be. A gain measured against a floor or a ceiling is an artifact of the range, not evidence
 about verified search.
 
+**Correction 3 — none.** A concern that the training set would be 91% polynomial was raised and
+was **unfounded**: the manifest was already balanced at `poly 84 | mixed 84 | prod 24 | trig 18 |
+chain 18 | exp 18 | log 6 = 252`, max family share 33.3%. Recorded because a raised-and-withdrawn
+concern is part of the audit trail, not because anything changed.
+
+**Correction 4 — in-domain split reduced to one seed (runtime, pre-outcome).** Measured block
+duration drifted to ~8 min under thermal throttling, projecting **109–121 min** total including
+collection and training — at or past the 2-hour stop line. Revised:
+
+| | before | after |
+|---|---|---|
+| **held-out** (the decisive claim) | N=8 × seeds 0,1,2 | **unchanged** |
+| in-domain (the discriminator) | N=8 × seeds 0,1,2 | N=8 × **seed 0 only** |
+| total eval completions | 23,808 | 15,744 (−34%) |
+| projected total | 109–121 min | 80–95 min |
+
+**Why this does not weaken the result.** The two splits carry different weight. The in-domain split
+exists *only* to separate "training did not take" from "trained but did not transfer" — a coarse,
+near-binary question that one seed answers adequately. The three-seed requirement is load-bearing
+for the **held-out** claim, where the question is whether a modest effect survives replication,
+and that is untouched at full power.
+
+**Explicitly not authorised**, then or under any later time pressure: fewer held-out seeds, N below
+8, dropped test families, or a smaller held-out set. Those touch the decisive measurement. The
+distinction being held is between cutting **cost** and cutting **evidence**.
+
+Taken before seed 0 or any outcome existed, so it cannot have been chosen for its effect on a
+number. **In-domain results are single-seed and must not be read as carrying the same weight as
+the held-out numbers.** Thermal drift is reported as a limitation regardless.
+
 ## Baseline landed — in band, and the effect is now decomposed in advance
 
 *Provisional log checkpoint, held-out seed 0, base model, before any adapter exists:*
