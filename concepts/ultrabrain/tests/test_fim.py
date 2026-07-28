@@ -11,7 +11,7 @@ here are about the TRUST BOUNDARY, not the network's quality:
   - a deterministic ORACLE denoiser (no training, no flakiness) reconstructs a known fill, proving
     the full diffusion->decode->assemble->isolated gate->ledger path end to end;
   - both run_verified_search.py and eval_code.py treat `fim` exactly like `llm` (untrusted model
-    output -> OS-isolated, fail closed).
+    output -> fail closed; rlimits are defense in depth, not a jail).
 
 Real "diffusion fills code holes well" capability is deferred to a code-training run on the user's
 hardware (RUNBOOK); the gate is already proposer-agnostic, so it slots in with no gate change.
@@ -192,8 +192,8 @@ def test_oracle_denoiser_certifies_and_writes_ledger(tmp_path):
 # --------------------------------------------------------------------------- untrusted-output policy
 
 def test_run_verified_search_isolates_fim(monkeypatch, tmp_path):
-    """fim output is untrusted model code: run_verified_search must REQUIRE OS isolation for it,
-    exactly like llm — fail closed when isolation is unavailable."""
+    """fim output is untrusted model code: run_verified_search must FAIL CLOSED for it, exactly like
+    llm — untrusted proposers never write trusted sinks (rlimits are not a jail)."""
     import run_verified_search as rvs
     monkeypatch.setattr(rvs, "ISOLATION_AVAILABLE", False)
     rc = rvs.run(["--proposer", "fim", "--tasks", FIM_TASKS_PATH, "--n", "1",
@@ -202,12 +202,13 @@ def test_run_verified_search_isolates_fim(monkeypatch, tmp_path):
     assert rc == 2                                                    # isolation required -> fail closed
 
 
-def test_eval_code_isolates_fim(monkeypatch):
-    """eval_code executes model output too, so it must isolate fim like llm (fail closed)."""
+def test_eval_code_does_not_execute_fim_by_default():
+    """eval_code executes model output, so fim (untrusted) must FAIL CLOSED by default — rlimits are
+    NOT a host jail (Codex host-containment). It refuses to run without an explicit --unsafe opt-in."""
     import eval_code
-    monkeypatch.setattr(eval_code, "ISOLATION_AVAILABLE", False)
     res = eval_code.run(["--proposer", "fim", "--tasks", FIM_TASKS_PATH, "--n", "1"])
-    assert isinstance(res, dict) and res.get("error") == "isolation_unavailable"
+    assert isinstance(res, dict)
+    assert res.get("error") == "untrusted_execution_requires_unsafe_or_host_jail"
 
 
 def test_fim_unavailable_degrades_soundly():

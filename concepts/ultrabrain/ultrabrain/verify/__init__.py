@@ -26,6 +26,7 @@ from .scientific import (
     UnitarityVerifier,
 )
 from .isolate import ISOLATION_AVAILABLE, run_tests_isolated
+from .judge import JUDGE_VERSION, StructuredCodeVerifier, judge_v1
 
 __all__ = [
     "Gate", "Outcome", "Ledger", "ExecResult", "run_tests",
@@ -35,4 +36,5 @@ __all__ = [
     "UnitarityVerifier", "NumericalConvergenceVerifier", "ConservationVerifier",
     "DimensionalVerifier", "SCIENTIFIC_ZOO",
     "run_tests_isolated", "ISOLATION_AVAILABLE",
+    "judge_v1", "StructuredCodeVerifier", "JUDGE_VERSION",
 ]

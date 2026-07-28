@@ -9,6 +9,8 @@ proposer returns a wrong answer the hardened suite rejects.
 import os
 import sys
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
@@ -107,7 +109,7 @@ def _composite_with_one_bad():
 
 def test_composite_all_subproblems_certify_and_compose():
     """A 3-subproblem composite (helper + main-that-uses-it + extra) fully certifies."""
-    result = orchestrate(_composite_good(), proposer=MockProposer(), n=4)
+    result = orchestrate(_composite_good(), n=4)  # omit proposer -> built-in default control runs
 
     assert isinstance(result, CompositeResult)
     assert result.n_subproblems == 3
@@ -135,7 +137,7 @@ def test_composite_all_subproblems_certify_and_compose():
 
 def test_composed_solution_is_executable_and_correct():
     """The composed artifact runs and the composed functions behave as specified."""
-    result = orchestrate(_composite_good(), proposer=MockProposer(), n=2)
+    result = orchestrate(_composite_good(), n=2)  # built-in default control
     ns: dict = {}
     exec(compile(result.solution, "<composed>", "exec"), ns)  # noqa: S102 - trusted gold, test-only
     assert ns["add_one"](10) == 11
@@ -146,7 +148,7 @@ def test_composed_solution_is_executable_and_correct():
 def test_one_wrong_subproblem_means_not_solved():
     """If one subproblem's proposer returns a wrong answer, it is NOT certified -> overall False."""
 
-    class PartlyWrongProposer:
+    class PartlyWrongProposer(MockProposer):  # a control variant (emits our own code) -> allowed to run
         """Gold for every subproblem except `double_then_inc`, which gets a wrong candidate."""
 
         def __init__(self):
@@ -158,7 +160,7 @@ def test_one_wrong_subproblem_means_not_solved():
                 return self._wrong.propose(task, n)
             return self._gold.propose(task, n)
 
-    result = orchestrate(_composite_with_one_bad(), proposer=PartlyWrongProposer(), n=4)
+    result = orchestrate(_composite_with_one_bad(), proposer=PartlyWrongProposer(), n=4, unsafe=True)
 
     by_id = {s.id: s for s in result.subproblems}
     # The two good subproblems still certify...
@@ -180,7 +182,7 @@ def test_one_wrong_subproblem_means_not_solved():
 
 def test_overall_solved_requires_at_least_one_subproblem():
     """An empty composite is not 'solved' (vacuous-truth guard)."""
-    result = orchestrate({"id": "empty", "subproblems": []}, proposer=MockProposer())
+    result = orchestrate({"id": "empty", "subproblems": []})  # built-in default control
     assert result.overall_solved is False
     assert result.n_subproblems == 0
     assert result.solution == ""
@@ -195,7 +197,7 @@ def test_default_proposer_is_mock_and_certifies():
 def test_no_composite_tests_is_not_whole_verified():
     """Without composite-level tests the WHOLE is not verified: subproblems_solved, but not solved."""
     composite = {"id": "no_whole_tests", "subproblems": [_sub_add_one(), _sub_triple()]}
-    result = orchestrate(composite, proposer=MockProposer(), n=2)
+    result = orchestrate(composite, n=2)  # built-in default control
     assert result.subproblems_solved is True       # each part certified
     assert result.composition_verified is None      # nothing to verify the whole against
     assert result.overall_solved is False           # so NOT whole-artifact solved (Codex fix)
@@ -209,27 +211,65 @@ def test_wrong_proposer_uses_distractor_by_default():
     assert res.id == "add_one"
 
 
-def test_ledger_records_only_certified_subproblems(tmp_path):
-    """When a ledger is passed, only certified subproblem beliefs are appended (chain stays valid)."""
+def test_orchestration_never_writes_trusted_ledger_v1(tmp_path):
+    """v0.1 fail-closed (Codex final review): proposer provenance cannot be established at runtime
+    (class identity / isinstance / exact type / a mutated ``propose`` all defeat any check) and the
+    in-process judge is forgeable, so orchestration writes NO trusted ledger and flags every result
+    ``trusted=False`` (diagnostics only) — even for the zero-ML control. Subproblems are still solved
+    and reported; ``overall_solved`` remains a DIAGNOSTIC, not a trusted certificate."""
     ledger = Ledger(str(tmp_path / "composite_ledger.jsonl"), secret="test-secret")
+    # Even a caller-supplied control (with the explicit unsafe opt-in) writes no trusted ledger.
+    result = orchestrate(_composite_good(), proposer=MockProposer(), n=2, ledger=ledger, unsafe=True)
+    assert ledger.count() == 0                     # nothing trusted was written
+    assert result.trusted is False
+    assert result.as_dict()["trusted"] is False
+    assert result.n_certified == 3                 # the work still happened; it is just not trust-anchored
 
-    class PartlyWrongProposer:
-        def __init__(self):
-            self._wrong = WrongProposer("def double_then_inc(n):\n    return 2 * n\n")
-            self._gold = MockProposer()
+    # A mutated MockProposer that forges would have bypassed any class/type check — it too writes nothing.
+    p = MockProposer()
+    p.propose = lambda task, n: ["def x():\n    return 1\n"] * n  # noqa: E731
+    r2 = orchestrate(_composite_good(), proposer=p, n=1, unsafe=True,
+                     ledger=Ledger(str(tmp_path / "l2.jsonl"), secret="s"))
+    assert r2.trusted is False
 
+
+def test_malicious_mockproposer_subclass_never_runs_without_unsafe(tmp_path):
+    """The release-blocking host bypass (Codex): a MockProposer SUBCLASS passes isinstance/type, so
+    only CONTROL-FLOW provenance is safe. A caller-supplied proposer — even a Mock subclass — must NOT
+    run without unsafe. Assert its propose is never called and no host file is written."""
+    witness = tmp_path / "PWNED"
+    invoked = {"n": 0}
+
+    class EvilMock(MockProposer):
         def propose(self, task, n):
-            if task.get("id") == "double_then_inc":
-                return self._wrong.propose(task, n)
-            return self._gold.propose(task, n)
+            invoked["n"] += 1
+            witness.write_text("pwned")  # a real host write — proves the proposer never ran
+            return [task["gold"]] * n
 
-    result = orchestrate(_composite_with_one_bad(), proposer=PartlyWrongProposer(), n=2, ledger=ledger)
-    assert result.overall_solved is False
-    # 2 certified subproblems -> exactly 2 ledger records; the rejected one wrote nothing.
-    records = ledger.records()
-    assert len(records) == 2
-    assert {r["task_id"] for r in records} == {"add_one", "triple"}
-    assert ledger.verify_chain()
+    with pytest.raises(RuntimeError):
+        orchestrate(_composite_good(), proposer=EvilMock(), n=1)
+    assert invoked["n"] == 0
+    assert not witness.exists()
+
+
+def test_foreign_proposer_never_auto_runs_without_unsafe():
+    """HOST CONTAINMENT (Codex final review): a foreign proposer emits untrusted code, and rlimits are
+    not a host jail. orchestrate must RAISE before invoking it — so no candidate executes and no host
+    write can occur — unless the caller explicitly opts into throwaway diagnostics (unsafe=True)."""
+    invoked = {"n": 0}
+
+    class ForeignProposer:  # NOT a built-in control
+        def propose(self, task, n):
+            invoked["n"] += 1
+            return ["def inc(n):\n    return n + 1\n"] * n
+
+    with pytest.raises(RuntimeError):
+        orchestrate(_composite_good(), proposer=ForeignProposer(), n=1)
+    assert invoked["n"] == 0  # proposer was NEVER called -> no untrusted candidate executed
+
+    # Explicit opt-in runs it (diagnostics only, flagged trusted=False).
+    result = orchestrate(_composite_good(), proposer=ForeignProposer(), n=1, unsafe=True)
+    assert invoked["n"] > 0 and result.trusted is False
 
 
 def test_solve_subproblem_reports_attempts_and_seconds():

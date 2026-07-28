@@ -30,7 +30,7 @@ The trust boundary (`thoughts/22`) made concrete for code:
 | Verifier / orchestrator | **Mac 36 GB** (MLX) | sandbox, test execution, SymPy/CAS, loop orchestration; can host a 27–32B proposer |
 | Cloud | optional, on-demand spot ($1–15/job) | only for >14B fine-tunes or massive trace generation; **$0 for the first milestones** |
 | Identity | "certified output" | learned/token parts are proposers/rankers; only verifier-certified outputs are trusted |
-| From-scratch remnant | masked-diffusion LM → the **FIM/infill proposer** (Slice 2b, DONE) | the one role where diffusion beats same-scale AR (HumanEval-FIM 73.8 > 73.3); wired in behind the unchanged gate |
+| From-scratch remnant | masked-diffusion LM → the **FIM/infill proposer** (Slice 2b, DONE) | the one role where diffusion beats same-scale AR (HumanEval-FIM 73.8 > 73.3); wired in behind the gate (later reworked to judge_v1 for the verdict-forgery fix) |
 
 **Why not the alternatives:** from-scratch-as-coder loses (sub-10% HumanEval at small scale);
 distillation-from-a-frontier-API caps the ceiling at the teacher *and* taints redistribution
@@ -63,13 +63,43 @@ base + **our own** verifier generating **our own** verified-trace corpus.
 
 ## Slice roadmap
 
-**Status: COMPLETE.** Slices 1, 2, 2b, and 3 are built, tested (`python -m pytest tests -q` →
-87 passed), and adversarially reviewed by Codex + an 8-agent validation workflow (no
-false-certification vector found). The gate is the only trust anchor; every proposer (zero-ML mock,
-Qwen3-Coder-14B `llm`, masked-diffusion `fim`) is a demoted, untrusted, OS-isolated client of it.
-What remains is not code — it is the real fine-tunes / code-corpus training runs on YOUR hardware
-(one command each in the RUNBOOK); the pipeline is verified here end-to-end with zero-ML and a
-real-checkpoint soundness check (fim certifies 0/11, no false certs).
+**Status: built + hardened, with a corrected soundness story.** Slices 1, 2, 2b, and 3 are built and
+tested (`python -m pytest tests -q` → 98 passed). An earlier revision claimed "no false-certification
+vector found"; that claim was **FALSE and has been withdrawn**. A later Claude↔Codex adversarial pass
+**found and fixed** a real verdict-forgery vector: the assert-string runner exec'd the untrusted
+candidate in the SAME interpreter frame that held the verdict state, so a candidate that reached `sys`
+could frame-walk (or patch a shared module) and forge a `CERTIFIED` verdict for code whose tests
+actually failed (three independent exploits, working even under rlimits — a logical, not a
+resource, escape).
+
+The rework (`ultrabrain/verify/judge.py`, `judge_v1`): code is certified by a **parent-owned-oracle**
+verifier. The candidate runs in a scrubbed child that returns only VALUES over a per-run **HMAC**-
+authenticated channel; the trusted parent holds the oracle and decides pass/fail. This closes the
+original frame-walk forgery on the assert runner, and — via the HMAC — post-exec/file tampering (an
+`execve`/`spawnv` survivor that lacks the run key cannot forge a valid MAC). Policy hardening
+(ImportFrom-name validation; banning `attrgetter`/frame-reflection attrs and the native-escape family)
++ the three exploits as regressions are best-effort defense in depth.
+
+**KNOWN CRITICAL RESIDUAL — NOT fixed here (Codex adversarial review).** The worker that runs the
+candidate is the SAME process that signs the response, so a same-address-space candidate can, via an
+unbounded set of stdlib reflection gadgets (`string.Formatter().get_field`,
+`typing.evaluate_forward_ref` with `globals={}`, `dataclasses._create_fn` where exposed, …), frame-walk
+into the worker and mutate the very `out` it then HMAC-signs. Codex reproduced a wrong `add` certifying
+**through** the authenticated judge. Deny-listing gadgets is whack-a-mole (the class is open-ended);
+the ONLY sound fix is to stop the candidate and the signer/oracle sharing an address space. An outer
+container / separate uid / seccomp does **not** achieve this — it isolates the host, not
+candidate-from-signer *within* the worker (Codex final review). What is required is a **subordinate-jailed
+executor**: the candidate in its OWN process, the decider/signer OUTSIDE it, a value-only authenticated
+channel. That is **not built**. Until it exists the trust CLIs **fail closed** for untrusted proposers
+(`llm`/`fim`): they NEVER write the ledger/SFT — no env flag enables it (an earlier `ULTRABRAIN_OS_SANDBOX`
+attestation was itself unsound and removed); `--unsafe` is diagnostics-only. `orchestrate` writes no
+trusted ledger and flags results `trusted=false`. The certificate is **behavioral-on-cases** with
+`adversarial_soundness=False` in evidence, never a global-correctness or adversarial-soundness claim.
+
+**This blocks the core loop.** Certifying *real model* output into trusted verified-trace training data —
+the project's central mechanism — cannot be done soundly in-process; it works today only with the zero-ML
+`mock` proposer. What remains is: the subordinate-jailed executor (the gating prerequisite), then the real
+fine-tunes / code-corpus training on YOUR hardware, and a held-out task split for any writer-capability claim.
 
 - **Slice 1 — Verifier Gate / Zero-ML Falsification. DONE + hardened.** One model-agnostic gate
   (sandbox + candidate ledger + accept/reject) with two verifier adapters (code *hardened*, CAS
@@ -89,9 +119,11 @@ real-checkpoint soundness check (fim certifies 0/11, no false certs).
   assembled `prefix+fill+suffix` to the EXISTING gate. The one role where diffusion beats same-scale
   AR (HumanEval-FIM 73.8 > 73.3): a bidirectional denoiser conditions on both sides at once, which a
   left-to-right model cannot. `--proposer fim` is wired into all three CLIs (`run_verified_search`,
-  `eval_code`, `self_improve`) and, like `--proposer llm`, runs OS-isolated + fails closed (a
-  diffusion fill is untrusted model output). The gate / verifier / ledger / trace pipeline is
-  UNCHANGED — FIM-ness lives entirely in the proposer (the proposer-agnostic thesis, thoughts/14, 22).
+  `eval_code`, `self_improve`) and, like `--proposer llm`, is UNTRUSTED model output that now FAILS
+  CLOSED (diagnostics-only under `--unsafe`; rlimits are not a jail). NOTE: the gate/verifier were
+  LATER REWORKED for the verdict-forgery fix (the forgeable assert runner → parent-owned-oracle
+  `judge_v1`; see the "Verdict-forgery" section above), so the earlier "pipeline is UNCHANGED" framing
+  no longer holds — FIM-ness still lives in the proposer.
   `tasks/micro_fim.jsonl` (11 infill tasks) + `tests/test_fim.py` (10 tests) cover the trust boundary,
   not network quality: an oracle denoiser reconstructs a known fill end-to-end
   (diffusion→decode→assemble→isolated gate→ledger), Codex + workflow boundary-hardening is enforced
@@ -103,8 +135,9 @@ real-checkpoint soundness check (fim certifies 0/11, no false certs).
   holes" capability is one code-training command away (`train.py --corpus`; RUNBOOK § 2b).
 - **Slice 3 — scientific zoo + decompose-then-verify orchestrator. DONE + hardened.** the verifier
   zoo for numerical/physics/quantum (conservation, unitarity, convergence) + the decompose-then-verify
-  orchestrator (SciCode subproblem granularity). The orchestrator executes untrusted proposer output
-  OS-isolated + fail-closed, like the CLIs (Codex + workflow review).
+  orchestrator (SciCode subproblem granularity). NOTE (later hardening): the orchestrator now FAILS
+  CLOSED on untrusted proposer output (a caller-supplied proposer raises unless `unsafe=True`) and
+  writes NO trusted ledger; rlimits are defense in depth, not a host jail. See the residual note.
 
 ## Slice 1 spec
 
