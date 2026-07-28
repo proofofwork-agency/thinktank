@@ -192,10 +192,23 @@ performance, but it is not the trusted loop and must never be labelled as one.
 > pairs encoding three kinds of error is not five hundred units of signal — DPO on it learns three
 > lookup entries.
 >
-> **The finding underneath:** this analysis said the bottleneck was the *task list*, and S0 fixes
-> that. With tasks uncapped, **the bottleneck moves to the proposer** — and `NoisyProposer` is a
-> Slice-1 falsification instrument, not a source of variety. Genuine candidate diversity is
-> precisely what a model supplies and a fixed pool cannot.
+> **MEASURED AT SCALE (S1, 200 forged tasks, 1,600 attempts):**
+> **405 unique pairs · 550 distinct candidate strings · but only 3 semantic error archetypes**
+> (scalar-multiple 211, `+x` 108, derivative 86). The count looks healthy; the signal is three
+> rules. Had the original ≥500 gate survived, 405 would have read as "nearly there — mint a few
+> more tasks," and at 500 we would have declared success on a corpus teaching three rules.
+>
+> **Attribution — and this corrects my own first reading.** I said the bottleneck "moves to the
+> proposer." That is true of the *future* and false of *this measurement*. With the mock, the
+> candidate pool **is** the distractor list, which the forge generates. `_perturb` has exactly four
+> rules — `F*k`, `F+x`, `diff(F)`, `F/2` — and `F*k`/`F/2` are both scalar multiples, so **4 rules
+> collapse to 3 archetypes**, which is precisely the 3 measured. `NoisyProposer` faithfully sampled
+> a pool that was already only three kinds of wrong; it contributed nothing to the poverty.
+>
+> So **both measured degeneracies trace to the forge**, not the proposer:
+> *task* variety (`_sample_F` → 98% polynomial) and *error* variety (`_perturb` → 3 archetypes).
+> Both are mine and both are cheap to widen. The proposer bottleneck is real but **downstream** —
+> it becomes the binding constraint only once the forge stops being one.
 >
 > **So: S1 is a MECHANISM slice, and its gate defers to S3.** Build and test the uncapping,
 > appending, pair emission and sanitation with the mock; report pair count *and* distinct-candidate
