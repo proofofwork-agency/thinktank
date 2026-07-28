@@ -12,12 +12,19 @@ from __future__ import annotations
 import atexit as _atexit
 import ast as _ast
 import hashlib as _hashlib
+import json as _json
 import math as _math
-import multiprocessing as _mp
 import os as _os
+import select as _select
+import signal as _signal
+import struct as _struct
+import subprocess as _subprocess
 import sys as _sys
 import threading as _threading
+import time as _time
+import warnings as _warnings
 from dataclasses import dataclass, field
+from pathlib import Path as _Path
 
 import sympy as sp
 
@@ -42,22 +49,19 @@ _CAS_CPU_SECONDS = 2
 _CAS_MEMORY_BYTES = 512 * 1024 * 1024
 _CAS_WALL_SECONDS = 3.0
 _CAS_MAX_TASKS_PER_CHILD = 256
+_CAS_PROTOCOL_MAX_BYTES = 64 * 1024
+_CAS_WORKER_SCRIPT = _Path(__file__).with_name("_cas_worker.py")
 
-_CAS_START_METHODS = _mp.get_all_start_methods()
-_MAIN_FILE = getattr(_sys.modules.get("__main__"), "__file__", None)
-_FORKSERVER_MAIN_IS_IMPORTABLE = bool(_MAIN_FILE and not str(_MAIN_FILE).startswith("<"))
-_CAS_START_METHOD = (
-    "forkserver" if "forkserver" in _CAS_START_METHODS and _FORKSERVER_MAIN_IS_IMPORTABLE
-    else None
-)
-if _CAS_START_METHOD == "forkserver" and hasattr(_mp, "set_forkserver_preload"):
-    # The server starts without application threads, preloads SymPy once, then forks cheap,
-    # single-purpose workers. This avoids forking the possibly multithreaded verifier parent.
-    _mp.set_forkserver_preload([__name__])
-
-_CAS_POOL = None
-_CAS_POOL_OWNER_PID = None
-_CAS_POOL_LOCK = _threading.Lock()
+# The worker is a fixed, caller-independent Python subprocess rather than multiprocessing's
+# spawn/forkserver bootstrap. It therefore never imports the application's ``__main__`` and works
+# from ``python -c``, stdin, notebooks, REPLs, and embedded interpreters. The worker computes only
+# value observations; this parent remains the sole author of every verdict.
+_CAS_WORKER = None
+_CAS_WORKER_OWNER_PID = None
+_CAS_WORKER_TASKS = 0
+_CAS_WORKER_REQUEST_ID = 0
+_CAS_WORKER_LOCK = _threading.Lock()
+_CAS_UNAVAILABLE_WARNED = False
 
 _UNDECIDED_REASONS = {
     "diff_error",
@@ -422,56 +426,271 @@ def _arm_cas_worker_cpu_limit() -> None:
         pass
 
 
-def _cas_pool_task(op: str, cand: str, ref: str, var: str) -> dict:
+def _reset_cas_worker_state() -> None:
+    """Prevent persistent SymPy caches/assumptions from making results request-order dependent."""
+    try:
+        sp.core.cache.clear_cache()
+    except (AttributeError, TypeError):
+        pass
+    try:
+        sp.assumptions.assume.global_assumptions.clear()
+    except (AttributeError, TypeError):
+        pass
+
+
+def _cas_worker_task(op: str, cand: str, ref: str, var: str) -> dict:
+    _reset_cas_worker_state()
     _arm_cas_worker_cpu_limit()
     try:
         return _cas_worker_evaluate(op, cand, ref, var)
     except BaseException:  # worker faults are absence of a value, never mathematical rejection
         return {"kind": "undecided", "reason": "worker_error"}
+    finally:
+        _reset_cas_worker_state()
 
 
-def _dispose_cas_pool(pool=None) -> None:
-    global _CAS_POOL, _CAS_POOL_OWNER_PID
-    target = pool if pool is not None else _CAS_POOL
+class _CASRequestTimeout(TimeoutError):
+    pass
+
+
+class _CASWorkerUnavailable(RuntimeError):
+    pass
+
+
+class _CASProtocolError(RuntimeError):
+    pass
+
+
+def _close_worker_pipes(worker) -> None:
+    for stream_name in ("stdin", "stdout"):
+        stream = getattr(worker, stream_name, None)
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+
+
+def _dispose_cas_worker(worker=None) -> None:
+    global _CAS_WORKER, _CAS_WORKER_OWNER_PID, _CAS_WORKER_TASKS
+    target = worker if worker is not None else _CAS_WORKER
     if target is None:
         return
-    if target is _CAS_POOL:
-        _CAS_POOL = None
-        _CAS_POOL_OWNER_PID = None
+    if target is _CAS_WORKER:
+        _CAS_WORKER = None
+        _CAS_WORKER_OWNER_PID = None
+        _CAS_WORKER_TASKS = 0
     try:
         target.terminate()
-    except (AttributeError, OSError, ValueError):
+    except (AttributeError, OSError, ProcessLookupError):
         pass
     try:
-        target.join()
-    except (AttributeError, OSError, ValueError):
-        pass
+        target.wait(timeout=0.25)
+    except _subprocess.TimeoutExpired:
+        try:
+            target.kill()
+        except (AttributeError, OSError, ProcessLookupError):
+            pass
+        try:
+            target.wait(timeout=0.25)
+        except (_subprocess.TimeoutExpired, AttributeError, OSError):
+            pass
+    finally:
+        _close_worker_pipes(target)
 
 
-def _get_cas_pool():
-    global _CAS_POOL, _CAS_POOL_OWNER_PID
+def _forget_inherited_cas_worker() -> None:
+    """Drop inherited pipe handles without terminating the owning parent's worker."""
+    global _CAS_WORKER, _CAS_WORKER_OWNER_PID, _CAS_WORKER_TASKS
+    if _CAS_WORKER is not None:
+        _close_worker_pipes(_CAS_WORKER)
+    _CAS_WORKER = None
+    _CAS_WORKER_OWNER_PID = None
+    _CAS_WORKER_TASKS = 0
+
+
+def _get_cas_worker():
+    global _CAS_WORKER, _CAS_WORKER_OWNER_PID, _CAS_WORKER_TASKS
     pid = _os.getpid()
-    if _CAS_POOL_OWNER_PID != pid:
-        # A forked descendant must never talk to or terminate its parent's pool.
-        _CAS_POOL = None
-        _CAS_POOL_OWNER_PID = pid
-    if _CAS_POOL is None:
-        context = _mp.get_context(_CAS_START_METHOD)
-        _CAS_POOL = context.Pool(
-            processes=1,
-            initializer=_set_cas_worker_memory_limit,
-            maxtasksperchild=_CAS_MAX_TASKS_PER_CHILD,
-        )
-        _CAS_POOL_OWNER_PID = pid
-    return _CAS_POOL
+    if _CAS_WORKER_OWNER_PID not in (None, pid):
+        # A forked descendant must never talk to or terminate its parent's worker.
+        _forget_inherited_cas_worker()
+    if _CAS_WORKER is not None and _CAS_WORKER.poll() is not None:
+        _dispose_cas_worker(_CAS_WORKER)
+    if _CAS_WORKER is None:
+        executable = _sys.executable
+        if not executable or not _CAS_WORKER_SCRIPT.is_file():
+            raise _CASWorkerUnavailable("launcher_missing")
+        try:
+            _CAS_WORKER = _subprocess.Popen(
+                [executable, "-I", str(_CAS_WORKER_SCRIPT)],
+                stdin=_subprocess.PIPE,
+                stdout=_subprocess.PIPE,
+                stderr=_subprocess.DEVNULL,
+                bufsize=0,
+                close_fds=True,
+                cwd=str(_CAS_WORKER_SCRIPT.parents[2]),
+                env={"PATH": _os.defpath},
+                start_new_session=True,
+            )
+        except (OSError, ValueError) as exc:
+            raise _CASWorkerUnavailable("launch_failed") from exc
+        if _CAS_WORKER.stdin is None or _CAS_WORKER.stdout is None:
+            _dispose_cas_worker(_CAS_WORKER)
+            raise _CASWorkerUnavailable("pipes_unavailable")
+        try:
+            _os.set_blocking(_CAS_WORKER.stdin.fileno(), False)
+            _os.set_blocking(_CAS_WORKER.stdout.fileno(), False)
+        except (AttributeError, OSError) as exc:
+            _dispose_cas_worker(_CAS_WORKER)
+            raise _CASWorkerUnavailable("nonblocking_io_unavailable") from exc
+        _CAS_WORKER_OWNER_PID = pid
+        _CAS_WORKER_TASKS = 0
+    return _CAS_WORKER
 
 
-def _shutdown_cas_pool() -> None:
-    with _CAS_POOL_LOCK:
-        _dispose_cas_pool()
+def _wait_for_fd(fd: int, *, writable: bool, deadline: float) -> None:
+    remaining = deadline - _time.monotonic()
+    if remaining <= 0:
+        raise _CASRequestTimeout
+    try:
+        readable = [] if writable else [fd]
+        writeable = [fd] if writable else []
+        ready_read, ready_write, _ = _select.select(readable, writeable, [], remaining)
+    except (OSError, ValueError) as exc:
+        raise _CASProtocolError("pipe_select_failed") from exc
+    if not (ready_write if writable else ready_read):
+        raise _CASRequestTimeout
 
 
-_atexit.register(_shutdown_cas_pool)
+def _write_all(fd: int, data: bytes, deadline: float) -> None:
+    sent = 0
+    while sent < len(data):
+        _wait_for_fd(fd, writable=True, deadline=deadline)
+        try:
+            written = _os.write(fd, data[sent:])
+        except BlockingIOError:
+            continue
+        except OSError as exc:
+            raise _CASProtocolError("pipe_write_failed") from exc
+        if written <= 0:
+            raise _CASProtocolError("pipe_closed")
+        sent += written
+
+
+def _read_exact(fd: int, size: int, deadline: float) -> bytes:
+    chunks = []
+    remaining = size
+    while remaining:
+        _wait_for_fd(fd, writable=False, deadline=deadline)
+        try:
+            chunk = _os.read(fd, remaining)
+        except BlockingIOError:
+            continue
+        except OSError as exc:
+            raise _CASProtocolError("pipe_read_failed") from exc
+        if not chunk:
+            raise EOFError
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
+def _exchange_cas_frame(worker, request: dict):
+    encoded = _json.dumps(
+        request,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    if not encoded or len(encoded) > _CAS_PROTOCOL_MAX_BYTES:
+        raise _CASProtocolError("request_size")
+    deadline = _time.monotonic() + _CAS_WALL_SECONDS
+    _write_all(
+        worker.stdin.fileno(),
+        _struct.pack(">I", len(encoded)) + encoded,
+        deadline,
+    )
+    header = _read_exact(worker.stdout.fileno(), 4, deadline)
+    (size,) = _struct.unpack(">I", header)
+    if size <= 0 or size > _CAS_PROTOCOL_MAX_BYTES:
+        raise _CASProtocolError("response_size")
+    payload = _read_exact(worker.stdout.fileno(), size, deadline)
+    try:
+        return _json.loads(payload)
+    except (UnicodeDecodeError, _json.JSONDecodeError) as exc:
+        raise _CASProtocolError("response_json") from exc
+
+
+def _worker_hit_resource_limit(worker) -> bool:
+    return worker.poll() in {
+        -getattr(_signal, "SIGXCPU", -1),
+        -getattr(_signal, "SIGKILL", -1),
+    }
+
+
+def _request_cas_observation(op: str, cand: str, ref: str, var: str):
+    """Return ``(value_observation, failure_code)``; no child-authored verdict crosses this seam."""
+    global _CAS_WORKER_REQUEST_ID, _CAS_WORKER_TASKS
+    with _CAS_WORKER_LOCK:
+        worker = None
+        try:
+            if _CAS_WORKER is not None and _CAS_WORKER_TASKS >= _CAS_MAX_TASKS_PER_CHILD:
+                _dispose_cas_worker()
+            worker = _get_cas_worker()
+            _CAS_WORKER_REQUEST_ID += 1
+            request_id = _CAS_WORKER_REQUEST_ID
+            response = _exchange_cas_frame(
+                worker,
+                {"id": request_id, "op": op, "cand": cand, "ref": ref, "var": var},
+            )
+            if worker.poll() is not None:
+                raise EOFError
+            if (
+                not isinstance(response, dict)
+                or set(response) != {"id", "observation"}
+                or response["id"] != request_id
+                or not isinstance(response["id"], int)
+                or isinstance(response["id"], bool)
+            ):
+                raise _CASProtocolError("response_shape")
+            _CAS_WORKER_TASKS += 1
+            return response["observation"], None
+        except _CASWorkerUnavailable:
+            _dispose_cas_worker(worker)
+            return None, "worker_unavailable"
+        except _CASRequestTimeout:
+            _dispose_cas_worker(worker)
+            return None, "resource_limit"
+        except _CASProtocolError:
+            _dispose_cas_worker(worker)
+            return None, "protocol_error"
+        except (EOFError, BrokenPipeError):
+            resource_limited = worker is not None and _worker_hit_resource_limit(worker)
+            _dispose_cas_worker(worker)
+            return None, "resource_limit" if resource_limited else "worker_crash"
+
+
+def _warn_cas_worker_failure(code: str) -> None:
+    """Make persistent availability failures visible without leaking expressions or diagnostics."""
+    global _CAS_UNAVAILABLE_WARNED
+    if code == "resource_limit" or _CAS_UNAVAILABLE_WARNED:
+        return
+    _CAS_UNAVAILABLE_WARNED = True
+    _warnings.warn(
+        f"CAS verifier worker failed ({code}); verification is fail-closed. "
+        "Bulk pipelines must call CASVerifier.require_available() at startup.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
+
+
+def _shutdown_cas_worker() -> None:
+    with _CAS_WORKER_LOCK:
+        _dispose_cas_worker()
+
+
+_atexit.register(_shutdown_cas_worker)
 
 
 def _valid_value_observation(value) -> bool:
@@ -579,31 +798,10 @@ def _run_cas_worker(
     var: str,
     evidence: dict,
 ) -> Verdict:
-    if _CAS_START_METHOD is None:
-        return _verdict(
-            ABSTAIN,
-            "cas.abstain.worker_unavailable",
-            evidence,
-        )
-    with _CAS_POOL_LOCK:
-        try:
-            pool = _get_cas_pool()
-            pending = pool.apply_async(_cas_pool_task, (op, cand, ref, var))
-            result = pending.get(timeout=_CAS_WALL_SECONDS)
-        except _mp.TimeoutError:
-            _dispose_cas_pool(pool if "pool" in locals() else None)
-            return _verdict(
-                ABSTAIN,
-                "cas.abstain.resource_limit",
-                evidence,
-            )
-        except Exception:  # noqa: BLE001 - any worker/pool anomaly is absence of mathematical evidence
-            _dispose_cas_pool(pool if "pool" in locals() else None)
-            return _verdict(
-                ABSTAIN,
-                "cas.abstain.worker_crash",
-                evidence,
-            )
+    result, failure = _request_cas_observation(op, cand, ref, var)
+    if failure is not None:
+        _warn_cas_worker_failure(failure)
+        return _verdict(ABSTAIN, f"cas.abstain.{failure}", evidence)
     return _decide_cas_observation(result, evidence)
 
 
@@ -671,7 +869,37 @@ def cas_antiderivative(
 
 
 class CASVerifier:
-    """Bounded symbolic verifier. Dispatches on ``task['op']`` (antiderivative | equivalent)."""
+    """Bounded symbolic verifier. Dispatches on ``task['op']`` (antiderivative | equivalent).
+
+    Bulk experiments and harvesters must call :meth:`require_available` before processing tasks.
+    Individual calls still fail closed with an ABSTAIN and a one-time warning if the fixed worker
+    cannot start, but a startup health gate prevents that from masquerading as low proposer yield.
+    """
+
+    @classmethod
+    def health(cls) -> dict:
+        """Probe the real worker round trip without trusting a child-authored health verdict."""
+        observation, failure = _request_cas_observation("equivalent", "x", "x", "x")
+        if failure is not None:
+            return {"available": False, "code": f"cas.health.{failure}"}
+        verdict = _decide_cas_observation(observation, {"op": "health"})
+        if not verdict.certified:
+            return {"available": False, "code": "cas.health.invalid_observation"}
+        return {"available": True, "code": "cas.health.ready"}
+
+    @classmethod
+    def available(cls) -> bool:
+        """Whether the bounded worker completed a known-answer round trip."""
+        return bool(cls.health()["available"])
+
+    @classmethod
+    def require_available(cls) -> None:
+        """Raise loudly before a bulk run if CAS verification cannot make decisions."""
+        health = cls.health()
+        if not health["available"]:
+            raise RuntimeError(
+                f"{health['code']}: bounded CAS worker unavailable; refusing silent total-abstain"
+            )
 
     def verify(self, task: dict, candidate: str) -> Verdict:
         var = task.get("var", "x")

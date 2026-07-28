@@ -163,6 +163,10 @@ def run(argv=None):
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
+    # Fail loudly before measuring anything: total CAS abstention is verifier unavailability,
+    # not evidence about proposer quality or task difficulty.
+    CASVerifier.require_available()
+
     n_list = [int(x) for x in args.n.split(",")]
     seeds = list(range(args.seeds))
     code_tasks = load_jsonl(args.code)

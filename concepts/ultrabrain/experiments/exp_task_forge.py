@@ -91,6 +91,9 @@ def run(argv=None):
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
+    # A dead verifier must never masquerade as a weak proposer / zero-yield forge.
+    CASVerifier.require_available()
+
     t0 = time.time()
     tasks = mint(args.n, seed=args.seed)
     mint_s = time.time() - t0

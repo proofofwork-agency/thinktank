@@ -1,7 +1,9 @@
 import json
 import os
+import subprocess
 import sys
 import time
+import warnings
 
 import pytest
 
@@ -116,54 +118,202 @@ def test_cas_child_returns_values_and_parent_owns_every_verdict(monkeypatch):
     assert "status" not in observation and "code" not in observation
 
     # Even if a malformed worker tries to send a verdict, the parent treats it as no evidence.
-    class ForgedResult:
-        def get(self, timeout):
-            return {"status": CERTIFIED, "code": "cas.certified.exact_zero"}
-
-    class ForgedPool:
-        def apply_async(self, *_args):
-            return ForgedResult()
-
-    monkeypatch.setattr(verifier_module, "_get_cas_pool", lambda: ForgedPool())
+    monkeypatch.setattr(
+        verifier_module,
+        "_request_cas_observation",
+        lambda *_args: ({"status": CERTIFIED, "code": "cas.certified.exact_zero"}, None),
+    )
     verdict = cas_equivalent("x", "x")
     assert verdict.status == ABSTAIN
     assert verdict.detail == "cas.abstain.protocol_error"
 
 
 def test_cas_worker_timeout_and_crash_are_always_abstain(monkeypatch):
-    class BrokenPool:
-        def __init__(self, failure):
-            self.failure = failure
-            self.disposed = False
-
-        def apply_async(self, *_args):
-            failure = self.failure
-
-            class FailedResult:
-                def get(self, timeout):
-                    raise failure
-
-            return FailedResult()
-
-        def terminate(self):
-            self.disposed = True
-
-        def join(self):
-            pass
-
-    timeout_pool = BrokenPool(verifier_module._mp.TimeoutError())
-    monkeypatch.setattr(verifier_module, "_get_cas_pool", lambda: timeout_pool)
+    monkeypatch.setattr(
+        verifier_module,
+        "_request_cas_observation",
+        lambda *_args: (None, "resource_limit"),
+    )
     timed_out = cas_equivalent("x", "x")
     assert timed_out.status == ABSTAIN
     assert timed_out.detail == "cas.abstain.resource_limit"
-    assert timeout_pool.disposed
 
-    crash_pool = BrokenPool(EOFError())
-    monkeypatch.setattr(verifier_module, "_get_cas_pool", lambda: crash_pool)
+    monkeypatch.setattr(
+        verifier_module,
+        "_request_cas_observation",
+        lambda *_args: (None, "worker_crash"),
+    )
+    monkeypatch.setattr(verifier_module, "_CAS_UNAVAILABLE_WARNED", True)
     crashed = cas_equivalent("x", "x")
     assert crashed.status == ABSTAIN
     assert crashed.detail == "cas.abstain.worker_crash"
-    assert crash_pool.disposed
+
+
+@pytest.mark.parametrize("mode", ["command", "stdin"])
+def test_cas_worker_available_when_main_is_not_importable(mode):
+    code = (
+        f"import sys; sys.path.insert(0, {ROOT!r}); "
+        "from ultrabrain.verify import CASVerifier, cas_equivalent; "
+        "print(CASVerifier.available()); print(cas_equivalent('x','x').status)"
+    )
+    command = [sys.executable, "-c", code] if mode == "command" else [sys.executable, "-"]
+    result = subprocess.run(
+        command,
+        input=None if mode == "command" else code,
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    assert result.stdout.splitlines() == ["True", CERTIFIED]
+    assert result.stderr == ""
+
+
+def test_cas_worker_never_reexecutes_unguarded_caller_main(tmp_path):
+    script = tmp_path / "unguarded_caller.py"
+    script.write_text(
+        f"import sys\n"
+        f"sys.path.insert(0, {ROOT!r})\n"
+        "from ultrabrain.verify import cas_equivalent\n"
+        "print('caller-top-level')\n"
+        "print(cas_equivalent('x', 'x').status)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    assert result.stdout.splitlines() == ["caller-top-level", CERTIFIED]
+    assert result.stderr == ""
+
+
+def test_cas_worker_failure_is_loud_and_bulk_health_gate_raises(monkeypatch):
+    monkeypatch.setattr(
+        verifier_module,
+        "_request_cas_observation",
+        lambda *_args: (None, "worker_unavailable"),
+    )
+    monkeypatch.setattr(verifier_module, "_CAS_UNAVAILABLE_WARNED", False)
+
+    with pytest.warns(RuntimeWarning, match="CAS verifier worker failed"):
+        verdict = cas_equivalent("x", "x")
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.worker_unavailable"
+
+    # Direct calls warn once rather than flooding a long batch.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert cas_equivalent("x", "x").status == ABSTAIN
+    assert caught == []
+
+    assert CASVerifier.health() == {
+        "available": False,
+        "code": "cas.health.worker_unavailable",
+    }
+    assert not CASVerifier.available()
+    with pytest.raises(RuntimeError, match="refusing silent total-abstain"):
+        CASVerifier.require_available()
+
+
+def test_cas_protocol_desync_abstains_and_recycles_worker(monkeypatch):
+    class FakeWorker:
+        stdin = stdout = None
+
+        def __init__(self):
+            self.terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout):
+            return 0
+
+    worker = FakeWorker()
+    monkeypatch.setattr(verifier_module, "_get_cas_worker", lambda: worker)
+    monkeypatch.setattr(
+        verifier_module,
+        "_exchange_cas_frame",
+        lambda _worker, request: {
+            "id": request["id"] + 1,
+            "observation": {
+                "kind": "comparison",
+                "residual": {"kind": "zero", "finite": True, "zero": True},
+                "equals": None,
+                "witnesses": [],
+            },
+        },
+    )
+    monkeypatch.setattr(verifier_module, "_CAS_UNAVAILABLE_WARNED", True)
+
+    verdict = cas_equivalent("x", "x")
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.protocol_error"
+    assert worker.terminated
+
+
+def test_cas_oversize_response_frame_abstains_and_recycles_worker(monkeypatch):
+    class FakePipe:
+        def fileno(self):
+            return 99
+
+        def close(self):
+            pass
+
+    class FakeWorker:
+        stdin = FakePipe()
+        stdout = FakePipe()
+
+        def __init__(self):
+            self.terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout):
+            return 0
+
+    worker = FakeWorker()
+    monkeypatch.setattr(verifier_module, "_get_cas_worker", lambda: worker)
+    monkeypatch.setattr(verifier_module, "_write_all", lambda *_args: None)
+    monkeypatch.setattr(
+        verifier_module,
+        "_read_exact",
+        lambda *_args: verifier_module._struct.pack(
+            ">I", verifier_module._CAS_PROTOCOL_MAX_BYTES + 1
+        ),
+    )
+    monkeypatch.setattr(verifier_module, "_CAS_UNAVAILABLE_WARNED", True)
+
+    verdict = cas_equivalent("x", "x")
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.protocol_error"
+    assert worker.terminated
+
+
+def test_cas_verdict_is_order_independent_across_pathological_neighbours():
+    before = cas_antiderivative("x**2 + 5", "2*x")
+    assert before.status == CERTIFIED
+
+    # These exercise the persistent worker, submitted-undefined preflight, and deep-input preflight.
+    # Whatever each neighbour decides, it must not alter the next request's assumptions or caches.
+    cas_equivalent("factorial(9999)", "factorial(9999)")
+    cas_equivalent("0**0", "1")
+    cas_equivalent("sin(" * 65 + "x" + ")" * 65, "0")
+
+    after = cas_antiderivative("x**2 + 5", "2*x")
+    assert (after.status, after.detail, after.evidence) == (
+        before.status,
+        before.detail,
+        before.evidence,
+    )
 
 
 def test_cas_reject_evidence_is_harvest_safe_and_has_no_diagnostic_escape_hatch():
