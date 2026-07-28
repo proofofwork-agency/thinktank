@@ -147,9 +147,32 @@ Harvesting on the **code** path is available today only as explicitly `trusted=f
 secrets-free **diagnostics** — useful for testing whether DPO rankings correlate with holdout
 performance, but it is not the trusted loop and must never be labelled as one.
 
-> **KILL GATE.** 34 tasks × N=16 = 544 attempts must yield **≥500 usable pairs** with real
-> candidate diversity. If the proposer emits near-identical candidates there is no signal in the
-> rejects, and verified self-improvement is dead — a genuine, cheap falsification.
+> **KILL GATE — CORRECTED, and the correction is the interesting part.** The original gate here
+> read "≥500 usable pairs from 34 tasks × N=16." Measured against the real `NoisyProposer`, that
+> gate is both unreachable and meaningless, for one reason:
+>
+> ```
+> --n 8 -> 3.10 distinct candidates/task   --n 64 -> 3.50   --n 256 -> 3.50   <- saturates
+> ```
+>
+> For `kind != "code"` the proposer draws from a **fixed pool of {gold} ∪ {3 distractors}** — four
+> elements. So uncapping `--n` buys *attempts*, not *variety*: 6 shipped CAS tasks cap at **16
+> pairs**; 200 forged tasks reach ~500 only by minting; and across 117 distractors there are just
+> **three error archetypes** (`scalar_multiple` 65, `plus_x` 29, `derivative` 23). Five hundred
+> pairs encoding three kinds of error is not five hundred units of signal — DPO on it learns three
+> lookup entries.
+>
+> **The finding underneath:** this analysis said the bottleneck was the *task list*, and S0 fixes
+> that. With tasks uncapped, **the bottleneck moves to the proposer** — and `NoisyProposer` is a
+> Slice-1 falsification instrument, not a source of variety. Genuine candidate diversity is
+> precisely what a model supplies and a fixed pool cannot.
+>
+> **So: S1 is a MECHANISM slice, and its gate defers to S3.** Build and test the uncapping,
+> appending, pair emission and sanitation with the mock; report pair count *and* distinct-candidate
+> / distinct-archetype counts so the number cannot flatter itself; and evaluate the ≥500-diverse-
+> pairs gate only once a real proposer is behind it. A regression asserting "attempts scale with
+> `--n`" will pass while distinct candidates stay pinned at ~3.5 — that saturation is correct
+> behaviour for a fixed-pool proposer, not a failure of the fix.
 
 **The proposer S0–S3 need already exists locally.** The "days, ~$0" estimate quietly assumed a
 model to propose with; it checks out. On disk today:
