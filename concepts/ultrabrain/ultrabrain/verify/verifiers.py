@@ -123,7 +123,14 @@ def _verdict(
     evidence: dict | None = None,
 ) -> Verdict:
     """Build harvest-safe evidence: only structured codes/counts/digests leave the verifier."""
-    ev = {"code": code}
+    ev = {
+        "code": code,
+        # This is the honest trust basis for model-generated CAS data. The grammar is a positive
+        # allowlist and no execution bypass was found in adversarial review; that is evidence, not
+        # a proof of parser safety, and the caveat travels with every verdict/ledger row.
+        "candidate_handling": "ast_allowlist_then_restricted_sympify",
+        "parser_safety_basis": "no_bypass_found_not_proven",
+    }
     if evidence:
         ev.update(evidence)
     return Verdict(status, code, ev)
@@ -876,6 +883,11 @@ class CASVerifier:
     cannot start, but a startup health gate prevents that from masquerading as low proposer yield.
     """
 
+    # Capability declaration consumed by trust-path dispatch.  This means the candidate is parsed
+    # as inert math data and is never executed as Python; it is deliberately not inferred from a
+    # task ``kind`` string or from proposer identity.
+    executes_candidate = False
+
     @classmethod
     def health(cls) -> dict:
         """Probe the real worker round trip without trusting a child-authored health verdict."""
@@ -930,6 +942,8 @@ class CodeTestVerifier:
     ``isolate.run_tests_isolated`` for UNTRUSTED candidates (e.g. real LLM output) to add OS resource
     limits — the executing paths do exactly that for ``--proposer llm`` (Codex review).
     """
+
+    executes_candidate = True
 
     def __init__(self, tests, timeout: float = 5.0, runner=None):
         self.tests = list(tests)

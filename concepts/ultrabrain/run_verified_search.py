@@ -10,12 +10,12 @@ On the CAS path only, every proposed candidate is judged (no first-success break
 rejected outcomes are also projected into a separate, explicitly UNTRUSTED preference artifact for
 DPO. That artifact is not a ledger and never contains raw verifier diagnostics or expected values.
 
-SECURITY (Codex review): ``--proposer llm/fim`` executes UNTRUSTED model output. The in-process judge
-is NOT adversarially sound at the same uid (a candidate can forge signed verdicts AND write host files
-via stdlib reflection), and rlimits are not a host jail — so untrusted proposers FAIL CLOSED here and
-NEVER write the ledger/SFT. ``--unsafe`` runs them for DIAGNOSTICS ONLY (no trusted writes). Only the
-mock proposer (our own reference code) writes trusted beliefs, and it requires a private ledger secret.
-Sound certification of real model output awaits the subordinate-jailed executor (see judge.py).
+SECURITY (Codex review): safety is a capability of the selected VERIFIER, not the proposer name or a
+task ``kind`` string.  ``CASVerifier`` treats model output as inert, allowlisted math data and never
+executes it, so real-model CAS certificates may enter trusted sinks.  The code verifiers execute
+UNTRUSTED model output and remain fail-closed: their in-process judge is forgeable via stdlib
+reflection and rlimits are not a host jail. ``--unsafe`` runs those executing paths for diagnostics
+only (no trusted writes). Sound code certification awaits the subordinate-jailed executor.
 
   python run_verified_search.py --proposer mock --ledger_secret dev    # zero-ML, tests the loop
   ULTRABRAIN_LEDGER_SECRET=$(openssl rand -hex 16) \
@@ -195,6 +195,17 @@ def verifier_for(task, isolated=False):
     return StructuredCodeVerifier()
 
 
+def verifier_executes_candidate(verifier) -> bool:
+    """Fail-closed capability query used before any real-model proposer is constructed.
+
+    A concrete verifier class must opt in explicitly to the non-executing trust path.  The lookup
+    deliberately does not inherit: a subclass that overrides ``verify`` but forgets to redeclare
+    the capability defaults to executing. Missing, malformed, or truthy declarations are treated
+    as executing; neither proposer class nor task metadata can confer trust.
+    """
+    return type(verifier).__dict__.get("executes_candidate", True) is not False
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--tasks", default=os.path.join(ROOT, "tasks", "micro_codebench.jsonl"))
@@ -233,28 +244,35 @@ def run(argv=None):
               file=sys.stderr)
         return 2
 
-    # Untrusted model output (llm OR diffusion-fim) executes candidate code. TWO DISTINCT, currently
-    # UNBUILT requirements — do not conflate them, and NEITHER is an env flag (Codex final review):
+    tasks = load_jsonl(args.tasks)
+    verifiers = [verifier_for(task) for task in tasks]
+
+    # Model output is untrusted, but whether it is EXECUTED is a capability of the selected verifier.
+    # Never infer this from proposer identity or task ``kind``: unknown verifier capabilities fail
+    # closed. For an executing verifier there are TWO DISTINCT, currently UNBUILT requirements:
     #   (1) VERDICT INTEGRITY needs a SUBORDINATE candidate executor (candidate in its OWN process,
     #       separate from the signer/decider). The in-process judge is forgeable via stdlib reflection.
     #   (2) HOST CONTAINMENT needs an outer OS boundary (uid/container/seccomp). rlimits are NOT a jail.
-    # An outer boundary (2) does NOT provide (1). So untrusted proposers fail closed here regardless.
+    # An outer boundary (2) does NOT provide (1).
     untrusted = args.proposer in ("llm", "fim")
-    isolated = untrusted and not args.unsafe          # apply rlimits to the legacy assert-runner path
+    executes_candidate = any(verifier_executes_candidate(v) for v in verifiers)
+    unsafe_execution = untrusted and executes_candidate
+    isolated = unsafe_execution and not args.unsafe
     if isolated and not ISOLATION_AVAILABLE:
         print("ERROR: POSIX rlimits unavailable but required to execute untrusted model output "
               "(--proposer llm/fim). Run where `resource` works / in a container, or pass --unsafe.",
               file=sys.stderr)
         return 2
 
-    # Untrusted model output CANNOT be soundly certified into trusted sinks by the in-process judge:
+    # Model output executed as code CANNOT be soundly certified into trusted sinks by judge_v1:
     # the candidate shares the worker's interpreter with the signer, so stdlib reflection can drive the
     # honest worker to HMAC-sign forged values (KNOWN residual). An outer container / separate uid /
     # seccomp boundary does NOT fix this — it isolates the host, not candidate-from-signer WITHIN the
     # worker (Codex final review). The only sound fix is a subordinate-jailed EXECUTOR (candidate in
     # its OWN process, decider/signer OUTSIDE it, value-only authenticated channel), which is NOT built.
-    # Therefore: untrusted proposer -> NEVER writes trusted ledger/SFT. No env flag enables it.
-    if untrusted and not args.unsafe:
+    # Therefore: real proposer + executing verifier -> NEVER writes trusted ledger/SFT. No flag
+    # enables it. A non-executing verifier (currently CASVerifier) does not need this boundary.
+    if unsafe_execution and not args.unsafe:
         print("ERROR: --proposer llm/fim executes UNTRUSTED code and the in-process judge cannot "
               "soundly certify it — the candidate shares the worker interpreter with the signer, so "
               "stdlib reflection forges signed values (KNOWN residual; see judge.py). No trusted "
@@ -263,8 +281,9 @@ def run(argv=None):
               "run DIAGNOSTICS ONLY (no ledger / no SFT writes).", file=sys.stderr)
         return 2
 
-    # Untrusted proposer -> diagnostics only, trusted writes suppressed regardless of any flag.
-    suppress_trusted = untrusted
+    # An explicitly unsafe executing run is diagnostics-only. A real proposer behind a verifier that
+    # declares ``executes_candidate = False`` remains eligible for trusted CAS sinks.
+    suppress_trusted = unsafe_execution
 
     # Trace collection writes trusted beliefs: require a private secret (unless we suppress writes).
     secret = args.ledger_secret or os.environ.get("ULTRABRAIN_LEDGER_SECRET")
@@ -273,7 +292,6 @@ def run(argv=None):
               "ULTRABRAIN_LEDGER_SECRET (or pass --unsafe to use the insecure default).", file=sys.stderr)
         return 2
 
-    tasks = load_jsonl(args.tasks)
     if any(task.get("kind") == "cas" for task in tasks):
         try:
             CASVerifier.require_available()
@@ -294,8 +312,8 @@ def run(argv=None):
     certified_candidate_digests = set()
     rejected_candidate_digests = set()
     t0 = time.time()
-    for task in tasks:
-        gate = Gate(verifier_for(task, isolated), ledger)
+    for task, verifier in zip(tasks, verifiers):
+        gate = Gate(verifier, ledger)
         task_projected_candidates = []
         task_solved = False
         task_candidate_digests = set()
@@ -374,7 +392,7 @@ def run(argv=None):
     result = {
         "proposer": args.proposer,
         "rlimits_applied": isolated,          # POSIX rlimits — defense in depth, NOT a jail
-        "trusted_writes": not suppress_trusted,  # untrusted output never writes trusted sinks (no flag enables it)
+        "trusted_writes": not suppress_trusted,
         "tasks": len(tasks),
         "solved": solved,
         "attempts": attempts,

@@ -63,6 +63,8 @@ _CAS_SIGNAL_KEYS = {
     "reference_depth",
     "method",
     "probe_index",
+    "candidate_handling",
+    "parser_safety_basis",
 }
 _CAS_SIGNAL_ENUMS = {
     "op": {"equivalent", "antiderivative"},
@@ -73,6 +75,8 @@ _CAS_SIGNAL_ENUMS = {
         "exact_rational_probe",
         "inconclusive",
     },
+    "candidate_handling": {"ast_allowlist_then_restricted_sympify"},
+    "parser_safety_basis": {"no_bypass_found_not_proven"},
 }
 
 

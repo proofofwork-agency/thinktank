@@ -276,6 +276,100 @@ def test_llm_execution_is_isolated_and_ledger_secret_required():
     assert rvs.run(["--proposer", "mock"]) == 2  # fails closed: no --ledger_secret / env, no --unsafe
 
 
+def test_verifier_execution_capability_defaults_closed_and_does_not_inherit():
+    import run_verified_search as rvs
+
+    class UndeclaredVerifier:
+        pass
+
+    class ExplicitExecutingVerifier:
+        executes_candidate = True
+
+    class InheritedCASCapability(CASVerifier):
+        # Overriding verify makes this a new execution boundary. Forgetting to redeclare the
+        # capability must not inherit CASVerifier's non-executing authorization.
+        def verify(self, task, candidate):
+            raise AssertionError("must never run in this test")
+
+    class ExplicitNonExecutingVerifier(CASVerifier):
+        executes_candidate = False
+
+    assert rvs.verifier_executes_candidate(UndeclaredVerifier()) is True
+    assert rvs.verifier_executes_candidate(ExplicitExecutingVerifier()) is True
+    assert rvs.verifier_executes_candidate(InheritedCASCapability()) is True
+    assert rvs.verifier_executes_candidate(ExplicitNonExecutingVerifier()) is False
+    assert rvs.verifier_executes_candidate(CASVerifier()) is False
+
+
+def test_real_proposer_cas_only_can_write_verified_trace_but_executing_verifier_cannot(
+    tmp_path, monkeypatch,
+):
+    import run_verified_search as rvs
+
+    task = {
+        "id": "cas_real_proposer",
+        "kind": "cas",
+        "task_family": "poly",
+        "op": "antiderivative",
+        "prompt": "Antiderivative of 2*x.",
+        "var": "x",
+        "integrand": "2*x",
+        "gold": "x**2",
+        "distractors": [],
+    }
+    tasks_path = tmp_path / "cas.jsonl"
+    tasks_path.write_text(json.dumps(task) + "\n")
+
+    class GoldProposer:
+        def propose(self, _task, n):
+            return ["x**2"] * n
+
+    monkeypatch.setattr(rvs, "build_proposer", lambda _args: GoldProposer())
+    out = tmp_path / "traces.jsonl"
+    ledger = tmp_path / "ledger.jsonl"
+    result = rvs.run([
+        "--proposer", "llm",
+        "--tasks", str(tasks_path),
+        "--n", "1",
+        "--out", str(out),
+        "--pairs_out", str(tmp_path / "pairs.jsonl"),
+        "--ledger", str(ledger),
+        "--ledger_secret", "test-secret",
+    ])
+    assert result["trusted_writes"] is True
+    assert result["traces_written"] == 1
+    trace = json.loads(out.read_text().strip())
+    assert trace["solution"] == "x**2"
+    row = json.loads(ledger.read_text().strip())
+    assert row["evidence"]["parser_safety_basis"] == "no_bypass_found_not_proven"
+
+    class ExecutingVerifier:
+        executes_candidate = True
+
+        def verify(self, _task, _candidate):
+            raise AssertionError("fail-closed gate must run before proposer construction")
+
+    constructed = {"value": False}
+
+    def should_not_build(_args):
+        constructed["value"] = True
+        raise AssertionError("executing trust path must fail before proposer construction")
+
+    monkeypatch.setattr(rvs, "verifier_for", lambda _task, isolated=False: ExecutingVerifier())
+    monkeypatch.setattr(rvs, "build_proposer", should_not_build)
+    monkeypatch.setattr(rvs, "ISOLATION_AVAILABLE", True)
+    assert rvs.run([
+        "--proposer", "llm",
+        "--tasks", str(tasks_path),
+        "--n", "1",
+        "--out", str(tmp_path / "blocked-traces.jsonl"),
+        "--pairs_out", str(tmp_path / "blocked-pairs.jsonl"),
+        "--ledger", str(tmp_path / "blocked-ledger.jsonl"),
+        "--ledger_secret", "test-secret",
+    ]) == 2
+    assert constructed["value"] is False
+
+
 def test_eval_code_untrusted_fails_closed_without_unsafe():
     # HOST CONTAINMENT (Codex final review): eval_code must NOT execute untrusted llm/fim output by
     # default — rlimits are not a host jail. The gate fires before the proposer is built or run, so no
