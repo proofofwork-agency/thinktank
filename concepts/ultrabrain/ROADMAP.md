@@ -112,17 +112,35 @@ the distribution is brutally lopsided:
 | `chain` | 18 | shares `sin` with `trig` — not a disjoint family |
 | `log` | **6** | `a*log(x)`, a∈1..6. That is the whole family |
 
+**Space skew ≠ sample skew** — a distinction I got wrong twice before measuring it. `_sample_F`
+picks the **family** uniformly, not a form from the space, so you cannot infer corpus composition
+from the 98% figure. Measured composition of an actual `mint(seed=7)` corpus:
+
+| n | poly | non-poly |
+|---|---|---|
+| 200 | 116 (58%) | **84** |
+| 500 | 416 (83%) | **84** |
+| 1,000 | 916 (92%) | **84** |
+| 3,984 (cap) | 3,900 (98%) | **84** |
+
+**The operative number is 84.** The five non-polynomial families exhaust at exactly
+`prod 24 + trig 18 + exp 18 + chain 18 + log 6 = 84` tasks and never grow again — so every task
+minted beyond the 84th non-polynomial is another polynomial, and the skew *worsens monotonically
+with scale*. The forge's conceptually-diverse output is **84 tasks**, not 3,984 and not 200.
+Everything past that is power-rule practice.
+
 Three consequences, all mine to fix:
 
 1. **`mint(n)` hangs for n > 3,984.** `while len(out) < n` plus dedup against an exhausted space is
    an infinite loop. A real bug, not a limit — needs bounded attempts and a loud "space exhausted".
-2. **A 1,000-task corpus is ~98% polynomial integration.** Training on it teaches the power rule
-   and almost nothing else. The transcendental families contribute **84 distinct tasks in total**.
-3. **S3's held-out-family gate is thin but not empty.** The families are not disjoint (`chain`⊂`trig`
-   via `sin`, `prod`⊂`exp` via `exp`), so the one *genuine* split available is by transcendental
-   class: train on `{poly, trig, chain}`, test on `{exp, prod, log}` — "can it integrate
-   exponentials and logs having seen only polynomials and trig?" That is a real question, on ~48
-   test tasks. Thin. Enrich the grammar before leaning on it.
+2. **Corpus size buys almost no conceptual coverage past ~84 tasks.** Minting 1,000 tasks to get a
+   bigger corpus adds 900 polynomials and zero new concepts.
+3. **S3's held-out-family gate is thin.** The families are not disjoint (`chain`⊂`trig` via `sin`,
+   `prod`⊂`exp` via `exp`), so the one *genuine* split is by transcendental class: train
+   `{poly, trig, chain}`, test `{exp, prod, log}` — "can it integrate exponentials and logs having
+   seen only polynomials and trig?" A real question, but on **48 test tasks against 36 non-poly
+   training tasks.** Too thin to carry the project's central claim. **Widening the grammar is
+   therefore the gating S0 work — ahead of any model, any `pip install`, and any training run.**
 
 The inversion principle is unaffected — *a verifier run backwards is still a task generator*. What
 is limited is this particular six-branch grammar, which was written to demonstrate the mechanism,
