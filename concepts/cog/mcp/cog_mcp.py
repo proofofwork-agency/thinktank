@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT / "cogfix"))
 sys.path.insert(0, str(ROOT / "fixer"))
 import cogfix  # noqa: E402
 import fixerd  # noqa: E402
+import openrouter_backend as backend  # noqa: E402
 from anchor import anchor_at, normalize_blend  # noqa: E402
 from contracts import cdo as cdo_contract  # noqa: E402
 from contracts import riders  # noqa: E402
@@ -67,6 +68,10 @@ def current_fix():
             "artifact": "fixer/fix.json",
         }
         provenance.update(p.get("provenance") or {})
+        if p.get("price_provenance") in backend.PRICE_PROVENANCE_VALUES:
+            provenance["price_provenance"] = p["price_provenance"]
+            provenance["price_provenance_basis"] = p.get("price_provenance_basis")
+            provenance["endpoint"] = p.get("endpoint")
         provenance["settleable"] = tier in LOCAL_TIERS
         stale = age < 0 or age > 1
         return {"fix_usd": fix_value, "date": p["date"], "mode": p["mode"],
@@ -80,17 +85,26 @@ def current_fix():
     except (OSError, ValueError, KeyError):
         pass  # missing, corrupt, or malformed — fall through to the live quote
     try:
-        quotes = fixerd.posted_quotes(fixerd.fetch_models())
+        api_base = backend.base_url()
+        price_provenance, provenance_basis = backend.resolve_price_provenance(api_base)
+        quotes = fixerd.posted_quotes(fixerd.fetch_models(api_base))
         if len(quotes) < 3:
             raise ValueError("fewer than 3 qualifying quotes in feed")
         fix = statistics.median(r["blended_usd_per_M"] for r in quotes[:3])
         return {"fix_usd": round(fix, 6), "date": today, "mode": "quote-live",
-                "source": "live OpenRouter posted prices (unreceipted)",
+                "source": f"live posted prices from {api_base} "
+                          f"({price_provenance}, unreceipted)",
                 "floor_usd": quotes[0]["blended_usd_per_M"],
                 "age_days": 0, "stale": False,
                 "qualification": "assumed static allowlist (no exam run)", "receipts": 0,
                 "tier": "venue-quote-live",
-                "provenance": {"provider": "OpenRouter", "network": "live"}}
+                "provenance": {
+                    "endpoint": api_base,
+                    "network": "live",
+                    "price_provenance": price_provenance,
+                    "price_provenance_basis": provenance_basis,
+                    "settleable": True,
+                }}
     except Exception:
         pass
     try:

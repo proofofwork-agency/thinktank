@@ -90,16 +90,30 @@ def _median(values: list[Decimal]) -> Decimal:
 
 
 def _tier(payload: dict) -> str:
-    """Return no stronger an evidence tier than the payload's known mode earns."""
+    """Return no stronger a tier than the payload's mode and price evidence earn."""
     explicit = payload.get("tier")
     mode_tier = MODE_TIER.get(payload.get("mode"))
     if explicit in TIER_RANK and mode_tier in TIER_RANK:
-        return min((explicit, mode_tier), key=TIER_RANK.__getitem__)
-    if explicit in TIER_RANK:
-        return explicit
-    if mode_tier is not None:
-        return mode_tier
-    return "bundled-snapshot"
+        earned = min((explicit, mode_tier), key=TIER_RANK.__getitem__)
+    elif explicit in TIER_RANK:
+        earned = explicit
+    elif mode_tier is not None:
+        earned = mode_tier
+    else:
+        earned = "bundled-snapshot"
+
+    price_provenance = payload.get("price_provenance")
+    if price_provenance is None and isinstance(payload.get("provenance"), dict):
+        price_provenance = payload["provenance"].get("price_provenance")
+    if price_provenance == "modelled":
+        # Execution through a subscription proxy proves the request happened,
+        # not that its rate-card cost was an executable market price.
+        return min((earned, "venue-quote"), key=TIER_RANK.__getitem__)
+    if price_provenance not in (None, "metered"):
+        # A supplied but unknown provenance value fails closed. Absence remains
+        # accepted for legacy signed archives that predate this field.
+        return "bundled-snapshot"
+    return earned
 
 
 def _verify_archive(path: Path, allowed_signers: Path, namespace: str = "cogfix") -> bool:
@@ -160,6 +174,7 @@ def load_series(archive_dir: str | Path, verify_sigs: bool = True) -> list[dict]
                 "price": price,
                 "fix_usd": _fix_text(price),
                 "tier": _tier(payload),
+                "price_provenance": payload.get("price_provenance"),
                 "publisher": payload.get("publisher", "unknown"),
                 "sig_ok": sig_ok,
                 "archive_sha256": hashlib.sha256(raw).hexdigest(),
@@ -189,6 +204,8 @@ def _public_fix(entry: dict, *, price: Decimal | None = None, source: str | None
         "publisher": entry["publisher"],
         "sig_ok": entry["sig_ok"],
     }
+    if entry.get("price_provenance") is not None:
+        result["price_provenance"] = entry["price_provenance"]
     for key in ("archive_sha256", "committed_archive_sha256"):
         if entry.get(key):
             result[key] = entry[key]

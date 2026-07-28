@@ -228,6 +228,29 @@ class SettlementTests(unittest.TestCase):
             "receipted-lite",
         )
 
+    def test_modelled_receipt_payload_is_capped_at_posted_quote_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "archive"
+            archive.mkdir()
+            payload = {
+                "date": self.end.isoformat(),
+                "fix_usd": "1.000000",
+                "mode": "receipt-lite",
+                "tier": "receipted-depth",
+                "price_provenance": "modelled",
+                "publisher": "test/publisher",
+                "receipts": [{"response_id": "subscription-execution"}],
+            }
+            (archive / f"{self.end.isoformat()}.json").write_text(
+                json.dumps(payload) + "\n"
+            )
+            rows = load_series(archive, verify_sigs=False)
+
+        self.assertEqual(rows[0]["tier"], "venue-quote")
+        self.assertEqual(rows[0]["price_provenance"], "modelled")
+        with self.assertRaisesRegex(SettlementUnavailable, "receipted-lite"):
+            settlement_fix(rows, self.end, min_tier="receipted-lite")
+
     def test_unsupported_multi_publisher_rule_refuses_direct_and_invoice_settlement(self):
         rows = [
             entry(self.end - timedelta(days=i), "1")

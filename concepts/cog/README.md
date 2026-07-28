@@ -59,6 +59,10 @@ what deflates): same deal at $3,000 fixed + 1,000 cogs still saves the buyer **$
   the unavailability ladder, chain-linking), [`COG-DENOM-EXT-0.1.md`](spec/COG-DENOM-EXT-0.1.md)
   (denominating an x402 payment or an AP2 mandate in cogs), plus JSON Schemas and their hashes.
   The whitepaper argues; the spec binds.
+- [`VALIDATION.md`](VALIDATION.md) — the path from "specification" to "operating index": what
+  must be true, in what order, what it costs. Includes the one distinction that governs all of
+  it — a subscription-backed call proves execution but **not price**, so it can run the
+  capability exam for free and can never set the fix.
 - [`GOVERNANCE.md`](GOVERNANCE.md) — who controls the discretion around the number, which
   levers could move somebody's invoice, what we commit to, and the conflict we have not solved
   (one org writes the exam, buys the inference, computes the fix, holds the only key, and wrote
@@ -307,6 +311,9 @@ spec size (K=5 × 10M tokens) has ever run. Receipts published so far are `[]`. 
 publisher, one signing key, and no external attestation ([`GOVERNANCE.md`](GOVERNANCE.md)).
 Until that changes this is a specification with a reference implementation, not an operating
 index — and the repo says so rather than implying otherwise.
+[`VALIDATION.md`](VALIDATION.md) is the ordered plan for closing that gap: the capability exam
+and endpoint-identity work cost nothing and can start today against the house proxy; the depth
+gate needs metered spend and is the milestone that changes what this project is.
 
 ## Licensing
 

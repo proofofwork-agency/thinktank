@@ -11,13 +11,19 @@ Modes:
                PROVISIONAL fix = median of the 3 cheapest allowlisted blended prices.
   receipt-lite real micro-buys — actually executes small completions against the
                3 cheapest qualifying models and publishes execution receipts.
-               Requires OPENROUTER_API_KEY. Spends real money (capped, default $0.50).
+               The canonical endpoint requires COG_API_KEY or OPENROUTER_API_KEY.
+               Spends real money (capped, default $0.50).
                Depth-lite: proves the price existed for real requests, not capacity.
                It does not satisfy the full COG-1 depth gate.
 
+Backend:
+  COG_OPENROUTER_BASE       OpenRouter-dialect base URL (defaults to OpenRouter)
+  COG_API_KEY               credential, falling back to OPENROUTER_API_KEY
+  COG_PRICE_PROVENANCE      explicit metered|modelled assertion (optional)
+
 Usage:
   python3 fixer/fixerd.py                     # quote mode, writes fix.json + archive
-  python3 fixer/fixerd.py --receipt           # receipt-lite (needs OPENROUTER_API_KEY)
+  python3 fixer/fixerd.py --receipt           # receipt-lite (canonical endpoint needs a key)
   python3 fixer/fixerd.py --receipt --max-spend-usd 0.25 --buys 3 --max-tokens 256
 
 Cron (daily 09:07 UTC):
@@ -40,6 +46,7 @@ import os
 import statistics
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -51,9 +58,9 @@ sys.path.insert(0, str(HERE.parent / "cogfix"))
 sys.path.insert(0, str(HERE.parent / "harness"))
 import cogfix  # noqa: E402  (DATA, allowlist, blend rule)
 import qualify  # noqa: E402  (exam fingerprint for qualification validation)
+import openrouter_backend as backend  # noqa: E402
 from anchor import anchor_at, divergence, normalize_blend  # noqa: E402
 
-OPENROUTER = "https://openrouter.ai/api/v1"
 BLEND = cogfix.blend
 MIN_RESOLVED_FRACTION = 0.80
 SIGNING_NAMESPACES = ("cogfix", "cog-cdo", "cog-invoice")
@@ -70,10 +77,17 @@ REFERENCE_PROMPT = (
 )
 
 
-def fetch_models():
-    req = urllib.request.Request(f"{OPENROUTER}/models", headers={"User-Agent": "cogfix-fixerd/0.1"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return {m["id"]: m for m in json.load(r)["data"]}
+def fetch_models(base_url=None):
+    base_url = backend.base_url() if base_url is None else base_url.rstrip("/")
+    url = f"{base_url}/models"
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "cogfix-fixerd/0.1"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return {m["id"]: m for m in json.load(r)["data"]}
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        raise backend.request_failed("model catalogue request failed", url, exc) from exc
 
 
 def load_qualification(today: str):
@@ -96,6 +110,9 @@ def load_qualification(today: str):
                                "fingerprint does not match the current exam)"}
     return q["qualified"], {"basis": "exam-qualified", "exam": q["exam"],
                             "exam_sha256": q["exam_sha256"], "exam_date": q["date"],
+                            "endpoint": q.get(
+                                "endpoint", backend.CANONICAL_METERED_BASE
+                            ),
                             "threshold": q["threshold"], "qualified_count": len(q["qualified"])}
 
 
@@ -131,19 +148,40 @@ def median_executable_price(runs):
     return statistics.median(run["price"] for run in runs)
 
 
-def buy_run(model_row, api_key, max_tokens):
+def buy_run(
+    model_row,
+    api_key,
+    max_tokens,
+    base_url=None,
+    price_provenance=None,
+    price_provenance_basis=None,
+):
     """Execute one real micro-buy; return an execution receipt."""
+    base_url = backend.base_url() if base_url is None else base_url.rstrip("/")
+    if price_provenance is None:
+        price_provenance, price_provenance_basis = backend.resolve_price_provenance(
+            base_url
+        )
     body = json.dumps({
         "model": model_row["model"],
         "messages": [{"role": "user", "content": REFERENCE_PROMPT}],
         "max_tokens": max_tokens,
     }).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "cogfix-fixerd/0.1",
+    }
+    headers.update(backend.authorization_headers(api_key))
+    url = f"{base_url}/chat/completions"
     req = urllib.request.Request(
-        f"{OPENROUTER}/chat/completions", data=body, method="POST",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
-                 "User-Agent": "cogfix-fixerd/0.1"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        raw = r.read()
+        url, data=body, method="POST", headers=headers
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            raw = r.read()
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        action = f"price execution request failed for model {model_row['model']!r}"
+        raise backend.request_failed(action, url, exc) from exc
     resp = json.loads(raw)
     usage = resp.get("usage")
     usage_reported = (
@@ -168,6 +206,9 @@ def buy_run(model_row, api_key, max_tokens):
         "request_sha256": hashlib.sha256(body).hexdigest(),
         "response_sha256": hashlib.sha256(raw).hexdigest(),
         "response_id": resp.get("id"),
+        "endpoint": base_url,
+        "price_provenance": price_provenance,
+        "price_provenance_basis": price_provenance_basis,
         "usage": {"prompt_tokens": pt, "completion_tokens": ct},
         "usage_estimated": not usage_reported,
         "posted_in_usd_per_M": model_row["in_usd_per_M"],
@@ -177,7 +218,16 @@ def buy_run(model_row, api_key, max_tokens):
     }
 
 
-def buy_receipts(candidates, api_key, buys, max_tokens, max_spend):
+def buy_receipts(
+    candidates,
+    api_key,
+    buys,
+    max_tokens,
+    max_spend,
+    base_url=None,
+    price_provenance=None,
+    price_provenance_basis=None,
+):
     """Execute capped receipt-lite buys, stopping all candidates at the ceiling."""
     receipts, spent = [], 0.0
     cap_reached = False
@@ -189,7 +239,14 @@ def buy_receipts(candidates, api_key, buys, max_tokens, max_spend):
                 print(f"  spend cap ${max_spend} reached; stopping buys")
                 cap_reached = True
                 break
-            rcpt = buy_run(row, api_key, max_tokens)
+            rcpt = buy_run(
+                row,
+                api_key,
+                max_tokens,
+                base_url=base_url,
+                price_provenance=price_provenance,
+                price_provenance_basis=price_provenance_basis,
+            )
             receipts.append(rcpt)
             spent += rcpt["cost_usd_est"]
             print(f"  receipt {rcpt['response_id']}: {rcpt['model']} "
@@ -301,18 +358,50 @@ def local_anchor_check(local_fix, today: str):
 
 
 def main(argv):
+    if "--help" in argv or "-h" in argv:
+        print(__doc__.strip())
+        return
+
     receipt_mode = "--receipt" in argv
     arg = lambda flag, default: (argv[argv.index(flag) + 1] if flag in argv else default)  # noqa: E731
     max_spend = float(arg("--max-spend-usd", "0.50"))
     buys = int(arg("--buys", "3"))
     max_tokens = int(arg("--max-tokens", "256"))
+    try:
+        api_base = backend.base_url()
+        price_provenance, price_provenance_basis = backend.resolve_price_provenance(
+            api_base
+        )
+    except ValueError as exc:
+        sys.exit(str(exc))
+
+    if receipt_mode and price_provenance == "modelled":
+        sys.exit(
+            "receipt mode refuses modelled price provenance: subscription/rate-card "
+            "costs prove execution and token counts, not an executable market price; "
+            "no settleable fix was published"
+        )
+
+    api_key = backend.api_key()
+    if (
+        receipt_mode
+        and backend.is_canonical_metered_base(api_base)
+        and not api_key
+    ):
+        sys.exit(
+            "receipt mode needs COG_API_KEY or OPENROUTER_API_KEY at the canonical "
+            "OpenRouter endpoint (this mode spends real money)"
+        )
 
     today = datetime.now(timezone.utc).date().isoformat()
     print(f"fixerd — COG-1 fix for {today} ({'receipt-lite' if receipt_mode else 'quote'} mode)")
 
     qualified_ids, qualification = load_qualification(today)
     requested_ids = qualified_ids or cogfix.DATA["live_fix_allowlist"]
-    model_feed = fetch_models()
+    try:
+        model_feed = fetch_models(api_base)
+    except backend.RequestFailed as exc:
+        sys.exit(str(exc))
     quotes = posted_quotes(model_feed, ids=qualified_ids)
     resolved_ids = {row["model"] for row in quotes}
     missing_ids = [model_id for model_id in requested_ids if model_id not in resolved_ids]
@@ -334,10 +423,19 @@ def main(argv):
 
     receipts, spent = [], 0.0
     if receipt_mode:
-        api_key = os.environ.get("OPENROUTER_API_KEY")
-        if not api_key:
-            sys.exit("receipt mode needs OPENROUTER_API_KEY (this mode spends real money)")
-        receipts, spent = buy_receipts(candidates, api_key, buys, max_tokens, max_spend)
+        try:
+            receipts, spent = buy_receipts(
+                candidates,
+                api_key,
+                buys,
+                max_tokens,
+                max_spend,
+                base_url=api_base,
+                price_provenance=price_provenance,
+                price_provenance_basis=price_provenance_basis,
+            )
+        except backend.RequestFailed as exc:
+            sys.exit(str(exc))
         if receipts:
             fix = median_executable_price(
                 [{"price": r["blended_usd_per_M"]} for r in receipts]
@@ -360,6 +458,9 @@ def main(argv):
         "date": today,
         "mode": mode,
         "tier": EVIDENCE_TIER_BY_MODE[mode],
+        "endpoint": api_base,
+        "price_provenance": price_provenance,
+        "price_provenance_basis": price_provenance_basis,
         "fix_usd": round(fix, 6),
         "floor_usd": quotes[0]["blended_usd_per_M"],
         "method": method,

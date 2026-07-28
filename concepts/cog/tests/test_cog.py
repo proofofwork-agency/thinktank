@@ -230,6 +230,9 @@ class TestUnitHonesty(unittest.TestCase):
         cog_mcp.ROOT = tmp
         try:
             fix = cog_mcp.current_fix()
+            payload["price_provenance"] = "modelled"
+            (tmp / "fixer" / "fix.json").write_text(json.dumps(payload) + "\n")
+            modelled = cog_mcp.current_fix()
             payload.pop("tier")
             payload["mode"] = "unknown"
             payload["provenance"] = {"settleable": True}
@@ -240,6 +243,10 @@ class TestUnitHonesty(unittest.TestCase):
             shutil.rmtree(tmp)
         self.assertEqual(fix["tier"], "receipted-lite")
         self.assertTrue(fix["provenance"]["settleable"])
+        self.assertEqual(modelled["tier"], "venue-quote")
+        self.assertEqual(
+            modelled["provenance"]["price_provenance"], "modelled"
+        )
         self.assertEqual(unknown["tier"], "bundled-snapshot")
         self.assertFalse(unknown["provenance"]["settleable"])
 

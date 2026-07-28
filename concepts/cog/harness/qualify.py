@@ -17,7 +17,13 @@ Modes:
                 (writes harness/dryrun_report.json — NEVER fixer/qualified.json;
                 mock results must never gate a real fix)
   (real mode)   sits the exam against live models via OpenRouter.
-                Requires OPENROUTER_API_KEY. Spends real money (capped).
+                The canonical endpoint requires COG_API_KEY or OPENROUTER_API_KEY.
+                Custom OpenRouter-dialect endpoints may run without a key.
+                Spends real money when the selected backend charges per call.
+
+Backend:
+  COG_OPENROUTER_BASE  OpenRouter-dialect base URL (defaults to OpenRouter)
+  COG_API_KEY          credential, falling back to OPENROUTER_API_KEY
 
 Usage:
   python3 harness/qualify.py --self-test
@@ -33,6 +39,7 @@ import hashlib
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,9 +49,9 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "cogfix"))
 import cogfix  # noqa: E402
+import openrouter_backend as backend  # noqa: E402
 from contracts.canon import canon_sha256  # noqa: E402
 
-OPENROUTER = "https://openrouter.ai/api/v1"
 EXAM = json.loads((HERE / "exam_core.json").read_text())
 
 
@@ -81,7 +88,8 @@ def grade(response_text: str, answer: str) -> bool:
     return normalize(lines[-1]) == normalize(answer)
 
 
-def ask_model(model_id: str, prompt: str, api_key: str):
+def ask_model(model_id: str, prompt: str, api_key: str | None, base_url=None):
+    base_url = backend.base_url() if base_url is None else base_url.rstrip("/")
     body = json.dumps({
         "model": model_id,
         "messages": [
@@ -91,12 +99,21 @@ def ask_model(model_id: str, prompt: str, api_key: str):
         "max_tokens": EXAM["meta"]["max_answer_tokens"],
         "temperature": 0,
     }).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "cog-qualify/0.1",
+    }
+    headers.update(backend.authorization_headers(api_key))
+    url = f"{base_url}/chat/completions"
     req = urllib.request.Request(
-        f"{OPENROUTER}/chat/completions", data=body, method="POST",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
-                 "User-Agent": "cog-qualify/0.1"})
-    with urllib.request.urlopen(req, timeout=90) as r:
-        raw = r.read()
+        url, data=body, method="POST", headers=headers
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            raw = r.read()
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        action = f"exam request failed for model {model_id!r}"
+        raise backend.request_failed(action, url, exc) from exc
     resp = json.loads(raw)
     text = resp["choices"][0]["message"]["content"] or ""
     usage = resp.get("usage", {})
@@ -196,6 +213,10 @@ def self_test():
 
 
 def main(argv):
+    if "--help" in argv or "-h" in argv:
+        print(__doc__.strip())
+        return
+
     if "--self-test" in argv:
         self_test()
         return
@@ -220,11 +241,18 @@ def main(argv):
         print(f"  -> {out}")
         return
 
-    # real mode: spends money
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        sys.exit("real exam runs need OPENROUTER_API_KEY (this spends real money); "
-                 "use --dry-run or --self-test for the free paths")
+    # Real mode measures capability. Price provenance does not affect an exam verdict.
+    try:
+        api_base = backend.base_url()
+    except ValueError as exc:
+        sys.exit(str(exc))
+    api_key = backend.api_key()
+    if backend.is_canonical_metered_base(api_base) and not api_key:
+        sys.exit(
+            "real exam runs need COG_API_KEY or OPENROUTER_API_KEY at the canonical "
+            "OpenRouter endpoint (this spends real money); use --dry-run or "
+            "--self-test for the free paths"
+        )
     def arg(flag, default):
         i = argv.index(flag) + 1 if flag in argv else -1
         if i > 0 and i >= len(argv):
@@ -248,8 +276,11 @@ def main(argv):
             print(f"  spend cap ${max_spend} reached (${budget.spent:.4f} used); "
                   f"skipping {mid.strip()} and remaining models")
             break
-        asker = lambda m, p: ask_model(m, p, api_key)  # noqa: E731
-        r = examine(mid.strip(), asker, budget=budget)
+        asker = lambda m, p: ask_model(m, p, api_key, api_base)  # noqa: E731
+        try:
+            r = examine(mid.strip(), asker, budget=budget)
+        except backend.RequestFailed as exc:
+            sys.exit(str(exc))
         results.append(r)
         note = "  ABORTED mid-exam (spend cap)" if r["aborted"] else ""
         print(f"  {r['model']:<36} {r['correct']}/{r['total']} ({r['score']:.0%})  "
@@ -257,6 +288,7 @@ def main(argv):
 
     payload = {"date": today, "mode": "live", "exam": exam_id,
                "exam_sha256": fingerprint(), "threshold": EXAM["meta"]["threshold"],
+               "endpoint": api_base,
                "spend_cap_usd": max_spend, "spend_usd_est": round(budget.spent, 6),
                "results": [{k: v for k, v in r.items() if k != "item_receipts"} for r in results],
                "receipts": {r["model"]: r["item_receipts"] for r in results},
