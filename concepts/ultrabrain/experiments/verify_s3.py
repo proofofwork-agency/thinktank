@@ -164,6 +164,16 @@ def run(argv=None):
     test_sig = [s["significant"] for s in report["test"]]
     train_sig = [s["significant"] for s in report["train"]]
     held_out_wins = sum(test_sig)
+    # "the train split showed nothing" and "the train split was never measured" are different
+    # facts and must not collapse into the same verdict — inferring BROKEN RUN from missing
+    # records would report a clean negative as a bug. Caught by testing this grader on synthetic
+    # cases with known answers, before any real result existed.
+    train_measured = bool(report["train"])
+    train_moved = any(train_sig)
+    # Did the in-domain split move at all, even below significance? Distinguishes a genuinely
+    # inert run from one that trained weakly.
+    train_any_discordant = any(s["discordant"] for s in report["train"])
+
     if report["leakage"] and report["leakage"]["overlap"]:
         verdict = "INVALID — train/test leakage detected"
     elif report["budget_problems"]:
@@ -172,13 +182,18 @@ def run(argv=None):
         verdict = "INCOMPLETE — fewer than 3 seeds; a single seed is not a result"
     elif held_out_wins >= 2:
         verdict = "POSITIVE — held-out gain survives on a majority of seeds"
-    elif any(train_sig) and not held_out_wins:
+    elif not train_measured:
+        verdict = ("NEGATIVE (held-out) — but the TRAIN split was not measured, so this cannot "
+                   "distinguish 'did not transfer' from 'training never took'. Re-run with both "
+                   "splits, as the pre-registration requires.")
+    elif train_moved:
         verdict = "NEGATIVE (memorisation) — trains in-domain, does NOT transfer"
-    elif not any(train_sig) and not held_out_wins:
-        verdict = "BROKEN RUN or TRUE NULL — no movement in-domain either; debug before citing"
+    elif not train_any_discordant:
+        verdict = "BROKEN RUN — the trained model is identical to base in-domain; debug before citing"
     else:
         verdict = "NEGATIVE — held-out effect not distinguishable from noise"
     report["verdict"] = verdict
+    report["train_measured"] = train_measured
 
     if args.json:
         print(json.dumps(report, indent=2))
