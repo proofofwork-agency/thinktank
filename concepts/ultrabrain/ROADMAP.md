@@ -182,7 +182,24 @@ Bias-2 correction that distinction must be enforced in code, not just in prose.
 
 ---
 
-## 3. What is deliberately not on this roadmap
+## 3. Data sources beyond the forge
+
+The symbolic forge (S0) is unlimited but narrow — it mints mathematics. Three planned documents
+cover where *code* tasks come from, in strict build order. **All three sit after S3**: they are
+worthless if training on verified tasks turns out not to improve a model, and S3 answers that for
+about $0.
+
+| | Doc | What | When |
+|---|---|---|---|
+| 1 | [`FLIGHT_CORPUS.md`](docs/FLIGHT_CORPUS.md) | design + licence rules for PX4/ArduPilot as a task source. Key move: they are a **mine for specifications and reference vectors**, not a build target — the C++ never runs | after S3 |
+| 2 | [`FLIGHT_HARVESTER_PLAN.md`](docs/FLIGHT_HARVESTER_PLAN.md) | the build: gtest parser → task JSONL, ~1–2 weeks. **The pilot** — one repo, one language, known-good suite | after 1 |
+| 3 | [`GITHUB_ABSORBER_PLAN.md`](docs/GITHUB_ABSORBER_PLAN.md) | generalise the pilot across repos. Scores repos by **verifiability, not popularity** — and treats popularity as an *anti*-signal, because stars predict contamination | after 2 |
+
+Two rules run through all three: **permissive licences train, copyleft evaluates only** (enforced
+in code, not comment), and **every result is reported with its contamination control** — absorbed
+data can never be clean by construction, so the forge stays the control it is read against.
+
+## 4. What is deliberately not on this roadmap
 
 - **Pretraining a base model.** Seven orders of magnitude in data, ~8 GPU-years in FLOPs.
   Arithmetically excluded. The base is rented and swapped, not built.
