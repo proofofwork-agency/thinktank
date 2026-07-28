@@ -2,11 +2,22 @@ import json
 import os
 import sys
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from ultrabrain.propose.llm import clean_expr, extract_code, prompt_for
-from ultrabrain.verify import ABSTAIN, CASVerifier, CERTIFIED, CodeTestVerifier, StructuredCodeVerifier, harden
+from ultrabrain.verify import (
+    ABSTAIN,
+    CASVerifier,
+    CERTIFIED,
+    CodeTestVerifier,
+    Outcome,
+    StructuredCodeVerifier,
+    Verdict,
+    harden,
+)
 
 
 def _code_tasks():
@@ -35,6 +46,8 @@ def test_verified_search_collects_only_verified_traces(tmp_path):
                    "--out", out, "--ledger", str(tmp_path / "led.jsonl"), "--ledger_secret", "t"])
     assert res["solved"] >= 1 and res["traces_written"] == res["solved"]
     assert res["ledger_chain_ok"]
+    assert res["cas_attempts"] == 0 and res["pairs_written"] == 0
+    assert res["attempts"] < res["tasks"] * 16  # code path deliberately keeps first-success behavior
 
     # THE load-bearing property: every collected trace independently passes the hardened gate,
     # so the SFT dataset is verified by construction (no teacher, no unverified data).
@@ -44,6 +57,193 @@ def test_verified_search_collects_only_verified_traces(tmp_path):
     for tr in traces:
         task = tasks[tr["task_id"]]
         assert CodeTestVerifier(harden(task)).verify(task, tr["solution"]).status == CERTIFIED, tr["task_id"]
+
+
+def test_cas_search_uncaps_attempts_reports_mock_saturation_and_appends(tmp_path, monkeypatch):
+    import run_verified_search as rvs
+
+    task = {
+        "id": "cas_uncap",
+        "kind": "cas",
+        "task_family": "poly",
+        "op": "antiderivative",
+        "prompt": "Antiderivative of 2*x.",
+        "var": "x",
+        "integrand": "2*x",
+        "gold": "x**2",
+        "distractors": ["x**2/2", "x**3", "x**2 + x"],
+        "distractor_archetypes": ["scalar_multiple", "derivative", "plus_x"],
+    }
+    tasks_path = tmp_path / "cas.jsonl"
+    tasks_path.write_text(json.dumps(task) + "\n")
+
+    class FixedPoolProposer:
+        def propose(self, current_task, n):
+            pool = [current_task["gold"], *current_task["distractors"]]
+            return [pool[index % len(pool)] for index in range(n)]
+
+    monkeypatch.setattr(rvs, "build_proposer", lambda _args: FixedPoolProposer())
+
+    out = tmp_path / "traces.jsonl"
+    pairs = tmp_path / "cas_pairs_UNTRUSTED.jsonl"
+    ledger = tmp_path / "ledger.jsonl"
+
+    def collect(n):
+        return rvs.run([
+            "--tasks", str(tasks_path),
+            "--proposer", "mock",
+            "--n", str(n),
+            "--out", str(out),
+            "--pairs_out", str(pairs),
+            "--ledger", str(ledger),
+            "--ledger_secret", "test",
+        ])
+
+    one = collect(1)
+    eight = collect(8)
+    sixty_four = collect(64)
+
+    # The mechanism is uncapped: every CAS proposal is judged, so attempts follow --n exactly.
+    assert (one["attempts"], eight["attempts"], sixty_four["attempts"]) == (1, 8, 64)
+    assert (one["cas_attempts"], eight["cas_attempts"], sixty_four["cas_attempts"]) == (1, 8, 64)
+
+    # The fixed-pool mock is a Slice-1 instrument, not a source of variation: diversity saturates
+    # at its four pool members even though the now-functional compute knob keeps scaling.
+    assert one["distinct_candidates_by_task"]["cas_uncap"] == 1
+    assert eight["distinct_candidates_by_task"]["cas_uncap"] == 4
+    assert sixty_four["distinct_candidates_by_task"]["cas_uncap"] == 4
+    assert eight["pairs_written"] == sixty_four["pairs_written"] == 3
+    assert sixty_four["distinct_error_archetypes"] == 3
+    assert sixty_four["task_family_counts"] == {"poly": 1}
+    assert sixty_four["pairs_by_family"] == {"poly": 3}
+    assert set(sixty_four["error_archetype_counts_by_family"]["poly"]) == {
+        "scalar_multiple", "derivative", "plus_x",
+    }
+
+    # Every run appends. It never truncates either artifact or the certified-only ledger.
+    trace_lines = [json.loads(line) for line in out.read_text().splitlines()]
+    pair_lines = [json.loads(line) for line in pairs.read_text().splitlines()]
+    assert len(trace_lines) == sum(run["traces_written"] for run in (one, eight, sixty_four))
+    assert len(pair_lines) == sum(run["pairs_written"] for run in (one, eight, sixty_four))
+    assert sixty_four["ledger_count"] == len(trace_lines)
+
+    for pair in pair_lines:
+        assert pair["trusted"] is False
+        assert pair["ledger_eligible"] is False
+        assert pair["artifact_class"] == "untrusted_preference_diagnostics"
+        assert pair["kind"] == "cas"
+        assert set(pair["chosen_signal"]) == {"schema", "status", "code", "evidence"}
+        assert set(pair["rejected_signal"]) == {"schema", "status", "code", "evidence"}
+        assert pair["chosen_signal"]["status"] == CERTIFIED
+        assert pair["rejected_signal"]["status"] == "rejected"
+        serialized_signals = json.dumps({
+            "chosen": pair["chosen_signal"],
+            "rejected": pair["rejected_signal"],
+        })
+        assert "residual" not in serialized_signals
+        assert "exception" not in serialized_signals
+        assert "expected" not in serialized_signals
+
+
+def test_cas_training_projection_sanitizes_at_the_gate_source():
+    candidate = "TRAIN_THIS_CANDIDATE"
+    expected = "DO_NOT_LEAK_EXPECTED"
+    verdict = Verdict(
+        CERTIFIED,
+        "cas.certified.exact_zero",
+        {
+            "code": "cas.certified.exact_zero",
+            "op": "equivalent",
+            "candidate_digest": "a" * 64,
+            "reference_digest": "b" * 64,
+            "candidate_nodes": 1,
+            "candidate_depth": 1,
+            "reference_nodes": 1,
+            "reference_depth": 1,
+            "method": "simplify_exact_zero",
+            "raw_candidate": candidate,
+            "raw_expected": expected,
+            "exception": "TRAIN_THIS_EXCEPTION",
+        },
+    )
+    signal = Outcome("t", candidate, verdict, 0.0).cas_training_signal()
+    serialized = json.dumps(signal, sort_keys=True)
+    assert candidate not in serialized
+    assert expected not in serialized
+    assert "TRAIN_THIS_EXCEPTION" not in serialized
+    assert set(signal) == {"schema", "status", "code", "evidence"}
+    assert set(signal["evidence"]) == {
+        "code",
+        "op",
+        "candidate_digest",
+        "reference_digest",
+        "candidate_nodes",
+        "candidate_depth",
+        "reference_nodes",
+        "reference_depth",
+        "method",
+    }
+
+    forged = Verdict(CERTIFIED, "FORGED RAW DETAIL", dict(verdict.evidence))
+    with pytest.raises(ValueError, match="cas_signal.invalid_verdict"):
+        Outcome("t", candidate, forged, 0.0).cas_training_signal()
+
+    injected_code = "cas.certified.TRAIN_THIS_CODE"
+    injected = Verdict(CERTIFIED, injected_code, {**verdict.evidence, "code": injected_code})
+    with pytest.raises(ValueError, match="cas_signal.invalid_verdict"):
+        Outcome("t", candidate, injected, 0.0).cas_training_signal()
+
+    abstain_code = "cas.abstain.disallowed_name"
+    abstain = Verdict(
+        ABSTAIN,
+        abstain_code,
+        {
+            **verdict.evidence,
+            "code": abstain_code,
+            "raw_candidate": candidate,
+            "raw_expected": expected,
+        },
+    )
+    abstain_signal = Outcome("t", candidate, abstain, 0.0).cas_training_signal()
+    assert abstain_signal["status"] == ABSTAIN
+    assert candidate not in json.dumps(abstain_signal)
+    assert expected not in json.dumps(abstain_signal)
+
+
+def test_pair_artifact_cannot_alias_a_trusted_sink(tmp_path):
+    import run_verified_search as rvs
+
+    shared = str(tmp_path / "shared.jsonl")
+    result = rvs.run([
+        "--out", shared,
+        "--pairs_out", shared,
+        "--ledger", str(tmp_path / "ledger.jsonl"),
+        "--ledger_secret", "test",
+    ])
+    assert result == 2
+    assert not os.path.exists(shared)
+
+
+def test_symbolic_forge_labels_families_and_fails_loudly_past_finite_space(capsys):
+    from experiments import exp_task_forge as forge
+
+    tasks = forge.mint(12, seed=7)
+    assert len(tasks) == 12
+    assert all(task["task_family"] in {"poly", "prod", "trig", "exp", "chain", "log"}
+               for task in tasks)
+    assert all(
+        len(task["distractors"]) == len(task["distractor_archetypes"])
+        and set(task["distractor_archetypes"]) <= {
+            "scalar_multiple", "plus_x", "derivative",
+        }
+        for task in tasks
+    )
+    with pytest.raises(ValueError, match="space exhausted.*measured grammar maximum"):
+        forge.mint(forge._MEASURED_FORGE_SPACE + 1)
+    assert forge.run(["--n", str(forge._MEASURED_FORGE_SPACE + 1), "--json"]) == 2
+    error = json.loads(capsys.readouterr().out)
+    assert error["error"] == "forge_space_exhausted"
+    assert "3984" in error["detail"]
 
 
 def test_train_qlora_dry_run(tmp_path):
