@@ -95,6 +95,31 @@ transfer to unseen concept classes?* Preference signal is an enhancement, not th
 still collected and kept as the input to a proper DPO run later on the RTX 5080, where `trl`
 provides a validated implementation. **This narrows the experiment; it does not invalidate it.**
 
+## Headroom — what baseline values would make this experiment uninformative
+
+*Added while the baseline was still running and before any score was seen. This is the last
+point at which it can be stated without being post-hoc.*
+
+An experiment can be run perfectly and still answer nothing, if the base model sits at a floor or
+a ceiling. Both are properties of the **baseline alone**, so they are decidable the moment it
+lands and before any adapter exists.
+
+| Baseline on held-out | Reading |
+|---|---|
+| **> ~90%** | **Ceiling — no headroom.** The 3B already solves these; training cannot demonstrate anything. Not a result about the thesis. Harder task families needed. |
+| **~0%, and also ~0% in-domain** | **Floor — out of range.** The model cannot do this class of problem at all, so "training did not help" is uninformative: there is nothing to transfer *to*. Not evidence against the thesis. |
+| **~0% held-out, but non-trivial in-domain** | **Informative.** This is the interesting configuration: capable on trained concepts, incapable on unseen ones, so transfer is exactly what is being measured. |
+| **~10–70% held-out** | **Informative.** Room to move in both directions. |
+
+The in-domain baseline is the discriminator between *floor* and *genuine non-transfer*, which is
+the single most confusable pair of outcomes in this design — and the reason both splits are
+measured on both models rather than only the held-out one.
+
+**Commitment:** if the baseline lands outside the informative band, the correct response is to say
+so and change the task difficulty — **not** to train anyway and report whatever the delta happens
+to be. A gain measured against a floor or a ceiling is an artifact of the range, not evidence
+about verified search.
+
 ## What each outcome means
 
 | Held-out result | Reading |
