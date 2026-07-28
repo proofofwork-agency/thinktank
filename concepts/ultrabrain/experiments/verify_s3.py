@@ -133,16 +133,33 @@ def check_budget(rows):
     return problems
 
 
-def analyse(rows, split, metric):
-    """P/S — per-seed paired comparison over discordant pairs, for one metric."""
+def analyse(rows, split, metric, dedupe_prompts=False):
+    """P/S — per-seed paired comparison over discordant pairs, for one metric.
+
+    dedupe_prompts collapses tasks sharing a prompt_sha to a single trial. The forge dedupes on
+    the ANSWER (str(F)); two distinct antiderivatives differing by a constant are the SAME
+    QUESTION, so 244 held-out tasks carry only ~226 independent problems. Duplicated prompts are
+    perfectly correlated — solve one, solve all — and the sign test assumes independent trials,
+    so p-values on the raw set are slightly optimistic. Reported as a sensitivity check.
+    """
     per_seed = collections.defaultdict(dict)
+    seen_prompt = collections.defaultdict(set)
     for r in rows:
         if r["split"] != split:
             continue
         val = outcome(r, metric)
         if val is None:
             continue
-        per_seed[r["seed"]][(r["task_id"], r["model"])] = val
+        key = r["task_id"]
+        if dedupe_prompts:
+            sha = r.get("prompt_sha")
+            if sha is not None:
+                bucket = seen_prompt[(r["seed"], r["model"], sha)]
+                if bucket:
+                    continue          # a later task with the same question: same trial
+                bucket.add(key)
+                key = f"prompt:{sha}"
+        per_seed[r["seed"]][(key, r["model"])] = val
 
     out = []
     for seed in sorted(per_seed):
@@ -201,6 +218,12 @@ def run(argv=None):
             "test": analyse(rows, "test", metric),
             "train": analyse(rows, "train", metric),
         }
+    # Sensitivity: same test on prompt-unique trials only. If the verdict agrees on both, the
+    # duplicate questions are immaterial and we say so with a number rather than an assurance.
+    report["prompt_deduped"] = {
+        m: {sp_: analyse(rows, sp_, m, dedupe_prompts=True) for sp_ in ("test", "train")}
+        for m in ("pass_at_1", "pass_at_n")
+    }
     # The headline verdict is pass@1: it is the one that supports a cost-per-solved-task claim.
     report["test"] = report["metrics"]["pass_at_1"]["test"] or report["metrics"]["pass_at_n"]["test"]
     report["train"] = report["metrics"]["pass_at_1"]["train"] or report["metrics"]["pass_at_n"]["train"]
