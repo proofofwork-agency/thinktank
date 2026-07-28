@@ -163,7 +163,7 @@ set (contamination detection, WHITEPAPER §5) is deliberately not in this repo. 
 "clears this quiz" and "is GPT-4-class" is the distance between concept and product, and it is
 not closed.
 
-Tests: `python3 -m unittest discover -s tests` — **69 tests, no network, stdlib only**: fix math,
+Tests: `python3 -m unittest discover -s tests` — **75 tests, no network, stdlib only**: fix math,
 hybrid repricing, grading, exam integrity and fingerprint scope, spend caps, MCP protocol and
 tool surface, the qualification gate, signature replacement and tamper detection, all five
 settlement rungs, Decimal invoice arithmetic, archive recomputation, rail fixtures, and the
@@ -227,12 +227,21 @@ Nine tools, zero dependencies. Pricing: `get_fix` (today's price of intelligence
 hybrid leg supported). Contracting: `generate_sla` and `generate_rider` (the template library),
 `draft_obligation` (a validated CDO), `settlement_fix`, `settle_invoice`, `verify_invoice`.
 
-**Five resolution rungs, each labeled with the evidence it earned** — `receipted-depth` →
-`venue-quote` → `venue-quote-live` → `external-anchor` (Epoch AI, CC BY) →
+**Six resolution rungs, each labeled with the evidence it earned** — `receipted-depth` →
+`receipted-lite` → `venue-quote` → `venue-quote-live` → `external-anchor` (Epoch AI, CC BY) →
 `bundled-snapshot`. The bottom two are marked `NON-SETTLEABLE` and `settle.py` refuses them: a
 fallback that quietly settles an invoice off a stale research CSV is precisely the failure the
 whitepaper's LIBOR argument condemns. `get_fix` reports the rung, the age, the receipt count,
 and the qualification basis, so an agent can tell a receipted price from a posted guess.
+
+`receipted-lite` exists because the two kinds of receipt are not the same evidence, and an
+earlier version of this code conflated them. A `--receipt` run executes real but *small* buys:
+that proves the endpoint transacts, which a posted quote cannot, so it outranks `venue-quote`.
+It does **not** clear the K=5 × 10M depth gate, so it must not outrank `receipted-depth` — and
+it used to, which meant a counterparty selecting the strictest `min_tier` available to them
+would have settled against a handful of sips. **An unrecognised or missing tier now fails
+closed to the weakest rung**, never the strongest; inferring depth from the mere presence of
+receipts was the bug.
 
 ## Status & honesty
 
@@ -261,12 +270,23 @@ sip is the **eligibility floor**: an undersized run never enters the median at a
 now called the **median executable price**, in prose and in code, and a test that had pinned the
 defective behaviour as if it were a feature was inverted.
 
+**A second, worse instance of the same mistake was then found and fixed.** Auditing for the
+pattern turned up `receipted-depth`: the fixer, the MCP server and the settlement engine each
+inferred that tier from receipts merely being present, so a `--receipt` run of small buys —
+which explicitly does not clear the K=5 × 10M depth gate — was published at the *top* evidence
+rung. Because `settle.py` gates on tier rank, a counterparty selecting the strictest `min_tier`
+available would have settled against a handful of sips: the precise scenario `min_tier` exists
+to prevent. Receipt-lite is now its own rung between `venue-quote` and `receipted-depth`, an
+unknown tier fails closed to the weakest rung, and a regression test asserts a receipt-lite fix
+cannot settle a `min_tier: receipted-depth` obligation.
+
 **Basis risk is real and unmeasured.** The fix tracks the marginal public price of the cheapest
 qualifying endpoint; a vendor on committed, regional, private, or reserved capacity does not.
-The fix can fall 50% while a given vendor's true cost falls 10%. `collar`, `region`, and
-fractional indexing exist to bound that, but **we have not published a tracking-error study**,
-so the case that the cog hedges anything specific is an argument, not a result
-([`WHITEPAPER.md §6`](WHITEPAPER.md)).
+The fix can fall 50% while a given vendor's true cost falls 10%. `collar` and fractional
+indexing bound that in code; `region` only *records* the mismatch as a contractual term — the
+reference engine does not enforce it ([`GOVERNANCE.md`](GOVERNANCE.md)). And **we have not
+published a tracking-error study**, so the case that the cog hedges anything specific is an
+argument, not a result ([`WHITEPAPER.md §6`](WHITEPAPER.md)).
 
 **What has not been exercised:** the depth requirement is the load-bearing claim and no buy at
 spec size (K=5 × 10M tokens) has ever run. Receipts published so far are `[]`. There is one

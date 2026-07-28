@@ -33,6 +33,8 @@ from anchor import anchor_at, normalize_blend  # noqa: E402
 from contracts import cdo as cdo_contract  # noqa: E402
 from contracts import riders  # noqa: E402
 from contracts.settle import (  # noqa: E402
+    LOCAL_TIERS,
+    _tier as classify_evidence_tier,
     invoice as settle_cdo_invoice,
     load_series,
     settlement_fix as resolve_settlement_fix,
@@ -59,13 +61,13 @@ def current_fix():
             raise ValueError("published fix_usd must be finite and positive")
         age = (date.fromisoformat(today) - date.fromisoformat(p["date"])).days
         receipts = len(p.get("receipts") or [])
-        tier = "receipted-depth" if receipts else "venue-quote"
+        tier = classify_evidence_tier(p)
         provenance = {
             "publisher": p.get("publisher", "unknown"),
             "artifact": "fixer/fix.json",
-            "settleable": True,
         }
         provenance.update(p.get("provenance") or {})
+        provenance["settleable"] = tier in LOCAL_TIERS
         stale = age < 0 or age > 1
         return {"fix_usd": fix_value, "date": p["date"], "mode": p["mode"],
                 "source": "published fixer/fix.json"
@@ -132,11 +134,10 @@ def unit_description(f):
     posted-price quote with no receipts is exactly the LIBOR failure the
     whitepaper argues against, so the wording tracks the evidence.
     """
-    evidence_tier = f.get("tier") or (
-        "receipted-depth" if f.get("receipts", 0) > 0 else "venue-quote"
-    )
+    evidence_tier = classify_evidence_tier(f)
     price = {
         "receipted-depth": "depth-verified",
+        "receipted-lite": "receipted execution (LIMITED DEPTH; does not satisfy K/N)",
         "venue-quote": "posted-price (PROVISIONAL, unreceipted)",
         "venue-quote-live": "live posted-price (PROVISIONAL, unreceipted)",
         "external-anchor": "external research anchor (NON-SETTLEABLE)",
@@ -303,6 +304,7 @@ def t_settlement_fix(args):
         args["period_end"],
         min_tier=args.get("min_tier", "venue-quote"),
         publishers=args.get("publishers"),
+        multi_publisher_rule=args.get("multi_publisher_rule", "priority-order"),
         counterparty_ack=bool(args.get("counterparty_ack", False)),
     )
 
@@ -397,6 +399,7 @@ TOOLS = {
             "period_end": {"type": "string", "description": "UTC service-period end, YYYY-MM-DD"},
             "min_tier": {"type": "string"},
             "publishers": {"type": "array", "items": {"type": "string"}},
+            "multi_publisher_rule": {"type": "string"},
             "counterparty_ack": {"type": "boolean"},
             "series": {"type": "array"},
             "archive_dir": {"type": "string"},

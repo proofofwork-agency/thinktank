@@ -35,9 +35,19 @@ TIER_RANK = {
     "external-anchor": 0,
     "venue-quote-live": 1,
     "venue-quote": 2,
-    "receipted-depth": 3,
+    "receipted-lite": 3,
+    "receipted-depth": 4,
 }
-LOCAL_TIERS = frozenset(("venue-quote-live", "venue-quote", "receipted-depth"))
+LOCAL_TIERS = frozenset(
+    ("venue-quote-live", "venue-quote", "receipted-lite", "receipted-depth")
+)
+MODE_TIER = {
+    "anchor": "external-anchor",
+    "quote-live": "venue-quote-live",
+    "quote": "venue-quote",
+    "receipt-lite": "receipted-lite",
+}
+SUPPORTED_MULTI_PUBLISHER_RULE = "priority-order"
 INVOICE_SCHEMA = ROOT / "spec" / "invoice-0.1.schema.json"
 
 
@@ -80,17 +90,15 @@ def _median(values: list[Decimal]) -> Decimal:
 
 
 def _tier(payload: dict) -> str:
+    """Return no stronger an evidence tier than the payload's known mode earns."""
     explicit = payload.get("tier")
+    mode_tier = MODE_TIER.get(payload.get("mode"))
+    if explicit in TIER_RANK and mode_tier in TIER_RANK:
+        return min((explicit, mode_tier), key=TIER_RANK.__getitem__)
     if explicit in TIER_RANK:
         return explicit
-    if payload.get("mode") == "receipt-lite" and payload.get("receipts"):
-        return "receipted-depth"
-    if payload.get("mode") == "quote":
-        return "venue-quote"
-    if payload.get("mode") == "quote-live":
-        return "venue-quote-live"
-    if payload.get("mode") == "anchor":
-        return "external-anchor"
+    if mode_tier is not None:
+        return mode_tier
     return "bundled-snapshot"
 
 
@@ -165,7 +173,7 @@ def load_series(archive_dir: str | Path, verify_sigs: bool = True) -> list[dict]
 def _normalized_entry(raw: dict) -> dict:
     entry = dict(raw)
     entry["date"] = _day(entry["date"])
-    entry["tier"] = entry.get("tier", "bundled-snapshot")
+    entry["tier"] = _tier(entry)
     entry["publisher"] = entry.get("publisher", "unknown")
     entry["sig_ok"] = bool(entry.get("sig_ok", False))
     value = entry.get("price", entry.get("fix_usd", entry.get("usd_per_cog")))
@@ -253,6 +261,7 @@ def settlement_fix(
     min_tier: str = "venue-quote",
     *,
     publishers: list[str] | None = None,
+    multi_publisher_rule: str = SUPPORTED_MULTI_PUBLISHER_RULE,
     counterparty_ack: bool = False,
 ) -> dict:
     """Resolve a period-end Settlement Fix using the unavailability ladder.
@@ -263,6 +272,12 @@ def settlement_fix(
     """
     if window_days != 7:
         raise ValueError("COG-SETTLE-1 currently fixes the normal window at 7 days")
+    if multi_publisher_rule != SUPPORTED_MULTI_PUBLISHER_RULE:
+        raise SettlementUnavailable(
+            f"multi_publisher_rule {multi_publisher_rule!r} is not implemented; "
+            f"the reference settlement engine supports only "
+            f"{SUPPORTED_MULTI_PUBLISHER_RULE!r}"
+        )
     if min_tier not in TIER_RANK or min_tier in ("external-anchor", "bundled-snapshot"):
         raise ValueError(f"invalid settlement min_tier: {min_tier}")
     end = _day(invoice_date)
@@ -528,6 +543,7 @@ def invoice(
         service_period["end"],
         min_tier=settlement_terms["min_tier"],
         publishers=settlement_terms.get("publishers"),
+        multi_publisher_rule=settlement_terms["multi_publisher_rule"],
         counterparty_ack=bool(settlement_terms.get("counterparty_ack", False)),
     )
     raw_price = _decimal(fix["usd_per_cog"], "settlement fix")

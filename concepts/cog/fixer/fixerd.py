@@ -13,8 +13,7 @@ Modes:
                3 cheapest qualifying models and publishes execution receipts.
                Requires OPENROUTER_API_KEY. Spends real money (capped, default $0.50).
                Depth-lite: proves the price existed for real requests, not capacity.
-               The full COG-1 depth gate (K=5 buys x 10M tokens) is the same plumbing
-               with bigger numbers.
+               It does not satisfy the full COG-1 depth gate.
 
 Usage:
   python3 fixer/fixerd.py                     # quote mode, writes fix.json + archive
@@ -58,6 +57,10 @@ OPENROUTER = "https://openrouter.ai/api/v1"
 BLEND = cogfix.blend
 MIN_RESOLVED_FRACTION = 0.80
 SIGNING_NAMESPACES = ("cogfix", "cog-cdo", "cog-invoice")
+EVIDENCE_TIER_BY_MODE = {
+    "quote": "venue-quote",
+    "receipt-lite": "receipted-lite",
+}
 EST_PROMPT_TOKENS = 200
 REFERENCE_PROMPT = (
     "You are executing one unit of the COG-1 reference workload. "
@@ -356,7 +359,7 @@ def main(argv):
         "basket": "COG-1 (draft)",
         "date": today,
         "mode": mode,
-        "tier": "receipted-depth" if mode == "receipt-lite" else "venue-quote",
+        "tier": EVIDENCE_TIER_BY_MODE[mode],
         "fix_usd": round(fix, 6),
         "floor_usd": quotes[0]["blended_usd_per_M"],
         "method": method,

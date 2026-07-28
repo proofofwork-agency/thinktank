@@ -172,9 +172,10 @@ def draft_obligation(
 
     Optional basis-risk and administration terms (``region``,
     ``correction_window_days``, and ``on_publisher_cessation``) are copied only
-    when explicitly supplied in ``settlement``.  They intentionally have no
-    implicit defaults: omission is a valid contractual choice and historical
-    signed CDO bytes remain unchanged.
+    when explicitly supplied in ``settlement``.  They are recorded contractual
+    declarations that the reference settlement engine does not enforce.  They
+    intentionally have no implicit defaults: omission is a valid contractual
+    choice and historical signed CDO bytes remain unchanged.
     """
     default_settlement = {
         "currency": "USD",

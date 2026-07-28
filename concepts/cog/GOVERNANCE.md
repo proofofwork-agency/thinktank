@@ -71,10 +71,18 @@ a dispute, not an administrative action.
 **3. The archive is append-only.** Dated archive entries and their signatures are never
 rewritten. If we get one wrong, the wrong one stays, with a correction next to it.
 
-**4. Errors are published as prominently as claims.** Two are already in this repository: the
-withdrawn OS-sandbox soundness claim, and the "volume-weighted median" label that credited a
-weighting no-op with a security property it never had (see `WHITEPAPER.md` §3). Both are
-documented in place rather than quietly edited out. That is the standard.
+**4. Errors are published as prominently as claims.** Three are already in this repository: the
+withdrawn OS-sandbox soundness claim; the "volume-weighted median" label that credited a
+weighting no-op with a security property it never had (see `WHITEPAPER.md` §3); and the
+`receipted-depth` tier, which the fixer, the MCP server and the settlement engine all inferred
+from the mere presence of receipts — so a receipt-lite run of small buys was promoted to the
+top evidence rung and would have satisfied a contract demanding the strictest `min_tier`. All
+three are documented in place rather than quietly edited out. That is the standard.
+
+Note what those three have in common: each was a **name asserting more evidentiary strength
+than the procedure behind it earned**, and in two of the three the false name was also load-
+bearing on settlement. That is the characteristic failure of this project, and it is the thing
+to audit for first.
 
 **5. Refuse rather than guess.** The fixer exits non-zero rather than publish below its
 resolved-model floor or below three qualifying models. A missing number is recoverable; a
@@ -102,9 +110,12 @@ Unmet, in rough order of how much each one matters:
 
 - **No independent publisher.** One organisation, one key. The `publishers[]` array and
   `multi_publisher_rule` (`priority-order` / `median` / `quorum-median`) exist in the CDO schema
-  so a contract can name several and take a cross-publisher median — but today there is only
-  one, so that machinery is untested in production. **A single-publisher index is a single
-  point of both failure and capture.**
+  so a contract can name several — but today there is only one publisher, and **the reference
+  settlement engine implements only `priority-order`**. It refuses to settle a contract that
+  specifies `median` or `quorum-median` rather than silently downgrading it, because quietly
+  settling under a rule the parties did not agree to is worse than not settling. Cross-publisher
+  medians are future work, not shipped behaviour. **A single-publisher index is a single point
+  of both failure and capture.**
 - **No external attestation of receipts.** Nobody but us has verified that the buys happened.
 - **No formal oversight function.** No independent review of allowlist or exam decisions.
 - **No appeal path for a disqualified provider.** A model that fails the exam has no recourse,
@@ -138,6 +149,15 @@ A CDO names its publishers, pins the spec by hash, sets a minimum evidence tier,
 collar, and — via `on_publisher_cessation` — says what happens if the publisher stops
 publishing: fall back to the next named publisher, convert the remaining cogs at the last
 eligible fix, or reopen negotiation.
+
+**Which of those the engine enforces, precisely.** `min_tier`, `collar`, `publishers`
+(priority-order), the unavailability ladder and the spec hash are *executed* by
+`contracts/settle.py` — they change what an invoice computes, and they are tested.
+`region`, `correction_window_days`, and `on_publisher_cessation` are **recorded contractual
+declarations that the reference engine does not enforce**: they bind the parties as written
+terms and travel inside the signed obligation, but no code reads them at settlement time.
+They are in the schema so an obligation can state them unambiguously and hash them, not
+because software acts on them. Do not read their presence as automation.
 
 That is deliberate. A contract written against this schema should survive us going away, and a
 better-run index should be able to compete for the same contracts without either party

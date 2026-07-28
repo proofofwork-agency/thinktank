@@ -103,7 +103,12 @@
           "enum": ["priority-order", "median", "quorum-median"]
         },
         "min_tier": {
-          "enum": ["receipted-depth", "venue-quote", "venue-quote-live"]
+          "enum": [
+            "receipted-depth",
+            "receipted-lite",
+            "venue-quote",
+            "venue-quote-live"
+          ]
         },
         "region": {
           "anyOf": [{"type": "string"}, {"type": "null"}]

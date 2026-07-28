@@ -185,6 +185,64 @@ class SettlementTests(unittest.TestCase):
         with self.assertRaises(SettlementUnavailable):
             settlement_fix(rows, self.end, min_tier="receipted-depth")
 
+    def test_receipt_lite_payload_cannot_satisfy_receipted_depth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "archive"
+            archive.mkdir()
+            for offset, explicit_tier in enumerate((None, "receipted-depth")):
+                day = self.end - timedelta(days=offset)
+                payload = {
+                    "date": day.isoformat(),
+                    "fix_usd": "1.000000",
+                    "mode": "receipt-lite",
+                    "publisher": "test/publisher",
+                    "receipts": [{"response_id": f"micro-{offset}"}],
+                }
+                if explicit_tier is not None:
+                    payload["tier"] = explicit_tier
+                (archive / f"{day.isoformat()}.json").write_text(
+                    json.dumps(payload) + "\n"
+                )
+
+            rows = load_series(archive, verify_sigs=False)
+
+        self.assertEqual([row["tier"] for row in rows], ["receipted-lite"] * 2)
+        with self.assertRaisesRegex(SettlementUnavailable, "receipted-depth"):
+            settlement_fix(rows, self.end, min_tier="receipted-depth")
+        with self.assertRaisesRegex(SettlementUnavailable, "receipted-depth"):
+            settlement_fix(
+                [
+                    entry(
+                        self.end,
+                        "1",
+                        tier="receipted-depth",
+                        mode="receipt-lite",
+                        receipts=[{"response_id": "micro-direct"}],
+                    )
+                ],
+                self.end,
+                min_tier="receipted-depth",
+            )
+        self.assertEqual(
+            obligation(min_tier="receipted-lite")["settlement"]["min_tier"],
+            "receipted-lite",
+        )
+
+    def test_unsupported_multi_publisher_rule_refuses_direct_and_invoice_settlement(self):
+        rows = [
+            entry(self.end - timedelta(days=i), "1")
+            for i in range(7)
+        ]
+        message = "supports only 'priority-order'"
+        with self.assertRaisesRegex(SettlementUnavailable, message):
+            settlement_fix(rows, self.end, multi_publisher_rule="median")
+        with self.assertRaisesRegex(SettlementUnavailable, message):
+            invoice(
+                obligation(multi_publisher_rule="quorum-median"),
+                {"start": "2026-06-01", "end": "2026-06-30"},
+                rows,
+            )
+
     def test_chain_link_uses_matching_dates(self):
         old = [entry("2026-01-01", "2"), entry("2026-01-02", "4")]
         new = [entry("2026-01-01", "3"), entry("2026-01-02", "6")]

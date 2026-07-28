@@ -417,7 +417,10 @@ footnotes:
   indexed leg can move in either party's favour. A vendor that cannot hedge the basis should
   not sign an uncollared cognition leg; this is the single most load-bearing term in the schema.
 - **`region`** — a global cheapest-qualifying fix is the wrong index for an EU-only or
-  private-deployment buyer, and the obligation should say so on its face.
+  private-deployment buyer, and the obligation should say so on its face. Note this one is a
+  *recorded declaration only*: it is signed and hashed with the rest of the obligation, but the
+  reference settlement engine does not read it, so it constrains the parties rather than the
+  arithmetic.
 - **participation, not pass-through** — the hybrid template's fixed people-leg plus a
   *fractional* indexed leg (e.g. `0.6 ×` the cog quantity) shares the move instead of
   transferring all of it, which is usually what both parties actually wanted.
@@ -502,10 +505,13 @@ and the indexed-unit-of-account template itself (Chile's UF, 1967).
    or how a contract survives the basket being replaced. That specification is the contribution.
 
 2. **The depth protocol.** K independent sized buys per window, with endpoint pinning,
-   commit-reveal paraphrase rotation, and single-token endpoint fingerprinting — so that the
-   model which sat the capability exam is provably the model which sold the tokens. "Receipts,
-   not posted prices" is a marketing claim everyone now makes; a published, reproducible
-   protocol for making receipts mean something is not.
+   commit-reveal paraphrase rotation, and single-token endpoint fingerprinting — so that
+   substitution between the model which sat the capability exam and the model which sold the
+   tokens becomes *detectable* rather than invisible. Not *provable*: as §6 sets out, these
+   controls are statistical and non-cryptographic, they raise the cost and the detection odds
+   of a silent swap, and they do not close the gap. "Receipts, not posted prices" is a
+   marketing claim everyone now makes; a published, reproducible protocol for making receipts
+   mean something is not.
 
 **What we no longer claim:** that capability-normalized price observation is unbuilt (Epoch AI
 built it), that receipt-verified indexing is unbuilt (Ornn built it), that a frozen-capability

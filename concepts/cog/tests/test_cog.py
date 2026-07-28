@@ -88,6 +88,9 @@ class TestFixerd(unittest.TestCase):
         # The fixer selected these sizes; a larger token count is not market volume.
         runs = [{"price": 1.0, "weight": 10}, {"price": 2.0, "weight": 1}, {"price": 9.0, "weight": 1}]
         self.assertEqual(fixerd.median_executable_price(runs), 2.0)
+        self.assertEqual(
+            fixerd.EVIDENCE_TIER_BY_MODE["receipt-lite"], "receipted-lite"
+        )
 
     def test_load_qualification_missing_falls_back(self):
         ids, meta = fixerd.load_qualification("2026-06-10")
@@ -192,16 +195,53 @@ class TestMcpServer(unittest.TestCase):
 class TestUnitHonesty(unittest.TestCase):
     """The published label must never claim more evidence than the fix actually carries."""
 
-    def test_unit_label_not_depth_verified_without_receipts(self):
+    def test_missing_tier_fails_closed_to_non_settleable(self):
         desc = cog_mcp.unit_description({"receipts": 0, "qualification": "assumed static allowlist"})
         self.assertNotIn("depth-verified", desc)
-        self.assertIn("PROVISIONAL", desc)
+        self.assertIn("NON-SETTLEABLE", desc)
         self.assertIn("assumed-qualifying", desc)
 
-    def test_unit_label_earns_depth_verified_with_receipts_and_exam(self):
-        desc = cog_mcp.unit_description({"receipts": 5, "qualification": "exam-qualified"})
-        self.assertIn("depth-verified", desc)
+    def test_receipts_alone_do_not_earn_depth_verified(self):
+        desc = cog_mcp.unit_description(
+            {
+                "mode": "receipt-lite",
+                "receipts": 5,
+                "qualification": "exam-qualified",
+            }
+        )
+        self.assertNotIn("depth-verified", desc)
+        self.assertIn("LIMITED DEPTH", desc)
         self.assertIn("exam-qualified", desc)
+
+    def test_current_fix_caps_receipt_lite_at_its_actual_tier(self):
+        import shutil
+        import tempfile
+        real_root = cog_mcp.ROOT
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "fixer").mkdir()
+        payload = {
+            "fix_usd": "0.125",
+            "date": cog_mcp.datetime.now(cog_mcp.timezone.utc).date().isoformat(),
+            "mode": "receipt-lite",
+            "tier": "receipted-depth",
+            "receipts": [{"response_id": "micro-buy"}],
+        }
+        (tmp / "fixer" / "fix.json").write_text(json.dumps(payload) + "\n")
+        cog_mcp.ROOT = tmp
+        try:
+            fix = cog_mcp.current_fix()
+            payload.pop("tier")
+            payload["mode"] = "unknown"
+            payload["provenance"] = {"settleable": True}
+            (tmp / "fixer" / "fix.json").write_text(json.dumps(payload) + "\n")
+            unknown = cog_mcp.current_fix()
+        finally:
+            cog_mcp.ROOT = real_root
+            shutil.rmtree(tmp)
+        self.assertEqual(fix["tier"], "receipted-lite")
+        self.assertTrue(fix["provenance"]["settleable"])
+        self.assertEqual(unknown["tier"], "bundled-snapshot")
+        self.assertFalse(unknown["provenance"]["settleable"])
 
     def test_sla_rider_warns_when_publisher_misses_its_own_standard(self):
         real = cog_mcp.current_fix

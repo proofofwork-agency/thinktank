@@ -15,8 +15,12 @@ its quantity in cogs and resolves that quantity into a settlement currency.
 
 ## 2. Fix evidence tiers
 
-Evidence tiers, strongest first, are `receipted-depth`, `venue-quote`,
-`venue-quote-live`, `external-anchor`, and `bundled-snapshot`.
+Evidence tiers, strongest first, are `receipted-depth`, `receipted-lite`,
+`venue-quote`, `venue-quote-live`, `external-anchor`, and `bundled-snapshot`.
+
+`receipted-lite` proves that an execution occurred but does not satisfy the
+`K`/`N` depth eligibility floor. It MUST NOT be represented as
+`receipted-depth`.
 
 A COG-1 Settlement Fix MUST satisfy the obligation's `min_tier`.
 `external-anchor` and `bundled-snapshot` MUST NOT be represented as a normal
