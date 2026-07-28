@@ -636,6 +636,8 @@ class StructuredCodeVerifier:
     runner (Codex review: unmigrated tasks abstain, no alternate certification authority).
     """
 
+    executes_candidate = True
+
     def __init__(self, timeout: float = 5.0, mem_mb: int = 512, cpu_s: int = 5):
         self.timeout = timeout
         self.mem_mb = mem_mb

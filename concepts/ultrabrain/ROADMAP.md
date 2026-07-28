@@ -99,6 +99,75 @@ Prototype: `scratchpad/forge_probe.py` (~40 lines, real unmodified `CASVerifier`
 parse errors.** ~11 tasks/sec → 10k tasks in ~15 min on CPU, $0. Against **34 hand-written tasks
 in the repo's lifetime.**
 
+**S0b · The grammar is far smaller than I claimed — measured.** "200 tasks in 18s" is true and
+"unlimited" is **not**. The shipped `_sample_F` grammar reaches only **3,984 distinct tasks**, and
+the distribution is brutally lopsided:
+
+| family | reachable | note |
+|---|---|---|
+| `poly` | 3,900 | **98% of the entire space** |
+| `prod` | 24 | shares `exp` atoms with the `exp` family |
+| `trig` | 18 | |
+| `exp` | 18 | |
+| `chain` | 18 | shares `sin` with `trig` — not a disjoint family |
+| `log` | **6** | `a*log(x)`, a∈1..6. That is the whole family |
+
+> **RESOLVED 2026-07-28 — the grammar is widened and this gate is cleared.** Nine new families
+> (`loglin`, `arctan`, `arcsin`, `sqrtpow`, `byparts`, `hyper`, `trigpow`, `mixed`, `ratio`) add
+> *concepts*, not coefficients. **All 15 families certify 100%** against the real verifier — every
+> derivative lands inside `_ALLOWED_FUNCS`, per Codex's C4 conditions. Measured:
+>
+> | | before | after |
+> |---|---|---|
+> | non-polynomial reach | **84** | **624** (7.4×) |
+> | total reach | 3,984 | 4,524 |
+> | corpus at n=300 | 58% poly | **14% poly** |
+> | held-out test families | 48 forms | **252 forms** |
+>
+> Forge stays sound: 150/150 golds certified, 0/446 false certifications. The held-out split is now
+> real — train `{poly, trig, chain, exp, prod, log, mixed}`, test `{arctan, arcsin, sqrtpow,
+> byparts, hyper, trigpow, loglin, ratio}`: 252 forms of **entirely unseen concepts** (inverse-trig,
+> fractional powers, integration by parts, hyperbolic, log-of-linear, rational). That is a genuine
+> question — *can it integrate concept classes it never saw?* — where before there were 48 forms
+> sharing atoms with the training set.
+>
+> *The historical measurement below is kept because the reasoning error in it is instructive.*
+
+**Space skew ≠ sample skew** — a distinction I got wrong twice before measuring it. `_sample_F`
+picks the **family** uniformly, not a form from the space, so you cannot infer corpus composition
+from the 98% figure. Measured composition of the *original six-family* `mint(seed=7)` corpus:
+
+| n | poly | non-poly |
+|---|---|---|
+| 200 | 116 (58%) | **84** |
+| 500 | 416 (83%) | **84** |
+| 1,000 | 916 (92%) | **84** |
+| 3,984 (cap) | 3,900 (98%) | **84** |
+
+**The operative number is 84.** The five non-polynomial families exhaust at exactly
+`prod 24 + trig 18 + exp 18 + chain 18 + log 6 = 84` tasks and never grow again — so every task
+minted beyond the 84th non-polynomial is another polynomial, and the skew *worsens monotonically
+with scale*. The forge's conceptually-diverse output is **84 tasks**, not 3,984 and not 200.
+Everything past that is power-rule practice.
+
+Three consequences, all mine to fix:
+
+1. **`mint(n)` hangs for n > 3,984.** `while len(out) < n` plus dedup against an exhausted space is
+   an infinite loop. A real bug, not a limit — needs bounded attempts and a loud "space exhausted".
+2. **Corpus size buys almost no conceptual coverage past ~84 tasks.** Minting 1,000 tasks to get a
+   bigger corpus adds 900 polynomials and zero new concepts.
+3. **S3's held-out-family gate is thin.** The families are not disjoint (`chain`⊂`trig` via `sin`,
+   `prod`⊂`exp` via `exp`), so the one *genuine* split is by transcendental class: train
+   `{poly, trig, chain}`, test `{exp, prod, log}` — "can it integrate exponentials and logs having
+   seen only polynomials and trig?" A real question, but on **48 test tasks against 36 non-poly
+   training tasks.** Too thin to carry the project's central claim. **Widening the grammar is
+   therefore the gating S0 work — ahead of any model, any `pip install`, and any training run.**
+
+The inversion principle is unaffected — *a verifier run backwards is still a task generator*. What
+is limited is this particular six-branch grammar, which was written to demonstrate the mechanism,
+not to carry a corpus. Widening it (more coefficients, nested compositions, integration by parts,
+partial fractions, `cas_equivalent` identities) is cheap and is the real S0 work.
+
 Extend along the same inversion: `cas_equivalent` (algebraic identities), then
 `verify/scientific.py`'s conservation/unitarity checks (pick an invariant → mint simulation
 tasks). Mutation-inverse for code waits for **S4**.
@@ -147,9 +216,95 @@ Harvesting on the **code** path is available today only as explicitly `trusted=f
 secrets-free **diagnostics** — useful for testing whether DPO rankings correlate with holdout
 performance, but it is not the trusted loop and must never be labelled as one.
 
-> **KILL GATE.** 34 tasks × N=16 = 544 attempts must yield **≥500 usable pairs** with real
-> candidate diversity. If the proposer emits near-identical candidates there is no signal in the
-> rejects, and verified self-improvement is dead — a genuine, cheap falsification.
+> **KILL GATE — CORRECTED, and the correction is the interesting part.** The original gate here
+> read "≥500 usable pairs from 34 tasks × N=16." Measured against the real `NoisyProposer`, that
+> gate is both unreachable and meaningless, for one reason:
+>
+> ```
+> --n 8 -> 3.10 distinct candidates/task   --n 64 -> 3.50   --n 256 -> 3.50   <- saturates
+> ```
+>
+> For `kind != "code"` the proposer draws from a **fixed pool of {gold} ∪ {3 distractors}** — four
+> elements. So uncapping `--n` buys *attempts*, not *variety*: 6 shipped CAS tasks cap at **16
+> pairs**; 200 forged tasks reach ~500 only by minting; and across 117 distractors there are just
+> **three error archetypes** (`scalar_multiple` 65, `plus_x` 29, `derivative` 23). Five hundred
+> pairs encoding three kinds of error is not five hundred units of signal — DPO on it learns three
+> lookup entries.
+>
+> **MEASURED AT SCALE (S1, 200 forged tasks, 1,600 attempts):**
+> **405 unique pairs · 550 distinct candidate strings · but only 3 semantic error archetypes**
+> (scalar-multiple 211, `+x` 108, derivative 86). The count looks healthy; the signal is three
+> rules. Had the original ≥500 gate survived, 405 would have read as "nearly there — mint a few
+> more tasks," and at 500 we would have declared success on a corpus teaching three rules.
+>
+> **Attribution — and this corrects my own first reading.** I said the bottleneck "moves to the
+> proposer." That is true of the *future* and false of *this measurement*. With the mock, the
+> candidate pool **is** the distractor list, which the forge generates. `_perturb` has exactly four
+> rules — `F*k`, `F+x`, `diff(F)`, `F/2` — and `F*k`/`F/2` are both scalar multiples, so **4 rules
+> collapse to 3 archetypes**, which is precisely the 3 measured. `NoisyProposer` faithfully sampled
+> a pool that was already only three kinds of wrong; it contributed nothing to the poverty.
+>
+> So **both measured degeneracies trace to the forge**, not the proposer: *task* variety
+> (`_sample_F` → 98% polynomial) and *error* variety (`_perturb` → 3 archetypes).
+>
+> **But they are not the same kind of problem, and only one should be "fixed".**
+>
+> - **Task variety — widen it.** More coefficients, nested compositions, integration by parts,
+>   partial fractions, `cas_equivalent` identities. A real fix, cheap, and it comes before any model.
+> - **Error variety — do NOT widen `_perturb`.** That is a category error, and the "fix" would be
+>   worse than the three honest archetypes. `_perturb` was written for Slice 1's job — falsifying
+>   the *verifier* ("do wrong answers get rejected?"), which wants few, hard, adversarial
+>   near-misses. Reading it as *training* signal wants something different: errors representative of
+>   what a model actually gets wrong. **You cannot synthesise those by perturbing the gold.** Real
+>   integration errors are procedural — a forgotten chain-rule factor, a sign flip on cos→sin, the
+>   power rule applied to an exponential — while `F*k`, `F+x`, `diff(F)` are algebraic neighbours of
+>   the *answer*, a different distribution entirely. Widening it would manufacture a corpus that
+>   *looks* diverse, turn the diversity metric green, and still teach the model to avoid mistakes it
+>   never makes. Diverse-looking fake signal is more dangerous than three honest archetypes.
+>
+> **The real conclusion: synthetic distractors were never going to be the training signal.**
+> Contrastive pairs need a real proposer — so S3 is load-bearing rather than an optional upgrade,
+> and archetype counts on the mock corpus are a *health warning*, not a metric to optimise.
+>
+> **So: S1 is a MECHANISM slice, and its gate defers to S3.** Build and test the uncapping,
+> appending, pair emission and sanitation with the mock; report pair count *and* distinct-candidate
+> / distinct-archetype counts so the number cannot flatter itself; and evaluate the ≥500-diverse-
+> pairs gate only once a real proposer is behind it. A regression asserting "attempts scale with
+> `--n`" will pass while distinct candidates stay pinned at ~3.5 — that saturation is correct
+> behaviour for a fixed-pool proposer, not a failure of the fix.
+
+**The proposer S0–S3 need already exists locally.** The "days, ~$0" estimate quietly assumed a
+model to propose with; it checks out. On disk today:
+
+| Model | Licence | Serve with | Use |
+|---|---|---|---|
+| `mlx-community/Qwen2.5-3B-Instruct-4bit` (1.6 GB, complete) | **Apache-2.0 — clean** | `pip install mlx-lm` → `mlx_lm.server` → `--base_url http://localhost:8080/v1` | **the one to use.** Small is *right* here: a weak proposer makes the learnable band (`pass@1 ≈ 0 < pass@N`) easy to find, and gains are more visible |
+| `gemma-4-12B-coder-fable5-composer2.5` GGUF (6.9 GB) | **Gemma + distilled from Fable 5/Composer 2.5 — TAINTED** | `llama-server` (already installed, runs now) | **diagnostics only.** This is the exact model `ULTRABRAIN_CODE_PLAN.md` names as the redistribution trap. Traces from it must never become shippable training data |
+
+The tainted model runs with zero setup and the clean one needs one `pip install`. Take the pip
+install — a corpus generated from the tainted model is unusable for the thing this project exists
+to ship, and that is discovered too late if it is discovered after training.
+
+**S1b · `--proposer llm` never actually searched — found 2026-07-28, during S3 collection.**
+`LLMProposer.propose(task, n)` issued *n identical HTTP requests with no seed*. Against a
+deterministic server that returns *n identical candidates*, so **`--n` was inert on the LLM path
+for the whole of Slice 2's existence.** Verified search with a real model behind the gate — the
+project's headline mechanism — was silently single-shot.
+
+Confirmed from two directions during S3: every task produced exactly **one** distinct candidate
+across N=8, yielding 544 traces that were eightfold duplicates of 68 distinct candidates and
+**zero preference pairs**; and independently, collection solved 68/252 tasks, which tracks the
+in-domain **pass@1 of 73**, not the pass@8 of 115.
+
+It went unnoticed because the pipeline had never been run end-to-end with a real LLM — `NoisyProposer`
+carries its own RNG, so every test and every prior experiment looked healthy. Fixed by forwarding a
+deterministic per-request seed (`base_seed + request_index`).
+
+> **This is the same defect as `run_verified_search.py:161` and as three bugs in the S3 grader: a
+> knob that appears to control something and does not.** Four instances in one day, across the
+> system under test *and* the instrument built to measure it. The general lesson is stronger than
+> any individual fix — **a compute knob is not verified until you have measured that turning it
+> changes the output.** Distinct-candidate counts belong in every search-path result, permanently.
 
 ### S2 · Difficulty targeting
 
@@ -182,7 +337,24 @@ Bias-2 correction that distinction must be enforced in code, not just in prose.
 
 ---
 
-## 3. What is deliberately not on this roadmap
+## 3. Data sources beyond the forge
+
+The symbolic forge (S0) is unlimited but narrow — it mints mathematics. Three planned documents
+cover where *code* tasks come from, in strict build order. **All three sit after S3**: they are
+worthless if training on verified tasks turns out not to improve a model, and S3 answers that for
+about $0.
+
+| | Doc | What | When |
+|---|---|---|---|
+| 1 | [`FLIGHT_CORPUS.md`](docs/FLIGHT_CORPUS.md) | design + licence rules for PX4/ArduPilot as a task source. Key move: they are a **mine for specifications and reference vectors**, not a build target — the C++ never runs | after S3 |
+| 2 | [`FLIGHT_HARVESTER_PLAN.md`](docs/FLIGHT_HARVESTER_PLAN.md) | the build: gtest parser → task JSONL, ~1–2 weeks. **The pilot** — one repo, one language, known-good suite | after 1 |
+| 3 | [`GITHUB_ABSORBER_PLAN.md`](docs/GITHUB_ABSORBER_PLAN.md) | generalise the pilot across repos. Scores repos by **verifiability, not popularity** — and treats popularity as an *anti*-signal, because stars predict contamination | after 2 |
+
+Two rules run through all three: **permissive licences train, copyleft evaluates only** (enforced
+in code, not comment), and **every result is reported with its contamination control** — absorbed
+data can never be clean by construction, so the forge stays the control it is read against.
+
+## 4. What is deliberately not on this roadmap
 
 - **Pretraining a base model.** Seven orders of magnitude in data, ~8 GPU-years in FLOPs.
   Arithmetically excluded. The base is rented and swapped, not built.

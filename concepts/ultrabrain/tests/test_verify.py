@@ -1,10 +1,16 @@
 import json
 import os
+import subprocess
 import sys
+import time
+import warnings
+
+import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+import ultrabrain.verify.verifiers as verifier_module
 from ultrabrain.verify import (
     CASVerifier,
     CodeTestVerifier,
@@ -51,6 +57,304 @@ def test_cas_antiderivative_certifies_correct_rejects_wrong():
     assert cas_antiderivative("x**2", "2*x").status == CERTIFIED
     assert cas_antiderivative("x**2 + 5", "2*x").status == CERTIFIED  # constant of integration
     assert cas_antiderivative("x**3", "2*x").status == REJECTED
+
+
+def test_cas_rejects_submitted_nonfinite_and_undefined_candidates():
+    for candidate in ("oo", "zoo", "nan", "1/0", "0/0", "log(0)"):
+        verdict = cas_antiderivative(candidate, "0")
+        assert verdict.status == REJECTED, (candidate, verdict)
+    for candidate in ("0**0", "Integer(0)**0", "Rational(0,1)**0", "(1-1)**0", "Float(0)**0"):
+        verdict = cas_equivalent(candidate, "1")
+        assert verdict.status == REJECTED, (candidate, verdict)
+
+
+def test_cas_resource_bombs_abstain_without_hanging_parent():
+    started = time.monotonic()
+    cases = (
+        "factorial(999999)",
+        "gamma(1000000000000)",
+        "Float(Rational(1,3),100000000)",
+        "factorial(factorial(1000))",
+    )
+    for candidate in cases:
+        verdict = cas_equivalent(candidate, "0")
+        assert verdict.status == ABSTAIN, (candidate, verdict)
+    assert time.monotonic() - started < 2.0
+
+
+def test_cas_runtime_cpu_bomb_kills_worker_then_recovers():
+    # The arithmetic wrapper evades the literal factorial cap on purpose, exercising the actual
+    # worker deadline rather than only the parent preflight.
+    started = time.monotonic()
+    verdict = cas_equivalent("factorial(999999*999999)", "0")
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.resource_limit"
+    assert time.monotonic() - started < verifier_module._CAS_WALL_SECONDS + 1.0
+    assert cas_equivalent("x", "x").status == CERTIFIED  # dead pool was replaced, parent stayed sound
+
+
+def test_cas_preflight_caps_text_nodes_depth_and_arity():
+    balanced = ["x"] * 256
+    while len(balanced) > 1:
+        balanced = [
+            f"({balanced[i]}+{balanced[i + 1]})"
+            for i in range(0, len(balanced), 2)
+        ]
+    cases = {
+        "cas.abstain.text_limit": "x+" * 2500 + "x",
+        "cas.abstain.node_limit": balanced[0],
+        "cas.abstain.depth_limit": "sin(" * 65 + "x" + ")" * 65,
+        "cas.abstain.arity_limit": "Max(" + ",".join(["x"] * 17) + ")",
+    }
+    for expected_code, candidate in cases.items():
+        verdict = cas_equivalent(candidate, "0")
+        assert verdict.status == ABSTAIN, (expected_code, verdict)
+        assert verdict.detail == expected_code
+
+
+def test_cas_child_returns_values_and_parent_owns_every_verdict(monkeypatch):
+    observation = verifier_module._cas_worker_evaluate("equivalent", "x", "x", "x")
+    assert observation["kind"] == "comparison"
+    assert "status" not in observation and "code" not in observation
+
+    # Even if a malformed worker tries to send a verdict, the parent treats it as no evidence.
+    monkeypatch.setattr(
+        verifier_module,
+        "_request_cas_observation",
+        lambda *_args: ({"status": CERTIFIED, "code": "cas.certified.exact_zero"}, None),
+    )
+    verdict = cas_equivalent("x", "x")
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.protocol_error"
+
+
+def test_cas_worker_timeout_and_crash_are_always_abstain(monkeypatch):
+    monkeypatch.setattr(
+        verifier_module,
+        "_request_cas_observation",
+        lambda *_args: (None, "resource_limit"),
+    )
+    timed_out = cas_equivalent("x", "x")
+    assert timed_out.status == ABSTAIN
+    assert timed_out.detail == "cas.abstain.resource_limit"
+
+    monkeypatch.setattr(
+        verifier_module,
+        "_request_cas_observation",
+        lambda *_args: (None, "worker_crash"),
+    )
+    monkeypatch.setattr(verifier_module, "_CAS_UNAVAILABLE_WARNED", True)
+    crashed = cas_equivalent("x", "x")
+    assert crashed.status == ABSTAIN
+    assert crashed.detail == "cas.abstain.worker_crash"
+
+
+@pytest.mark.parametrize("mode", ["command", "stdin"])
+def test_cas_worker_available_when_main_is_not_importable(mode):
+    code = (
+        f"import sys; sys.path.insert(0, {ROOT!r}); "
+        "from ultrabrain.verify import CASVerifier, cas_equivalent; "
+        "print(CASVerifier.available()); print(cas_equivalent('x','x').status)"
+    )
+    command = [sys.executable, "-c", code] if mode == "command" else [sys.executable, "-"]
+    result = subprocess.run(
+        command,
+        input=None if mode == "command" else code,
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    assert result.stdout.splitlines() == ["True", CERTIFIED]
+    assert result.stderr == ""
+
+
+def test_cas_worker_never_reexecutes_unguarded_caller_main(tmp_path):
+    script = tmp_path / "unguarded_caller.py"
+    script.write_text(
+        f"import sys\n"
+        f"sys.path.insert(0, {ROOT!r})\n"
+        "from ultrabrain.verify import cas_equivalent\n"
+        "print('caller-top-level')\n"
+        "print(cas_equivalent('x', 'x').status)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    assert result.stdout.splitlines() == ["caller-top-level", CERTIFIED]
+    assert result.stderr == ""
+
+
+def test_cas_worker_failure_is_loud_and_bulk_health_gate_raises(monkeypatch):
+    monkeypatch.setattr(
+        verifier_module,
+        "_request_cas_observation",
+        lambda *_args: (None, "worker_unavailable"),
+    )
+    monkeypatch.setattr(verifier_module, "_CAS_UNAVAILABLE_WARNED", False)
+
+    with pytest.warns(RuntimeWarning, match="CAS verifier worker failed"):
+        verdict = cas_equivalent("x", "x")
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.worker_unavailable"
+
+    # Direct calls warn once rather than flooding a long batch.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert cas_equivalent("x", "x").status == ABSTAIN
+    assert caught == []
+
+    assert CASVerifier.health() == {
+        "available": False,
+        "code": "cas.health.worker_unavailable",
+    }
+    assert not CASVerifier.available()
+    with pytest.raises(RuntimeError, match="refusing silent total-abstain"):
+        CASVerifier.require_available()
+
+
+def test_cas_protocol_desync_abstains_and_recycles_worker(monkeypatch):
+    class FakeWorker:
+        stdin = stdout = None
+
+        def __init__(self):
+            self.terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout):
+            return 0
+
+    worker = FakeWorker()
+    monkeypatch.setattr(verifier_module, "_get_cas_worker", lambda: worker)
+    monkeypatch.setattr(
+        verifier_module,
+        "_exchange_cas_frame",
+        lambda _worker, request: {
+            "id": request["id"] + 1,
+            "observation": {
+                "kind": "comparison",
+                "residual": {"kind": "zero", "finite": True, "zero": True},
+                "equals": None,
+                "witnesses": [],
+            },
+        },
+    )
+    monkeypatch.setattr(verifier_module, "_CAS_UNAVAILABLE_WARNED", True)
+
+    verdict = cas_equivalent("x", "x")
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.protocol_error"
+    assert worker.terminated
+
+
+def test_cas_oversize_response_frame_abstains_and_recycles_worker(monkeypatch):
+    class FakePipe:
+        def fileno(self):
+            return 99
+
+        def close(self):
+            pass
+
+    class FakeWorker:
+        stdin = FakePipe()
+        stdout = FakePipe()
+
+        def __init__(self):
+            self.terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout):
+            return 0
+
+    worker = FakeWorker()
+    monkeypatch.setattr(verifier_module, "_get_cas_worker", lambda: worker)
+    monkeypatch.setattr(verifier_module, "_write_all", lambda *_args: None)
+    monkeypatch.setattr(
+        verifier_module,
+        "_read_exact",
+        lambda *_args: verifier_module._struct.pack(
+            ">I", verifier_module._CAS_PROTOCOL_MAX_BYTES + 1
+        ),
+    )
+    monkeypatch.setattr(verifier_module, "_CAS_UNAVAILABLE_WARNED", True)
+
+    verdict = cas_equivalent("x", "x")
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.protocol_error"
+    assert worker.terminated
+
+
+def test_cas_verdict_is_order_independent_across_pathological_neighbours():
+    before = cas_antiderivative("x**2 + 5", "2*x")
+    assert before.status == CERTIFIED
+
+    # These exercise the persistent worker, submitted-undefined preflight, and deep-input preflight.
+    # Whatever each neighbour decides, it must not alter the next request's assumptions or caches.
+    cas_equivalent("factorial(9999)", "factorial(9999)")
+    cas_equivalent("0**0", "1")
+    cas_equivalent("sin(" * 65 + "x" + ")" * 65, "0")
+
+    after = cas_antiderivative("x**2 + 5", "2*x")
+    assert (after.status, after.detail, after.evidence) == (
+        before.status,
+        before.detail,
+        before.evidence,
+    )
+
+
+def test_cas_reject_evidence_is_harvest_safe_and_has_no_diagnostic_escape_hatch():
+    candidate_text = "TRAIN_THIS_PAYLOAD"
+    expected_text = "x**2 + 3*x + 7"
+    parse_failure = cas_equivalent(candidate_text, expected_text)
+    wrong_answer = cas_equivalent("0", expected_text)
+    assert parse_failure.status == ABSTAIN
+    assert wrong_answer.status == REJECTED
+
+    for verdict in (parse_failure, wrong_answer):
+        persisted = verdict.detail + json.dumps(verdict.evidence, sort_keys=True)
+        assert candidate_text not in persisted
+        assert expected_text not in persisted
+        assert "residual" not in persisted
+        assert set(verdict.evidence) >= {"code", "candidate_digest", "reference_digest"}
+
+    with pytest.raises(TypeError):
+        cas_equivalent("x", "x", diagnostics=True)
+
+
+def test_cas_inconclusive_observation_abstains_not_rejects():
+    observation = {
+        "kind": "comparison",
+        "residual": {"kind": "symbolic", "finite": None, "zero": None},
+        "equals": None,
+        "witnesses": [],
+    }
+    verdict = verifier_module._decide_cas_observation(observation, {"op": "equivalent"})
+    assert verdict.status == ABSTAIN
+    assert verdict.detail == "cas.abstain.inconclusive"
+
+    # Undefinedness created by trusted differentiation/simplification is also absence of evidence,
+    # unlike a non-finite atom present in the submitted candidate.
+    for reason in ("nonfinite_derivative", "nonfinite_residual"):
+        verdict = verifier_module._decide_cas_observation(
+            {"kind": "undecided", "reason": reason},
+            {"op": "antiderivative"},
+        )
+        assert verdict.status == ABSTAIN
+        assert verdict.detail == f"cas.abstain.{reason}"
 
 
 def test_cas_undecidable_input_abstains_not_rejects():

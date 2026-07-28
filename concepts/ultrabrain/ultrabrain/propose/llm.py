@@ -52,13 +52,17 @@ class LLMProposer:
     """Sample candidates from an OpenAI-compatible chat endpoint. Uses stdlib only (no requests)."""
 
     def __init__(self, base_url: str = "http://localhost:8000/v1", model: str = "Qwen/Qwen3-Coder-14B",
-                 temperature: float = 0.8, max_tokens: int = 512, timeout: float = 120.0,
+                 temperature: float = 0.8, top_p: float = 1.0, max_tokens: int = 512,
+                 timeout: float = 120.0, seed: int | None = None,
                  api_key: str = "not-needed"):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
+        self.top_p = top_p
         self.max_tokens = max_tokens
         self.timeout = timeout
+        self.seed = seed
+        self._request_index = 0
         self.api_key = api_key
 
     def _complete(self, task: dict) -> str:
@@ -66,8 +70,15 @@ class LLMProposer:
             "model": self.model,
             "messages": [{"role": "user", "content": prompt_for(task)}],
             "temperature": self.temperature,
+            "top_p": self.top_p,
             "max_tokens": self.max_tokens,
         }
+        if self.seed is not None:
+            # Best-effort request-level reproducibility, NOT a diversity guarantee. In S3,
+            # mlx_lm.server 0.31.3 still returned one identical sample N times despite distinct
+            # request seeds; search callers must measure actual candidate diversity.
+            payload["seed"] = self.seed + self._request_index
+            self._request_index += 1
         req = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(payload).encode(),
@@ -85,4 +96,11 @@ class LLMProposer:
                 out.append(self._complete(task))
             except (urllib.error.URLError, OSError, KeyError, ValueError, TimeoutError) as exc:
                 out.append(f"# proposer error: {exc}\n")  # gate will reject/abstain — sound
+        if n > 1 and len(set(out)) == 1:
+            raise RuntimeError(
+                "LLMProposer search produced 1 distinct candidate from "
+                f"{n} requests; the endpoint's sampling/search knob is inert. "
+                "Refusing to report this as verified search. Use the direct-batched "
+                "generation path (experiments/exp_s3_mlx.py) instead."
+            )
         return out

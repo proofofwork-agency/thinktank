@@ -36,49 +36,128 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ultrabrain.verify.verifiers import CASVerifier, CERTIFIED  # noqa: E402
 
 X = sp.Symbol("x")
+# Measured, not estimated (120k draws + per-family enumeration): poly 3900 + the 14 other
+# families 624 = 4524 PARAMETER COMBINATIONS, but only 4516 under EXPRESSION IDENTITY — eight
+# `ratio` forms are algebraic duplicates (x/(2*x+1) == 2*x/(4*x+2); Codex, pre-baseline). Quote
+# the deduplicated number: a generator's reach is the objects that survive dedupe, not the tuples
+# it enumerates. Before the 2026-07-28 widening this was 3984 with only 84 non-polynomial forms,
+# so conceptual coverage grew 7.4x while the polynomial reach is unchanged.
+_MEASURED_FORGE_SPACE = 4_516
+_MEASURED_NONPOLY_SPACE = 624
+
+
+# Widened 2026-07-28. The original six families reached 3,984 forms of which 3,900 were
+# polynomial: only 84 conceptually distinct tasks, exhausting at n~84 so every task beyond that
+# was more power-rule practice (ROADMAP.md S0b). The families below add CONCEPTS, not coefficients
+# — inverse-trig, rational, fractional powers, by-parts, hyperbolic, log-of-linear, mixed sums.
+#
+# Every branch must satisfy Codex's C4 conditions: closed, finite, differentiable, with the
+# DERIVATIVE landing inside verifiers.py `_ALLOWED_FUNCS` (so the gold is checkable) and no
+# nonfinite atom or identically-zero derivative. floor/ceiling/gamma/Abs are excluded on purpose:
+# they differentiate to Derivative/polygamma/sign forms outside the verifier grammar and ABSTAIN.
+_FORGE_FAMILIES = (
+    "poly", "trig", "exp", "log", "prod", "chain",          # original six
+    "loglin", "arctan", "arcsin", "sqrtpow", "byparts",     # added
+    "hyper", "trigpow", "mixed", "ratio",
+)
 
 
 def _sample_F(rng: random.Random):
-    """A small grammar of antiderivatives. Every branch has an elementary derivative."""
-    kind = rng.choice(["poly", "trig", "exp", "log", "prod", "chain"])
+    """The grammar of antiderivatives. Every branch has an elementary, in-grammar derivative."""
+    kind = rng.choice(list(_FORGE_FAMILIES))
     a, n = rng.randint(1, 6), rng.randint(2, 5)
+    m, c = rng.randint(2, 4), rng.randint(1, 4)
     if kind == "poly":
-        return sum(rng.randint(1, 5) * X**k for k in range(1, n + 1))
+        return sum(rng.randint(1, 5) * X**k for k in range(1, n + 1)), kind
     if kind == "trig":
-        return a * rng.choice([sp.sin(X), sp.cos(X), sp.tan(X)])
+        return a * rng.choice([sp.sin(X), sp.cos(X), sp.tan(X)]), kind
     if kind == "exp":
-        return a * sp.exp(rng.randint(1, 3) * X)
+        return a * sp.exp(rng.randint(1, 3) * X), kind
     if kind == "log":
-        return a * sp.log(X)
+        return a * sp.log(X), kind
     if kind == "prod":
-        return a * X**n * sp.exp(X)
-    return a * sp.sin(rng.randint(2, 4) * X)              # chain rule
+        return a * X**n * sp.exp(X), kind
+    if kind == "chain":
+        return a * sp.sin(rng.randint(2, 4) * X), kind
+    # --- added families: each introduces a distinct integration concept ---
+    if kind == "loglin":                                   # -> a*m/(m*x + c)
+        return a * sp.log(m * X + c), kind
+    if kind == "arctan":                                   # -> a/(x**2 + 1)
+        return a * sp.atan(rng.choice([X, m * X])), kind
+    if kind == "arcsin":                                   # -> a/sqrt(1 - x**2)
+        return a * sp.asin(X), kind
+    if kind == "sqrtpow":                                  # -> fractional power
+        return a * X**sp.Rational(rng.choice([3, 5, 7]), 2), kind
+    if kind == "byparts":                                  # -> x*cos(x) | log(x) | x*exp(x)
+        return a * rng.choice([
+            X * sp.sin(X) + sp.cos(X),
+            X * sp.log(X) - X,
+            (X - 1) * sp.exp(X),
+        ]), kind
+    if kind == "hyper":                                    # -> a*cosh(x) | a*sinh(x)
+        return a * rng.choice([sp.sinh(X), sp.cosh(X)]), kind
+    if kind == "trigpow":                                  # -> sec**2 / sin*cos
+        return a * rng.choice([sp.tan(m * X), sp.sin(X) ** 2, sp.cos(X) ** 2]), kind
+    if kind == "mixed":                                    # linearity across two families
+        return (rng.randint(1, 4) * X**rng.randint(2, 4)
+                + a * rng.choice([sp.sin(X), sp.cos(X), sp.exp(X), sp.log(X)])), kind
+    return a * X / (m * X + c), kind                       # ratio -> a*c/(m*x + c)**2
 
 
 def _perturb(F, rng: random.Random):
-    """An auto-distractor: a plausible near-miss (wrong constant factor, wrong power, off by x)."""
-    return rng.choice([F * rng.randint(2, 4), F + X, sp.diff(F, X), F / 2])
+    """A verifier-falsification near-miss — NOT a model-error simulator or diversity target.
+
+    This deliberately tiny pool serves Slice 1: wrong answers should not certify. It is synthetic
+    and does not represent the procedural mistakes a real model makes, so adding more algebraic
+    perturbations would create flattering but fake training-signal diversity.
+    """
+    # Keep the original RNG consumption/order stable while attaching trusted forge provenance.
+    return rng.choice([
+        (F * rng.randint(2, 4), "scalar_multiple"),
+        (F + X, "plus_x"),
+        (sp.diff(F, X), "derivative"),
+        (F / 2, "scalar_multiple"),
+    ])
 
 
 def mint(n: int, seed: int = 7, n_distractors: int = 3) -> list:
     """Mint ``n`` antiderivative tasks in the shipped micro_cas.jsonl schema."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    if n > _MEASURED_FORGE_SPACE:
+        raise ValueError(
+            "forge space exhausted after 0 attempts: 0 distinct minted; "
+            f"requested {n}, measured grammar maximum is {_MEASURED_FORGE_SPACE}"
+        )
     rng = random.Random(seed)
     out, seen = [], set()
+    attempts = 0
+    max_attempts = max(10_000, n * 100)
     while len(out) < n:
-        F = sp.simplify(_sample_F(rng))
+        attempts += 1
+        if attempts > max_attempts:
+            raise RuntimeError(
+                f"forge space exhausted after {max_attempts} attempts: "
+                f"{len(out)} distinct minted (requested {n})"
+            )
+        sampled, family = _sample_F(rng)
+        F = sp.simplify(sampled)
         integrand = sp.simplify(sp.diff(F, X))
         if integrand.is_number or str(F) in seen:        # degenerate / duplicate
             continue
         seen.add(str(F))
+        perturbed = [_perturb(F, rng) for _ in range(n_distractors)]
         out.append({
             "id": f"forge_cas_{len(out)}",
             "kind": "cas",
+            "task_family": family,
             "op": "antiderivative",
             "var": "x",
             "prompt": f"Antiderivative of {integrand}.",
             "integrand": str(integrand),
             "gold": str(F),
-            "distractors": [str(sp.simplify(_perturb(F, rng))) for _ in range(n_distractors)],
+            "distractors": [str(sp.simplify(expr)) for expr, _ in perturbed],
+            "distractor_archetypes": [archetype for _, archetype in perturbed],
         })
     return out
 
@@ -91,8 +170,18 @@ def run(argv=None):
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
+    # A dead verifier must never masquerade as a weak proposer / zero-yield forge.
+    CASVerifier.require_available()
+
     t0 = time.time()
-    tasks = mint(args.n, seed=args.seed)
+    try:
+        tasks = mint(args.n, seed=args.seed)
+    except (ValueError, RuntimeError) as exc:
+        if args.json:
+            print(json.dumps({"error": "forge_space_exhausted", "detail": str(exc)}, indent=2))
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     mint_s = time.time() - t0
 
     # F2 + F3 against the REAL verifier — no mock, no stub.

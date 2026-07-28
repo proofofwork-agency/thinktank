@@ -2,3 +2,8 @@
 .engram/
 concepts/ultrabrain/state/
 concepts/ultrabrain/skills/
+
+# Git worktrees created by concurrent Claude Code sessions. These are full checkouts
+# of THIS repo on other branches — never commit them (a nested checkout inside the
+# repo is meaningless, and they carry .git pointers back to the parent).
+.claude/worktrees/
