@@ -223,6 +223,37 @@ and the answer was "no confound." Worth recording both halves.
 collection and ~8 min training ≈ **109 min (~1.8 h)**. Under the 2-hour stop line. Continuing
 unchanged.
 
+## Collection audited — and the small-N caveat, recorded before the result
+
+Independently verified against the direct-batched collection artifacts (all four SHAs match):
+
+| check | result |
+|---|---|
+| traces re-verified by the real unmodified `CASVerifier` | **570/570 certified, 0 failures** |
+| distinct (task, solution) pairs | 126 |
+| distinct tasks solved | **115 — exact match to the in-domain baseline pass@8 of 115/252** |
+| ordered candidate digests vs the audited seed-0 block | **0 mismatches across all 252 tasks** |
+
+The digest match plus the exact pass@8 agreement means collection and evaluation are *provably*
+the same sampler, not merely the same code. And the SFT corpus is **verified by construction** —
+every example independently re-certified here, not taken on report.
+
+**Verified-search data yield — the economic number:** 2,016 generations → 115 tasks solved → **126
+unique certified examples**. A **6.2% yield**, or 0.50 examples per task attempted. That is the
+real cost of verified data on this setup and it should be quoted whenever the pipeline's economics
+are discussed.
+
+> **SMALL-N CAVEAT — stated before any trained number exists.** 126 examples is a *small* SFT set
+> for a 3B model. If the trained model shows no gain, that is at least as consistent with **"too
+> little data"** as with **"verified search does not transfer."** The pre-registered design already
+> discriminates: no gain in-domain *and* none held-out is a **BROKEN RUN / inconclusive**, not a
+> negative for the thesis. **The in-domain split therefore carries more weight here than usual** —
+> it is the only thing separating a weak-training-signal null from a genuine non-transfer result.
+
+**Coverage gap, recorded not patched:** the `prod` family contributes **0** examples — the base
+model certified no product-family candidate at all. An observed yield limitation; manufacturing
+coverage to fill it would corrupt the corpus.
+
 ## What each outcome means
 
 | Held-out result | Reading |
