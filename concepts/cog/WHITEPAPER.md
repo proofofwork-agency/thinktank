@@ -51,7 +51,7 @@ A unit of account is a ruler for value. Rulers are useful because they don't ben
 For the intelligence economy, the dollar is a bending ruler. Documented constant-quality
 price points:
 
-| Date | Cheapest model at tier | Blended price* | Source |
+| Date | Documented model at tier† | Blended price* | Source |
 |---|---|---|---|
 | Nov 2021 | GPT-3 davinci (MMLU ~42 tier) | $60.00 / M tokens | a16z "LLMflation" |
 | Nov 2024 | Llama 3.2 3B (same tier) | $0.06 / M tokens | a16z "LLMflation" |
@@ -64,9 +64,20 @@ price points:
 \* *Blended = 0.8 × input + 0.2 × output price per million tokens (4:1 ratio). See Appendix C
 for the full table with caveats.*
 
+† *This column previously read "Cheapest model at tier." That was an overclaim and has been
+withdrawn: the series selects the cheapest among **hand-curated** monthly observations, not
+across a complete universe of qualifying models. It is cheapest-of-what-we-listed. Appendix C
+quantifies what that costs — at two dates a model that Epoch AI scores as clearing the same
+MMLU bar was 2.2–3.2× cheaper than the point recorded here.*
+
 That is a **1,000× decline in three years** at the lower tier (a16z's measurement — exactly
 10×/yr) and **143× in 39 months** at the frontier tier (ours — 4.6×/yr, computed by
-`cogfix/cogfix.py` over the non-provisional series). Counting the provisional June-2026 point
+`cogfix/cogfix.py` over the non-provisional series). Read that second figure precisely: it is
+the **endpoint CAGR of the observations we selected**, arithmetic on the first and last points
+only. It is not validated as a cheapest-qualifying reconstruction, and the cross-check in
+Appendix C shows the interior of the curve is selection-sensitive by 2.2–3.2×. The endpoints
+happen to be unaffected — which is why the number stands rather than being restated — but a
+reader should not treat it as a measured market rate. Counting the provisional June-2026 point
 the frontier figure is 305× (5.8×/yr), but that point is excluded from the official fix until
 it clears a qualifying basket run, so the conservative number is the one to quote.
 Call it **4.6–10× per year depending on tier**.
@@ -603,9 +614,73 @@ evidence.
 Full table in [`cogfix/data.json`](cogfix/data.json), with per-point sources. Caveats:
 pre-2025 points use launch-announcement pricing (documented); capability tiers are
 approximated by MMLU-era public scores rather than a true frozen COG-1 basket run (which
-did not exist historically — the backtest shows the *shape* the fix would have had, labeled
-approximate throughout); 2026 points are live OpenRouter quotes fetched 2026-06-10, with
+did not exist historically); 2026 points are live OpenRouter quotes fetched 2026-06-10, with
 the V4-Flash point marked *provisional pending a qualifying basket run*.
+
+Earlier drafts said the backtest "shows the *shape* the fix would have had." **That claim is
+withdrawn.** The measurement below is why.
+
+### C.1 — Methodology cross-check against Epoch AI
+
+We hold a second, independently produced capability-normalized price series in this repository
+already: the vendored Epoch AI snapshot used as the fallback anchor. Two series purporting to
+price the same thing can be compared, so we compared them. Reproduce it yourself, offline,
+from `concepts/cog`:
+
+```
+python3 anchor/crosscheck.py
+```
+
+```
+COG / Epoch cross-check (offline; vendored data only)
+COG backtest resolution: monthly; Epoch dates below are exact event dates.
+Admissible COG/Epoch blend ratio band from normalize_blend(): [0.800000, 1.066667]
+
+epoch date  epoch model                  epoch $/M    cog fix  cog/epoch  cog basis     model comparison  blend band
+--------------------------------------------------------------------------------------------------------------------
+2023-03-14  GPT-4-0314                   37.500000  36.000000   0.960000  exact         SAME-MODEL        INSIDE
+2023-11-06  GPT-4 Turbo                  15.000000  14.000000   0.933333  exact         SAME-MODEL        INSIDE
+2024-05-13  GPT-4o-2024-05                7.500000   7.000000   0.933333  exact         SAME-MODEL        INSIDE
+2024-05-23  Gemini-1.5-Pro-2024-05        2.190000   7.000000   3.196347  exact         DIFFERENT-MODEL   OUTSIDE
+2025-02-05  Gemini 2.0 Flash              0.175000   0.388682   2.221041  interpolated  DIFFERENT-MODEL   OUTSIDE
+
+Classification: 3 SAME-MODEL/INSIDE; 2 DIFFERENT-MODEL/OUTSIDE.
+```
+
+**What it establishes.** The split is clean and it is not a coincidence. Where both series
+price the *same model*, they agree to within 0.93–0.96 — comfortably inside the
+`[0.80, 1.0667]` band that the known blend mismatch can itself explain (Epoch uses its own
+input/output ratio; COG-1 fixes 0.8/0.2). Two independently built methodologies converging
+that closely on the same artifact is genuine corroboration of the *pricing* step.
+
+Where the two series pick a *different model*, they diverge by 2.2× and 3.2× — far outside
+anything blend normalization can account for. On 2024-05-23, ten days after the GPT-4o point
+this series records at \$7.00, Epoch records Gemini-1.5-Pro at \$2.19 as clearing the same
+MMLU ≥ 86 bar. **Selection, not pricing, dominates the disagreement.** The backtest selects
+the cheapest among hand-curated monthly observations, and that candidate universe omits both
+Gemini events; "cheapest at tier" was cheapest-of-what-we-listed.
+
+**What it does not establish, and we will not imply otherwise.**
+
+- It is **not a tracking-error study**. Tracking error is a distribution over many periods
+  against a counterparty's realized costs; this is five events against one alternative index.
+  The basis-risk question in §6 remains unmeasured.
+- It is **not a corrected COG history**. Epoch's estimand is the single cheapest qualifying
+  *event*; COG-1's is a *median across eligible sized purchases*. Different statistics.
+  Epoch's number is not "what the cog should have said."
+- It does **not prove either Gemini would clear COG-1's basket**. The `[86.0, 100]` bound is
+  inclusive under Epoch's method, but no frozen COG-1 basket existed historically to sit them.
+- It does **not license a restated decline rate.** Over the common 23-month window the two
+  series imply 10.6×/yr and 16.4×/yr respectively. Five events cannot carry that difference,
+  so we publish neither as a correction. The headline 4.6×/yr is endpoint arithmetic on the
+  first and last points, both of which lie outside the compared window and are unaffected —
+  which is why it stands as stated rather than being revised.
+
+The honest summary: **the pricing step cross-checks; the selection step does not, and the
+selection step is the one nobody has independently validated.** A defensible historical rate
+would need a specified historical proxy basket and a reconstructed candidate universe. We
+have neither, and until we do, the backtest is a documented price series with a selection
+rule of its own — not a reconstruction of what COG-1 would have fixed.
 
 ---
 

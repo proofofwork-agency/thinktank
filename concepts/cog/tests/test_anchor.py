@@ -14,6 +14,14 @@ from anchor import (
     load_snapshot,
     normalize_blend,
 )
+from anchor.crosscheck import (
+    DIFFERENT_MODEL,
+    INSIDE,
+    OUTSIDE,
+    SAME_MODEL,
+    blend_ratio_band,
+    crosscheck_rows,
+)
 
 
 class AnchorTests(unittest.TestCase):
@@ -51,6 +59,31 @@ class AnchorTests(unittest.TestCase):
         result = divergence("0.144", normalized)
         self.assertEqual(result["difference_pct"], "-17.714286")
         self.assertTrue(result["inside_anchor_uncertainty"])
+
+    def test_crosscheck_pins_ratios_and_selection_classification(self):
+        rows = crosscheck_rows()
+        self.assertEqual(
+            [row.ratio_cog_to_epoch for row in rows],
+            ["0.960000", "0.933333", "0.933333", "3.196347", "2.221041"],
+        )
+        self.assertEqual(
+            [row.cog_basis for row in rows],
+            ["exact", "exact", "exact", "exact", "interpolated"],
+        )
+        self.assertEqual(
+            [(row.model_comparison, row.blend_band) for row in rows],
+            [
+                (SAME_MODEL, INSIDE),
+                (SAME_MODEL, INSIDE),
+                (SAME_MODEL, INSIDE),
+                (DIFFERENT_MODEL, OUTSIDE),
+                (DIFFERENT_MODEL, OUTSIDE),
+            ],
+        )
+        self.assertEqual(
+            tuple(str(value) for value in blend_ratio_band()),
+            ("0.800000", "1.066667"),
+        )
 
 if __name__ == "__main__":
     unittest.main()

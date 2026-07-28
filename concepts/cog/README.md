@@ -7,7 +7,9 @@ Not a coin. Not a chain. A ruler that doesn't bend.
 
 The price of cognition falls fast enough to break contracts: **~4.6× per year** at the
 frontier tier on our own series (GPT-4-class inference: **$36.00 → $0.25 per million blended
-tokens in 39 months** — 143×), and **~10× per year** at the commodity tier a16z measured
+tokens in 39 months** — 143×; this is the *endpoint CAGR of our selected documented
+observations*, not a validated market rate — see [Status & honesty](#status--honesty)), and
+**~10× per year** at the commodity tier a16z measured
 (MMLU~42: $60.00 → $0.06, 1,000× in 3 years). Every AI contract denominated in dollars is therefore
 a hidden, unchosen bet on the rate of AI progress: fixed-price buyers are short it,
 fixed-price sellers are long it. Result: nobody signs long-term AI contracts, and the agent
@@ -163,7 +165,7 @@ set (contamination detection, WHITEPAPER §5) is deliberately not in this repo. 
 "clears this quiz" and "is GPT-4-class" is the distance between concept and product, and it is
 not closed.
 
-Tests: `python3 -m unittest discover -s tests` — **75 tests, no network, stdlib only**: fix math,
+Tests: `python3 -m unittest discover -s tests` — **76 tests, no network, stdlib only**: fix math,
 hybrid repricing, grading, exam integrity and fingerprint scope, spend caps, MCP protocol and
 tool surface, the qualification gate, signature replacement and tamper detection, all five
 settlement rungs, Decimal invoice arithmetic, archive recomputation, rail fixtures, and the
@@ -279,6 +281,18 @@ available would have settled against a handful of sips: the precise scenario `mi
 to prevent. Receipt-lite is now its own rung between `venue-quote` and `receipted-depth`, an
 unknown tier fails closed to the weakest rung, and a regression test asserts a receipt-lite fix
 cannot settle a `min_tier: receipted-depth` obligation.
+
+**We cross-checked our own backtest against an independent series, and it disagreed.** The
+repo already vendors Epoch AI's capability-normalized series as a fallback anchor, so we
+compared the two — reproduce it with `python3 anchor/crosscheck.py`. Result: where both price
+the *same model* they agree within 0.93–0.96, inside the band the known blend mismatch alone
+explains. Where they pick a *different model* they diverge 2.2× and 3.2×. Ten days after the
+GPT-4o point our series records at \$7.00, Epoch records Gemini-1.5-Pro at \$2.19 clearing the
+same MMLU bar. **Selection, not pricing, dominates** — and our selection was the cheapest among
+*hand-curated* observations, so "cheapest model at tier" was cheapest-of-what-we-listed and has
+been withdrawn. This is a methodology cross-check on five events, **not** a tracking-error study
+and **not** a corrected history; it licenses no restated decline rate
+([`WHITEPAPER.md` Appendix C](WHITEPAPER.md)).
 
 **Basis risk is real and unmeasured.** The fix tracks the marginal public price of the cheapest
 qualifying endpoint; a vendor on committed, regional, private, or reserved capacity does not.
