@@ -43,7 +43,8 @@ observation regardless of its token count.
 Publishers MUST NOT describe this rule as volume-weighted or market-volume
 weighted. The purchase sizes are selected by the protocol rather than observed
 from market activity. The eligibility floor, not weighting, is the mechanism
-that prevents a loss-leader sip from setting the fix.
+that prevents a loss-leader sip from setting the fix: the protection is
+admission, not weighting.
 
 ## 5. Versioning
 

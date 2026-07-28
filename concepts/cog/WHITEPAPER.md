@@ -574,8 +574,8 @@ evidence.
 | Capability threshold | GPT-4-class general tier (frozen eval core + threshold published at v1.0) |
 | Reference workload | 1M blended tokens: 800k in / 200k out (4:1), frozen task-mix |
 | Qualifying evidence | Public-core pass + private-audit divergence < ε + production endpoint |
-| Fix | Volume-weighted median of receipted qualifying runs; 7-day median smoothing; cross-fixer median with multiple fixers |
-| Depth requirement | ≥ K = 5 independent purchases of ≥ N = 10M tokens each per window (draft) — a sip cannot set the fix |
+| Fix | Median executable price across qualifying sized purchases, equally weighted; 7-day median smoothing; cross-fixer median with multiple fixers |
+| Depth requirement | ≥ K = 5 independent purchases of ≥ N = 10M tokens each per window (draft) — the eligibility floor, not weighting, is what stops a sip setting the fix |
 | Contract template | Hybrid: $F/month fixed (non-AI legs) + N cogs/month (cognition leg) |
 | Publication | Daily, signed JSON: `{date, fix_usd, model, receipts[], basket: "COG-1"}` |
 | Version trigger | Audit divergence > ε, saturation, or task-mix obsolescence review |

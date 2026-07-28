@@ -122,7 +122,8 @@ def median_executable_price(runs):
     The depth protocol fixes the eligibility floor and purchase count: at least
     K=5 independent buys of at least N=10M tokens each.  Token counts are
     protocol-selected, not observed market volume, so they MUST NOT weight the
-    result or be described as market-volume weighting.
+    result or be described as market-volume weighting.  The protection is
+    admission through the eligibility floor, not weighting.
     """
     return statistics.median(run["price"] for run in runs)
 

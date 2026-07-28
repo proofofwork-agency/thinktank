@@ -82,7 +82,7 @@ class TestFixerd(unittest.TestCase):
         self.assertEqual([r["model"] for r in rows], ["cheap/model", "mid/model", "pricey/model"])
         self.assertAlmostEqual(rows[0]["blended_usd_per_M"], 0.8 * 0.1 + 0.2 * 0.2)
 
-    def test_median_executable_price_counts_each_eligible_buy_once(self):
+    def test_median_executable_price(self):
         runs = [{"price": 1.0, "weight": 1}, {"price": 2.0, "weight": 1}, {"price": 9.0, "weight": 1}]
         self.assertEqual(fixerd.median_executable_price(runs), 2.0)
         # The fixer selected these sizes; a larger token count is not market volume.
