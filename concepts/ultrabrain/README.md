@@ -63,11 +63,20 @@
 > - **The verified-trace loop is BLOCKED on that executor.** Certifying *real model* output into
 >   trusted training data — the project's core mechanism — cannot be done soundly in-process. It works
 >   today only with the zero-ML `mock` proposer (our own reference code). This is the gating next step.
-> - **Roadmap.** Slices 1, 2, 2b, 3 built + tested (`python -m pytest tests` → all green incl. the
->   xfail residual) + Codex-reviewed. What remains: the real fine-tunes / code-training on your
->   hardware, and — REQUIRED before trusting untrusted-proposer certificates — a **subordinate
->   candidate executor** (candidate process separate from the signer, for verdict integrity), plus an
->   outer OS boundary for host containment. These are distinct; an outer boundary alone does not suffice.
+> - **Roadmap — REORDERED.** Slices 1, 2, 2b, 3 built + tested (`python -m pytest tests` → all green
+>   incl. the xfail residual) + Codex-reviewed. The critical path is no longer "subordinate executor
+>   first": two measurements moved it. **(1)** The data-forge is capped at `len(tasks)` = 34 examples
+>   and its compute knob is inert — at `--n 64` it generates 384 candidates, judges **7**, keeps 6 and
+>   discards 377 unverified (`run_verified_search.py:161` + the `break`); `--n 8` does identical work.
+>   **(2)** The **symbolic path is sound today and infinitely generative** — `CASVerifier` never
+>   executes the candidate, so none of the `judge_v1` forgeries apply, and inverting it mints tasks
+>   with parent-held golds: `experiments/exp_task_forge.py` → **200 tasks in 18s, 200/200 golds
+>   certified, 595 distractors, 0 false certifications**. So the loop starts on the symbolic slice;
+>   the **subordinate candidate executor** is still REQUIRED — and, after Codex falsified the
+>   "rejects are safe" claim (a correct function forced an authenticated false REJECT; a genuine 0/10
+>   forged a signed 7/10), it now gates *learning* from the code slice, not merely shipping
+>   certificates. Full analysis: **[docs/BECOMING_AN_LLM.md](docs/BECOMING_AN_LLM.md)**; executable
+>   path with kill gates: **[ROADMAP.md](ROADMAP.md)**.
 >
 > Everything is local and tested (`python -m pytest tests`). The masked-diffusion LM described
 > below is a **research component** — now wired in behind the gate as the Slice 2b FIM proposer
