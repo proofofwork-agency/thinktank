@@ -151,6 +151,18 @@ performance, but it is not the trusted loop and must never be labelled as one.
 > candidate diversity. If the proposer emits near-identical candidates there is no signal in the
 > rejects, and verified self-improvement is dead — a genuine, cheap falsification.
 
+**The proposer S0–S3 need already exists locally.** The "days, ~$0" estimate quietly assumed a
+model to propose with; it checks out. On disk today:
+
+| Model | Licence | Serve with | Use |
+|---|---|---|---|
+| `mlx-community/Qwen2.5-3B-Instruct-4bit` (1.6 GB, complete) | **Apache-2.0 — clean** | `pip install mlx-lm` → `mlx_lm.server` → `--base_url http://localhost:8080/v1` | **the one to use.** Small is *right* here: a weak proposer makes the learnable band (`pass@1 ≈ 0 < pass@N`) easy to find, and gains are more visible |
+| `gemma-4-12B-coder-fable5-composer2.5` GGUF (6.9 GB) | **Gemma + distilled from Fable 5/Composer 2.5 — TAINTED** | `llama-server` (already installed, runs now) | **diagnostics only.** This is the exact model `ULTRABRAIN_CODE_PLAN.md` names as the redistribution trap. Traces from it must never become shippable training data |
+
+The tainted model runs with zero setup and the clean one needs one `pip install`. Take the pip
+install — a corpus generated from the tainted model is unusable for the thing this project exists
+to ship, and that is discovered too late if it is discovered after training.
+
 ### S2 · Difficulty targeting
 
 Keep only tasks in the learnable band — `pass@1 ≈ 0 < pass@N`. Below it, nothing to learn; above
