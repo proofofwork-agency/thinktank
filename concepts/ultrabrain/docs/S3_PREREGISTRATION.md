@@ -16,7 +16,7 @@ argued explicitly and recorded here.
 |---|---|
 | Model | `mlx-community/Qwen2.5-3B-Instruct-4bit`, Apache-2.0, already local |
 | Train families | `poly, trig, chain, exp, prod, log, mixed` |
-| Test families | `arctan, arcsin, sqrtpow, byparts, hyper, trigpow, loglin, ratio` — **252 forms** |
+| Test families | `arctan, arcsin, sqrtpow, byparts, hyper, trigpow, loglin, ratio` — **244 expression-unique forms** (see correction 1) |
 | Test concepts | inverse-trig, fractional powers, integration by parts, hyperbolic, log-of-linear, rational — none appear in training |
 | Budget | identical N, sampling params and prompt template for base and trained |
 | Both models measured on **both** splits | separates "training didn't take" from "trained but didn't generalise" |
@@ -62,6 +62,38 @@ existed, which is exactly what pre-registration is for.)*
    Debug the run; do not report it as evidence either way.
 6. **Any post-hoc change** — dropping a family, re-picking N, switching the metric, excluding
    tasks — must be recorded here with its reason before the affected number is quoted.
+
+## Recorded corrections
+
+Rule 6 requires design changes to be logged with their reason before the affected number is
+quoted. Both below were found **before the baseline was measured**, so no number existed that they
+could have been fitted to — the cleanest possible case.
+
+**Correction 1 — held-out set 252 → 244 (pre-baseline).** My 252 counted *parameter combinations*,
+not *distinct expressions*. Codex's witness: `x/(2*x+1)` and `2*x/(4*x+2)` simplify to the same
+antiderivative, so `ratio` has 72 parameter tuples but only 64 identities. Expression-unique
+composition, to be emitted with the frozen set rather than asserted:
+
+```
+loglin 72 · arctan 24 · arcsin 6 · sqrtpow 18 · byparts 18 · hyper 12 · trigpow 30 · ratio 64 = 244
+```
+
+The same error inflates the forge constant: `_MEASURED_FORGE_SPACE` 4,524 → **4,516** under
+expression identity. Paired criticals are unaffected — they depend on the discordant-pair count,
+not on n. *(This is the third time today I counted the space generated rather than the objects
+surviving dedupe. Consistent enough to be a rule: never quote a generator's reach without
+deduplicating by identity first.)*
+
+**Correction 2 — SFT-only; DPO deferred (pre-baseline).** `mlx-lm` 0.31.3 exposes SFT LoRA and has
+no DPO path. Ruling: **do not hand-roll one.** An unvalidated DPO implementation makes the result
+uninterpretable *in both directions* — positive and we cannot separate the method from a bug in our
+loss; negative and we cannot separate "preference training does not transfer" from "we implemented
+it wrong." The purpose of S3 is one number nobody has to argue about.
+
+SFT on certified traces answers the question as posed: *does training on verifier-certified data
+transfer to unseen concept classes?* Preference signal is an enhancement, not the claim. Pairs are
+still collected and kept as the input to a proper DPO run later on the RTX 5080, where `trl`
+provides a validated implementation. **This narrows the experiment; it does not invalidate it.**
 
 ## What each outcome means
 

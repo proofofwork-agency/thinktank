@@ -36,10 +36,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ultrabrain.verify.verifiers import CASVerifier, CERTIFIED  # noqa: E402
 
 X = sp.Symbol("x")
-# Measured, not estimated (120k draws + per-family enumeration). poly 3900 + the 14 other
-# families 624 = 4524. Before the 2026-07-28 widening this was 3984 with only 84 non-polynomial
-# forms, so conceptual coverage grew 7.4x while the polynomial reach is unchanged.
-_MEASURED_FORGE_SPACE = 4_524
+# Measured, not estimated (120k draws + per-family enumeration): poly 3900 + the 14 other
+# families 624 = 4524 PARAMETER COMBINATIONS, but only 4516 under EXPRESSION IDENTITY — eight
+# `ratio` forms are algebraic duplicates (x/(2*x+1) == 2*x/(4*x+2); Codex, pre-baseline). Quote
+# the deduplicated number: a generator's reach is the objects that survive dedupe, not the tuples
+# it enumerates. Before the 2026-07-28 widening this was 3984 with only 84 non-polynomial forms,
+# so conceptual coverage grew 7.4x while the polynomial reach is unchanged.
+_MEASURED_FORGE_SPACE = 4_516
 _MEASURED_NONPOLY_SPACE = 624
 
 

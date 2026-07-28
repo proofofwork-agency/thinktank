@@ -6,6 +6,12 @@ experiment/results/
 data/shakespeare.txt
 *.pt
 data/verified_traces.jsonl
+# Generated run artifacts. The preference pairs are explicitly UNTRUSTED diagnostics containing
+# model output — they are an input to a later training run, not a source-controlled asset.
+data/cas_preference_pairs_UNTRUSTED.jsonl
+data/s3_*.jsonl
+tasks/s3_*.jsonl
+tasks/forged_*.jsonl
 
 # Upstream flight-control sources (see docs/FLIGHT_CORPUS.md). Never vendored: they are
 # large, they carry their own licences (PX4 BSD-3, ArduPilot GPLv3), and mixing GPLv3 source
