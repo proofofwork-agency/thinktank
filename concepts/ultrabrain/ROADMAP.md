@@ -205,10 +205,27 @@ performance, but it is not the trusted loop and must never be labelled as one.
 > collapse to 3 archetypes**, which is precisely the 3 measured. `NoisyProposer` faithfully sampled
 > a pool that was already only three kinds of wrong; it contributed nothing to the poverty.
 >
-> So **both measured degeneracies trace to the forge**, not the proposer:
-> *task* variety (`_sample_F` → 98% polynomial) and *error* variety (`_perturb` → 3 archetypes).
-> Both are mine and both are cheap to widen. The proposer bottleneck is real but **downstream** —
-> it becomes the binding constraint only once the forge stops being one.
+> So **both measured degeneracies trace to the forge**, not the proposer: *task* variety
+> (`_sample_F` → 98% polynomial) and *error* variety (`_perturb` → 3 archetypes).
+>
+> **But they are not the same kind of problem, and only one should be "fixed".**
+>
+> - **Task variety — widen it.** More coefficients, nested compositions, integration by parts,
+>   partial fractions, `cas_equivalent` identities. A real fix, cheap, and it comes before any model.
+> - **Error variety — do NOT widen `_perturb`.** That is a category error, and the "fix" would be
+>   worse than the three honest archetypes. `_perturb` was written for Slice 1's job — falsifying
+>   the *verifier* ("do wrong answers get rejected?"), which wants few, hard, adversarial
+>   near-misses. Reading it as *training* signal wants something different: errors representative of
+>   what a model actually gets wrong. **You cannot synthesise those by perturbing the gold.** Real
+>   integration errors are procedural — a forgotten chain-rule factor, a sign flip on cos→sin, the
+>   power rule applied to an exponential — while `F*k`, `F+x`, `diff(F)` are algebraic neighbours of
+>   the *answer*, a different distribution entirely. Widening it would manufacture a corpus that
+>   *looks* diverse, turn the diversity metric green, and still teach the model to avoid mistakes it
+>   never makes. Diverse-looking fake signal is more dangerous than three honest archetypes.
+>
+> **The real conclusion: synthetic distractors were never going to be the training signal.**
+> Contrastive pairs need a real proposer — so S3 is load-bearing rather than an optional upgrade,
+> and archetype counts on the mock corpus are a *health warning*, not a metric to optimise.
 >
 > **So: S1 is a MECHANISM slice, and its gate defers to S3.** Build and test the uncapping,
 > appending, pair emission and sanitation with the mock; report pair count *and* distinct-candidate
