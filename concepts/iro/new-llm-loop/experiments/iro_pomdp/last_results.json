@@ -1,0 +1,65 @@
+[
+  {
+    "mode": "full",
+    "n": 50,
+    "success_rate": 1.0,
+    "mean_looks": 8,
+    "mean_steps": 16,
+    "mean_false_commits": 0,
+    "mean_reward": 0.43999999999999995
+  },
+  {
+    "mode": "no_eyes",
+    "n": 50,
+    "success_rate": 1.0,
+    "mean_looks": 8,
+    "mean_steps": 16,
+    "mean_false_commits": 0,
+    "mean_reward": 0.43999999999999995
+  },
+  {
+    "mode": "no_search",
+    "n": 50,
+    "success_rate": 0.24,
+    "mean_looks": 16.58,
+    "mean_steps": 90.48,
+    "mean_false_commits": 0,
+    "mean_reward": -2.138999999999998
+  },
+  {
+    "mode": "no_verify",
+    "n": 50,
+    "success_rate": 0.0,
+    "mean_looks": 50,
+    "mean_steps": 100,
+    "mean_false_commits": 48,
+    "mean_reward": -4.459999999999997
+  },
+  {
+    "mode": "random_sense",
+    "n": 50,
+    "success_rate": 0.26,
+    "mean_looks": 26.84,
+    "mean_steps": 88.06,
+    "mean_false_commits": 0,
+    "mean_reward": -2.4765999999999977
+  },
+  {
+    "mode": "always_look",
+    "n": 50,
+    "success_rate": 1.0,
+    "mean_looks": 8,
+    "mean_steps": 16,
+    "mean_false_commits": 0,
+    "mean_reward": 0.43999999999999995
+  },
+  {
+    "mode": "never_look",
+    "n": 50,
+    "success_rate": 1.0,
+    "mean_looks": 0,
+    "mean_steps": 42,
+    "mean_false_commits": 0,
+    "mean_reward": 0.21999999999999953
+  }
+]

@@ -1,7 +1,0 @@
-dist
-coverage
-node_modules
-.actweave
-.contextrelay
-.engram
-package-lock.json

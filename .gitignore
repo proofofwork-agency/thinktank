@@ -7,3 +7,23 @@ concepts/ultrabrain/skills/
 # of THIS repo on other branches — never commit them (a nested checkout inside the
 # repo is meaningless, and they carry .git pointers back to the parent).
 .claude/worktrees/
+
+# rapana runtime / market data (not source)
+concepts/rapana/data/
+concepts/rapana/journal/
+concepts/rapana/logs/
+concepts/rapana/state/
+concepts/rapana/.venv/
+
+# local agent / runtime noise inside concepts
+**/.contextrelay/
+**/.claude/
+concepts/rapana/data/
+concepts/rapana/journal/
+concepts/rapana/logs/
+concepts/rapana/state/
+concepts/**/.venv/
+concepts/**/node_modules/
+concepts/**/__pycache__/
+concepts/**/.pytest_cache/
+concepts/**/*.db

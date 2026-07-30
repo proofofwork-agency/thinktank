@@ -1,0 +1,1659 @@
+{
+  "assumptions": {
+    "bars_per_day": 24,
+    "db_path": "data/rapana.db",
+    "equity": "10000",
+    "first_half_period": [
+      "2025-06-23 20:00:00",
+      "2025-12-22 23:00:00"
+    ],
+    "lifetime_bars": 1,
+    "maker_fee_pct": "0.0005",
+    "offset_grid_bps": [
+      "0",
+      "0.5",
+      "1",
+      "1.5",
+      "2",
+      "3",
+      "5",
+      "8",
+      "12"
+    ],
+    "primary_period": [
+      "2025-06-23 20:00:00",
+      "2026-06-23 18:00:00"
+    ],
+    "primary_symbols": [
+      "BTC/USDT",
+      "ETH/USDT",
+      "SOL/USDT"
+    ],
+    "second_half_period": [
+      "2025-12-23 00:00:00",
+      "2026-06-23 18:00:00"
+    ],
+    "slippage_pct_for_limit_improvement": "0.0005",
+    "source": "real stored MEXC OHLCV only; no synthetic; replay/paper only; live parked",
+    "taker_fee_pct": "0.001",
+    "timeframe": "1h",
+    "warmup": 60
+  },
+  "gate": {
+    "halves_positive_structural_at_3": 2,
+    "not_concentrated_rule_passed": true,
+    "primary_structural_positive_at_3_and_5": true,
+    "symbols_positive_structural_at_3": 3,
+    "symbols_positive_structural_at_5": 3
+  },
+  "per_symbol": [
+    {
+      "fill_rate": 0.9050505050505051,
+      "gross_fee_savings": "53.681186",
+      "label": "per-symbol-BTC/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "75.153686",
+      "maker_fee_paid": "53.681199",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 448,
+      "maker_final_equity": "9849.161299939692",
+      "maker_submitted": 495,
+      "missed_count": 47,
+      "missed_notional": "11510.998225",
+      "net_execution_delta": "80.943259",
+      "non_structural_residual_after_structural": "-47.891613",
+      "offset_bps": "2",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "27.262073",
+      "rows_min": 8759,
+      "structural_edge": "128.834872",
+      "symbols": [
+        "BTC/USDT"
+      ],
+      "taker_fee_equiv": "107.362385",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9768.218040850585"
+    },
+    {
+      "fill_rate": 0.8796844181459567,
+      "gross_fee_savings": "53.675161",
+      "label": "per-symbol-BTC/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "85.880278",
+      "maker_fee_paid": "53.675148",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 446,
+      "maker_final_equity": "9847.732551627059",
+      "maker_submitted": 507,
+      "missed_count": 61,
+      "missed_notional": "14993.526491",
+      "net_execution_delta": "79.514511",
+      "non_structural_residual_after_structural": "-60.040928",
+      "offset_bps": "3",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "25.839350",
+      "rows_min": 8759,
+      "structural_edge": "139.555439",
+      "symbols": [
+        "BTC/USDT"
+      ],
+      "taker_fee_equiv": "107.350309",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9768.218040850585"
+    },
+    {
+      "fill_rate": 0.8368121442125237,
+      "gross_fee_savings": "53.162647",
+      "label": "per-symbol-BTC/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "106.325357",
+      "maker_fee_paid": "53.162632",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 441,
+      "maker_final_equity": "9844.013062654945",
+      "maker_submitted": 527,
+      "missed_count": 86,
+      "missed_notional": "20567.184332",
+      "net_execution_delta": "75.795022",
+      "non_structural_residual_after_structural": "-83.692982",
+      "offset_bps": "5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "22.632375",
+      "rows_min": 8759,
+      "structural_edge": "159.488004",
+      "symbols": [
+        "BTC/USDT"
+      ],
+      "taker_fee_equiv": "106.325279",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9768.218040850585"
+    },
+    {
+      "fill_rate": 0.9437609841827768,
+      "gross_fee_savings": "64.774485",
+      "label": "per-symbol-ETH/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "90.684281",
+      "maker_fee_paid": "64.774497",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 537,
+      "maker_final_equity": "10010.859981873774",
+      "maker_submitted": 569,
+      "missed_count": 32,
+      "missed_notional": "7946.871131",
+      "net_execution_delta": "105.120359",
+      "non_structural_residual_after_structural": "-50.338407",
+      "offset_bps": "2",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "40.345874",
+      "rows_min": 8759,
+      "structural_edge": "155.458766",
+      "symbols": [
+        "ETH/USDT"
+      ],
+      "taker_fee_equiv": "129.548982",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9905.739622712985"
+    },
+    {
+      "fill_rate": 0.9305555555555556,
+      "gross_fee_savings": "64.771563",
+      "label": "per-symbol-ETH/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "103.634448",
+      "maker_fee_paid": "64.771510",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 536,
+      "maker_final_equity": "10017.906109553828",
+      "maker_submitted": 576,
+      "missed_count": 40,
+      "missed_notional": "9541.116190",
+      "net_execution_delta": "112.166487",
+      "non_structural_residual_after_structural": "-56.239524",
+      "offset_bps": "3",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "47.394924",
+      "rows_min": 8759,
+      "structural_edge": "168.406011",
+      "symbols": [
+        "ETH/USDT"
+      ],
+      "taker_fee_equiv": "129.543073",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9905.739622712985"
+    },
+    {
+      "fill_rate": 0.8903654485049833,
+      "gross_fee_savings": "64.808409",
+      "label": "per-symbol-ETH/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "129.616710",
+      "maker_fee_paid": "64.808359",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 536,
+      "maker_final_equity": "10117.479611896670",
+      "maker_submitted": 602,
+      "missed_count": 66,
+      "missed_notional": "15799.170362",
+      "net_execution_delta": "211.739989",
+      "non_structural_residual_after_structural": "17.314870",
+      "offset_bps": "5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "146.931580",
+      "rows_min": 8759,
+      "structural_edge": "194.425119",
+      "symbols": [
+        "ETH/USDT"
+      ],
+      "taker_fee_equiv": "129.616768",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9905.739622712985"
+    },
+    {
+      "fill_rate": 0.9457831325301205,
+      "gross_fee_savings": "56.304235",
+      "label": "per-symbol-SOL/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "78.826005",
+      "maker_fee_paid": "56.304265",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 471,
+      "maker_final_equity": "9574.827435307854",
+      "maker_submitted": 498,
+      "missed_count": 27,
+      "missed_notional": "6479.101853",
+      "net_execution_delta": "100.417842",
+      "non_structural_residual_after_structural": "-34.712398",
+      "offset_bps": "2",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "44.113607",
+      "rows_min": 8759,
+      "structural_edge": "135.130240",
+      "symbols": [
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "112.608500",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9474.409593576505"
+    },
+    {
+      "fill_rate": 0.9251968503937008,
+      "gross_fee_savings": "56.291886",
+      "label": "per-symbol-SOL/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "90.066816",
+      "maker_fee_paid": "56.291510",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 470,
+      "maker_final_equity": "9561.035450300686",
+      "maker_submitted": 508,
+      "missed_count": 38,
+      "missed_notional": "9209.641635",
+      "net_execution_delta": "86.625857",
+      "non_structural_residual_after_structural": "-59.732845",
+      "offset_bps": "3",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "30.333971",
+      "rows_min": 8759,
+      "structural_edge": "146.358702",
+      "symbols": [
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "112.583396",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9474.409593576505"
+    },
+    {
+      "fill_rate": 0.8986615678776291,
+      "gross_fee_savings": "56.280246",
+      "label": "per-symbol-SOL/USDT",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "112.560340",
+      "maker_fee_paid": "56.279875",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 470,
+      "maker_final_equity": "9560.372327831765",
+      "maker_submitted": 523,
+      "missed_count": 53,
+      "missed_notional": "12678.589016",
+      "net_execution_delta": "85.962734",
+      "non_structural_residual_after_structural": "-82.877852",
+      "offset_bps": "5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "29.682488",
+      "rows_min": 8759,
+      "structural_edge": "168.840586",
+      "symbols": [
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "112.560121",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9474.409593576505"
+    }
+  ],
+  "plan_b": [
+    {
+      "fill_rate": 0.959502382212811,
+      "gross_fee_savings": "431.224261",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "431.224353",
+      "maker_fee_paid": "431.224445",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3625,
+      "maker_final_equity": "7551.21402947655",
+      "maker_submitted": 3778,
+      "missed_count": 153,
+      "missed_notional": "36944.376350",
+      "net_execution_delta": "110.227142",
+      "non_structural_residual_after_structural": "-752.221472",
+      "offset_bps": "0",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-320.997119",
+      "rows_min": 8759,
+      "structural_edge": "862.448614",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "862.448706",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    },
+    {
+      "fill_rate": 0.9528078038491958,
+      "gross_fee_savings": "430.436309",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "473.480164",
+      "maker_fee_paid": "430.436561",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3614,
+      "maker_final_equity": "7519.3411407264144010",
+      "maker_submitted": 3793,
+      "missed_count": 179,
+      "missed_notional": "43724.238876",
+      "net_execution_delta": "78.354253",
+      "non_structural_residual_after_structural": "-825.562220",
+      "offset_bps": "0.5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-352.082056",
+      "rows_min": 8759,
+      "structural_edge": "903.916473",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "860.872870",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    },
+    {
+      "fill_rate": 0.9467191601049869,
+      "gross_fee_savings": "429.917146",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "515.899390",
+      "maker_fee_paid": "429.914855",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3607,
+      "maker_final_equity": "7521.968473964969057",
+      "maker_submitted": 3810,
+      "missed_count": 203,
+      "missed_notional": "49283.162283",
+      "net_execution_delta": "80.981586",
+      "non_structural_residual_after_structural": "-864.834950",
+      "offset_bps": "1",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-348.935560",
+      "rows_min": 8759,
+      "structural_edge": "945.816536",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "859.832001",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    },
+    {
+      "fill_rate": 0.94140625,
+      "gross_fee_savings": "430.460969",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "559.599451",
+      "maker_fee_paid": "430.460804",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3615,
+      "maker_final_equity": "7654.3656212581127155",
+      "maker_submitted": 3840,
+      "missed_count": 225,
+      "missed_notional": "54519.320258",
+      "net_execution_delta": "213.378734",
+      "non_structural_residual_after_structural": "-776.681686",
+      "offset_bps": "1.5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-217.082235",
+      "rows_min": 8759,
+      "structural_edge": "990.060420",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "860.921773",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    },
+    {
+      "fill_rate": 0.9363683393688567,
+      "gross_fee_savings": "431.186854",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "603.662145",
+      "maker_fee_paid": "431.187017",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3620,
+      "maker_final_equity": "7649.204292795716510",
+      "maker_submitted": 3866,
+      "missed_count": 246,
+      "missed_notional": "59482.999147",
+      "net_execution_delta": "208.217405",
+      "non_structural_residual_after_structural": "-826.631594",
+      "offset_bps": "2",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-222.969449",
+      "rows_min": 8759,
+      "structural_edge": "1034.848999",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "862.373871",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    },
+    {
+      "fill_rate": 0.9192483494159471,
+      "gross_fee_savings": "431.402477",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "690.242884",
+      "maker_fee_paid": "431.400173",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3620,
+      "maker_final_equity": "7664.056517483142793",
+      "maker_submitted": 3938,
+      "missed_count": 318,
+      "missed_notional": "76230.443147",
+      "net_execution_delta": "223.069630",
+      "non_structural_residual_after_structural": "-898.575731",
+      "offset_bps": "3",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-208.332847",
+      "rows_min": 8759,
+      "structural_edge": "1121.645361",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "862.802650",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    },
+    {
+      "fill_rate": 0.8806366047745358,
+      "gross_fee_savings": "435.144099",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "870.287460",
+      "maker_fee_paid": "435.141762",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3652,
+      "maker_final_equity": "7820.814280743463285",
+      "maker_submitted": 4147,
+      "missed_count": 495,
+      "missed_notional": "118306.023620",
+      "net_execution_delta": "379.827393",
+      "non_structural_residual_after_structural": "-925.604166",
+      "offset_bps": "5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-55.316706",
+      "rows_min": 8759,
+      "structural_edge": "1305.431559",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "870.285861",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    },
+    {
+      "fill_rate": 0.8210143279508756,
+      "gross_fee_savings": "430.239446",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "1118.626387",
+      "maker_fee_paid": "430.239587",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3610,
+      "maker_final_equity": "7772.641930938463488",
+      "maker_submitted": 4397,
+      "missed_count": 787,
+      "missed_notional": "186290.672407",
+      "net_execution_delta": "331.655043",
+      "non_structural_residual_after_structural": "-1217.210790",
+      "offset_bps": "8",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-98.584403",
+      "rows_min": 8759,
+      "structural_edge": "1548.865833",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "860.479033",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    },
+    {
+      "fill_rate": 0.7374897456931911,
+      "gross_fee_savings": "429.099848",
+      "label": "plan-b-12-symbols",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "1458.947521",
+      "maker_fee_paid": "429.100038",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 3596,
+      "maker_final_equity": "7838.186220367205772",
+      "maker_submitted": 4876,
+      "missed_count": 1280,
+      "missed_notional": "306281.269829",
+      "net_execution_delta": "397.199333",
+      "non_structural_residual_after_structural": "-1490.848036",
+      "offset_bps": "12",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "-31.900515",
+      "rows_min": 8759,
+      "structural_edge": "1888.047369",
+      "symbols": [
+        "ADA/USDT",
+        "AVAX/USDT",
+        "BNB/USDT",
+        "BTC/USDT",
+        "DOGE/USDT",
+        "DOT/USDT",
+        "ETH/USDT",
+        "LINK/USDT",
+        "LTC/USDT",
+        "SOL/USDT",
+        "TRX/USDT",
+        "XRP/USDT"
+      ],
+      "taker_fee_equiv": "858.199886",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "7440.986887553810650"
+    }
+  ],
+  "plan_b_run": true,
+  "plan_b_symbols": [
+    "ADA/USDT",
+    "AVAX/USDT",
+    "BNB/USDT",
+    "BTC/USDT",
+    "DOGE/USDT",
+    "DOT/USDT",
+    "ETH/USDT",
+    "LINK/USDT",
+    "LTC/USDT",
+    "SOL/USDT",
+    "TRX/USDT",
+    "XRP/USDT"
+  ],
+  "primary": [
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 36,
+            "filled": 1444,
+            "filled_notional": "346071.682589",
+            "missed_notional": "8963.615116",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 36,
+            "filled": 1444,
+            "filled_notional": "346071.682589",
+            "missed_notional": "8963.615116",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 16,
+            "filled": 494,
+            "filled_notional": "118109.845348",
+            "missed_notional": "3975.050158",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 8,
+            "filled": 491,
+            "filled_notional": "117623.286539",
+            "missed_notional": "1999.988255",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 12,
+            "filled": 459,
+            "filled_notional": "110338.550703",
+            "missed_notional": "2988.576702",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 16,
+            "filled": 494,
+            "filled_notional": "118109.845348",
+            "missed_notional": "3975.050158",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 12,
+            "filled": 459,
+            "filled_notional": "110338.550703",
+            "missed_notional": "2988.576702",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 8,
+            "filled": 491,
+            "filled_notional": "117623.286539",
+            "missed_notional": "1999.988255",
+            "name": "ETH/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.9756756756756757,
+      "gross_fee_savings": "173.035816",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "173.035841",
+      "maker_fee_paid": "173.035867",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1444,
+      "maker_final_equity": "9418.67001324",
+      "maker_submitted": 1480,
+      "missed_count": 36,
+      "missed_notional": "8963.615116",
+      "net_execution_delta": "242.713870",
+      "non_structural_residual_after_structural": "-103.357787",
+      "offset_bps": "0",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "69.678054",
+      "rows_min": 8759,
+      "structural_edge": "346.071657",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "346.071683",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    },
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 59,
+            "filled": 1443,
+            "filled_notional": "346046.221670",
+            "missed_notional": "14671.777892",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 59,
+            "filled": 1443,
+            "filled_notional": "346046.221670",
+            "missed_notional": "14671.777892",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 17,
+            "filled": 494,
+            "filled_notional": "118109.952255",
+            "missed_notional": "4225.086304",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 15,
+            "filled": 490,
+            "filled_notional": "117606.171000",
+            "missed_notional": "3708.832734",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 27,
+            "filled": 459,
+            "filled_notional": "110330.098416",
+            "missed_notional": "6737.858854",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 27,
+            "filled": 459,
+            "filled_notional": "110330.098416",
+            "missed_notional": "6737.858854",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 17,
+            "filled": 494,
+            "filled_notional": "118109.952255",
+            "missed_notional": "4225.086304",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 15,
+            "filled": 490,
+            "filled_notional": "117606.171000",
+            "missed_notional": "3708.832734",
+            "name": "ETH/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.9607190412782957,
+      "gross_fee_savings": "173.023076",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "190.325434",
+      "maker_fee_paid": "173.023146",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1443,
+      "maker_final_equity": "9410.6495636375885",
+      "maker_submitted": 1502,
+      "missed_count": 59,
+      "missed_notional": "14671.777892",
+      "net_execution_delta": "234.693421",
+      "non_structural_residual_after_structural": "-128.655089",
+      "offset_bps": "0.5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "61.670345",
+      "rows_min": 8759,
+      "structural_edge": "363.348510",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "346.046222",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    },
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 78,
+            "filled": 1445,
+            "filled_notional": "346530.772234",
+            "missed_notional": "19421.359643",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 78,
+            "filled": 1445,
+            "filled_notional": "346530.772234",
+            "missed_notional": "19421.359643",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 23,
+            "filled": 496,
+            "filled_notional": "118605.924113",
+            "missed_notional": "5725.072042",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 19,
+            "filled": 490,
+            "filled_notional": "117600.333902",
+            "missed_notional": "4708.864202",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 36,
+            "filled": 459,
+            "filled_notional": "110324.514219",
+            "missed_notional": "8987.423399",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 36,
+            "filled": 459,
+            "filled_notional": "110324.514219",
+            "missed_notional": "8987.423399",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 23,
+            "filled": 496,
+            "filled_notional": "118605.924113",
+            "missed_notional": "5725.072042",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 19,
+            "filled": 490,
+            "filled_notional": "117600.333902",
+            "missed_notional": "4708.864202",
+            "name": "ETH/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.9487852921864741,
+      "gross_fee_savings": "173.265609",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "207.918490",
+      "maker_fee_paid": "173.265163",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1445,
+      "maker_final_equity": "9412.473268522543",
+      "maker_submitted": 1523,
+      "missed_count": 78,
+      "missed_notional": "19421.359643",
+      "net_execution_delta": "236.517125",
+      "non_structural_residual_after_structural": "-144.666974",
+      "offset_bps": "1",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "63.251516",
+      "rows_min": 8759,
+      "structural_edge": "381.184099",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "346.530772",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    },
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 85,
+            "filled": 1445,
+            "filled_notional": "346528.745681",
+            "missed_notional": "21171.299422",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 85,
+            "filled": 1445,
+            "filled_notional": "346528.745681",
+            "missed_notional": "21171.299422",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 27,
+            "filled": 494,
+            "filled_notional": "118103.495491",
+            "missed_notional": "6724.933107",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 22,
+            "filled": 490,
+            "filled_notional": "117600.693753",
+            "missed_notional": "5458.809076",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 36,
+            "filled": 461,
+            "filled_notional": "110824.556436",
+            "missed_notional": "8987.557239",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 36,
+            "filled": 461,
+            "filled_notional": "110824.556436",
+            "missed_notional": "8987.557239",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 27,
+            "filled": 494,
+            "filled_notional": "118103.495491",
+            "missed_notional": "6724.933107",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 22,
+            "filled": 490,
+            "filled_notional": "117600.693753",
+            "missed_notional": "5458.809076",
+            "name": "ETH/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.9444444444444444,
+      "gross_fee_savings": "173.264373",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "225.243729",
+      "maker_fee_paid": "173.264373",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1445,
+      "maker_final_equity": "9427.8113646074615",
+      "maker_submitted": 1530,
+      "missed_count": 85,
+      "missed_notional": "21171.299422",
+      "net_execution_delta": "251.855221",
+      "non_structural_residual_after_structural": "-146.652881",
+      "offset_bps": "1.5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "78.590848",
+      "rows_min": 8759,
+      "structural_edge": "398.508102",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "346.528746",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    },
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 102,
+            "filled": 1443,
+            "filled_notional": "346011.677134",
+            "missed_notional": "25386.708972",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 102,
+            "filled": 1443,
+            "filled_notional": "346011.677134",
+            "missed_notional": "25386.708972",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 28,
+            "filled": 494,
+            "filled_notional": "118097.190483",
+            "missed_notional": "6967.547052",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 28,
+            "filled": 490,
+            "filled_notional": "117598.462614",
+            "missed_notional": "6958.772555",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 46,
+            "filled": 459,
+            "filled_notional": "110316.024037",
+            "missed_notional": "11460.389364",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 46,
+            "filled": 459,
+            "filled_notional": "110316.024037",
+            "missed_notional": "11460.389364",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 28,
+            "filled": 494,
+            "filled_notional": "118097.190483",
+            "missed_notional": "6967.547052",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 28,
+            "filled": 490,
+            "filled_notional": "117598.462614",
+            "missed_notional": "6958.772555",
+            "name": "ETH/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.9339805825242719,
+      "gross_fee_savings": "173.005812",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "242.208239",
+      "maker_fee_paid": "173.005865",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1443,
+      "maker_final_equity": "9428.308394372410",
+      "maker_submitted": 1545,
+      "missed_count": 102,
+      "missed_notional": "25386.708972",
+      "net_execution_delta": "252.352251",
+      "non_structural_residual_after_structural": "-162.861800",
+      "offset_bps": "2",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "79.346439",
+      "rows_min": 8759,
+      "structural_edge": "415.214051",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "346.011677",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    },
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 138,
+            "filled": 1440,
+            "filled_notional": "345964.526245",
+            "missed_notional": "33968.789314",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 138,
+            "filled": 1440,
+            "filled_notional": "345964.526245",
+            "missed_notional": "33968.789314",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 40,
+            "filled": 493,
+            "filled_notional": "118068.398726",
+            "missed_notional": "9956.999428",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 37,
+            "filled": 488,
+            "filled_notional": "117090.939877",
+            "missed_notional": "8802.059799",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 61,
+            "filled": 459,
+            "filled_notional": "110805.187641",
+            "missed_notional": "15209.730087",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 61,
+            "filled": 459,
+            "filled_notional": "110805.187641",
+            "missed_notional": "15209.730087",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 40,
+            "filled": 493,
+            "filled_notional": "118068.398726",
+            "missed_notional": "9956.999428",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 37,
+            "filled": 488,
+            "filled_notional": "117090.939877",
+            "missed_notional": "8802.059799",
+            "name": "ETH/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.9125475285171103,
+      "gross_fee_savings": "172.982493",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "276.771745",
+      "maker_fee_paid": "172.982033",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1440,
+      "maker_final_equity": "9415.598258772223",
+      "maker_submitted": 1578,
+      "missed_count": 138,
+      "missed_notional": "33968.789314",
+      "net_execution_delta": "239.642116",
+      "non_structural_residual_after_structural": "-210.112122",
+      "offset_bps": "3",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "66.659623",
+      "rows_min": 8759,
+      "structural_edge": "449.754238",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "345.964526",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    },
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 205,
+            "filled": 1467,
+            "filled_notional": "353032.611675",
+            "missed_notional": "49580.450351",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 205,
+            "filled": 1467,
+            "filled_notional": "353032.611675",
+            "missed_notional": "49580.450351",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 61,
+            "filled": 499,
+            "filled_notional": "120195.966478",
+            "missed_notional": "14341.231879",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 55,
+            "filled": 499,
+            "filled_notional": "119559.708772",
+            "missed_notional": "13453.470041",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 89,
+            "filled": 469,
+            "filled_notional": "113276.936425",
+            "missed_notional": "21785.748431",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 89,
+            "filled": 469,
+            "filled_notional": "113276.936425",
+            "missed_notional": "21785.748431",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 61,
+            "filled": 499,
+            "filled_notional": "120195.966478",
+            "missed_notional": "14341.231879",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 55,
+            "filled": 499,
+            "filled_notional": "119559.708772",
+            "missed_notional": "13453.470041",
+            "name": "SOL/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.8773923444976076,
+      "gross_fee_savings": "176.516533",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "353.032835",
+      "maker_fee_paid": "176.516079",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1467,
+      "maker_final_equity": "9553.217740983005",
+      "maker_submitted": 1672,
+      "missed_count": 205,
+      "missed_notional": "49580.450351",
+      "net_execution_delta": "377.261598",
+      "non_structural_residual_after_structural": "-152.287770",
+      "offset_bps": "5",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "200.745065",
+      "rows_min": 8759,
+      "structural_edge": "529.549368",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "353.032612",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    },
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 338,
+            "filled": 1436,
+            "filled_notional": "345303.038031",
+            "missed_notional": "80899.220306",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 338,
+            "filled": 1436,
+            "filled_notional": "345303.038031",
+            "missed_notional": "80899.220306",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 77,
+            "filled": 489,
+            "filled_notional": "117521.299938",
+            "missed_notional": "18963.421039",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 107,
+            "filled": 487,
+            "filled_notional": "117016.030670",
+            "missed_notional": "24910.540930",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 154,
+            "filled": 460,
+            "filled_notional": "110765.707422",
+            "missed_notional": "37025.258337",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 154,
+            "filled": 460,
+            "filled_notional": "110765.707422",
+            "missed_notional": "37025.258337",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 107,
+            "filled": 487,
+            "filled_notional": "117016.030670",
+            "missed_notional": "24910.540930",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 77,
+            "filled": 489,
+            "filled_notional": "117521.299938",
+            "missed_notional": "18963.421039",
+            "name": "SOL/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.8094701240135288,
+      "gross_fee_savings": "172.651491",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "448.894653",
+      "maker_fee_paid": "172.651547",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1436,
+      "maker_final_equity": "9427.246568275320",
+      "maker_submitted": 1774,
+      "missed_count": 338,
+      "missed_notional": "80899.220306",
+      "net_execution_delta": "251.290425",
+      "non_structural_residual_after_structural": "-370.255719",
+      "offset_bps": "8",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "78.638934",
+      "rows_min": 8759,
+      "structural_edge": "621.546144",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "345.303038",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    },
+    {
+      "concentration": {
+        "top_days_by_filled_notional": [
+          {
+            "canceled": 548,
+            "filled": 1455,
+            "filled_notional": "350303.374016",
+            "missed_notional": "132496.701757",
+            "name": "unknown"
+          }
+        ],
+        "top_days_by_missed_notional": [
+          {
+            "canceled": 548,
+            "filled": 1455,
+            "filled_notional": "350303.374016",
+            "missed_notional": "132496.701757",
+            "name": "unknown"
+          }
+        ],
+        "top_symbols_by_filled_notional": [
+          {
+            "canceled": 154,
+            "filled": 497,
+            "filled_notional": "119606.237356",
+            "missed_notional": "36158.329663",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 117,
+            "filled": 497,
+            "filled_notional": "119482.756147",
+            "missed_notional": "28410.234012",
+            "name": "SOL/USDT"
+          },
+          {
+            "canceled": 277,
+            "filled": 461,
+            "filled_notional": "111214.380513",
+            "missed_notional": "67928.138082",
+            "name": "BTC/USDT"
+          }
+        ],
+        "top_symbols_by_missed_notional": [
+          {
+            "canceled": 277,
+            "filled": 461,
+            "filled_notional": "111214.380513",
+            "missed_notional": "67928.138082",
+            "name": "BTC/USDT"
+          },
+          {
+            "canceled": 154,
+            "filled": 497,
+            "filled_notional": "119606.237356",
+            "missed_notional": "36158.329663",
+            "name": "ETH/USDT"
+          },
+          {
+            "canceled": 117,
+            "filled": 497,
+            "filled_notional": "119482.756147",
+            "missed_notional": "28410.234012",
+            "name": "SOL/USDT"
+          }
+        ]
+      },
+      "fill_rate": 0.7264103844233649,
+      "gross_fee_savings": "175.151658",
+      "label": "primary-full",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "595.517114",
+      "maker_fee_paid": "175.151716",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 1455,
+      "maker_final_equity": "9569.806535654836",
+      "maker_submitted": 2003,
+      "missed_count": 548,
+      "missed_notional": "132496.701757",
+      "net_execution_delta": "393.850393",
+      "non_structural_residual_after_structural": "-376.818379",
+      "offset_bps": "12",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "218.698735",
+      "rows_min": 8759,
+      "structural_edge": "770.668772",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "350.303374",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9175.956143119590"
+    }
+  ],
+  "subperiod": [
+    {
+      "fill_rate": 0.929171668667467,
+      "gross_fee_savings": "93.231087",
+      "label": "first-half",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "130.523897",
+      "maker_fee_paid": "93.231118",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 774,
+      "maker_final_equity": "9940.701822443220",
+      "maker_submitted": 833,
+      "missed_count": 59,
+      "missed_notional": "14672.991545",
+      "net_execution_delta": "139.334085",
+      "non_structural_residual_after_structural": "-84.420899",
+      "offset_bps": "2",
+      "period_end": "2025-12-22 23:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "46.102998",
+      "rows_min": 4372,
+      "structural_edge": "223.754984",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "186.462205",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9801.367737424605"
+    },
+    {
+      "fill_rate": 0.910377358490566,
+      "gross_fee_savings": "93.100226",
+      "label": "first-half",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "148.960836",
+      "maker_fee_paid": "93.099984",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 772,
+      "maker_final_equity": "9952.384594451853",
+      "maker_submitted": 848,
+      "missed_count": 76,
+      "missed_notional": "18515.660738",
+      "net_execution_delta": "151.016857",
+      "non_structural_residual_after_structural": "-91.044205",
+      "offset_bps": "3",
+      "period_end": "2025-12-22 23:00:00",
+      "period_start": "2025-06-23 20:00:00",
+      "residual_path_delta_existing": "57.916631",
+      "rows_min": 4372,
+      "structural_edge": "242.061062",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "186.200210",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9801.367737424605"
+    },
+    {
+      "fill_rate": 0.9397759103641457,
+      "gross_fee_savings": "80.287984",
+      "label": "second-half",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "112.403247",
+      "maker_fee_paid": "80.288000",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 671,
+      "maker_final_equity": "9533.917061757216",
+      "maker_submitted": 714,
+      "missed_count": 43,
+      "missed_notional": "10730.024903",
+      "net_execution_delta": "134.867532",
+      "non_structural_residual_after_structural": "-57.823699",
+      "offset_bps": "2",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-12-23 00:00:00",
+      "residual_path_delta_existing": "54.579548",
+      "rows_min": 4387,
+      "structural_edge": "192.691231",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "160.575984",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9399.049530054860"
+    },
+    {
+      "fill_rate": 0.9173441734417345,
+      "gross_fee_savings": "81.279957",
+      "label": "second-half",
+      "lifetime_bars": 1,
+      "limit_price_improvement_filled": "130.047868",
+      "maker_fee_paid": "81.279747",
+      "maker_fee_pct": "0.0005",
+      "maker_filled": 677,
+      "maker_final_equity": "9533.505302746803",
+      "maker_submitted": 738,
+      "missed_count": 61,
+      "missed_notional": "15202.002808",
+      "net_execution_delta": "134.455773",
+      "non_structural_residual_after_structural": "-76.872052",
+      "offset_bps": "3",
+      "period_end": "2026-06-23 18:00:00",
+      "period_start": "2025-12-23 00:00:00",
+      "residual_path_delta_existing": "53.175816",
+      "rows_min": 4387,
+      "structural_edge": "211.327825",
+      "symbols": [
+        "BTC/USDT",
+        "ETH/USDT",
+        "SOL/USDT"
+      ],
+      "taker_fee_equiv": "162.559704",
+      "taker_fee_pct": "0.001",
+      "taker_final_equity": "9399.049530054860"
+    }
+  ]
+}

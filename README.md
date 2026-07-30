@@ -42,13 +42,18 @@ flowchart TB
 
     PP -.->|"guards the human edge<br/>of every layer below"| SPINE
 
-    UB["<b>ultrabrain</b> — the supply side<br/>proposes the work rather than adjudicating it.<br/><i>deliberately outside the spine — for now</i>"]
+    UB["<b>ultrabrain</b> — supply side (code/math)<br/>propose → verify → ledger<br/><i>outside the spine — for now</i>"]
+    IRO["<b>iro</b> — Eyes · Search · Run<br/>closed-loop intelligence under partial observability<br/><i>architecture research — outside the spine</i>"]
+    RA["<b>rapana</b> — MEXC research fleet<br/>risk-fenced paper trading · honest DSR gates<br/><i>live PARKED · free-data alpha falsified</i>"]
+
     UB -.->|"not wired in yet"| SPINE
+    IRO -.->|"shares fail-closed DNA;<br/>not a settlement layer"| SPINE
+    RA -.->|"receipts for trades that<br/>were never allowed to lie"| SPINE
 
     classDef edge fill:#0d2a1a,stroke:#2a7,color:#adf,stroke-width:2px
     classDef out fill:#2a2a2a,stroke:#777,color:#ccc,stroke-dasharray:4 3
     class PP edge
-    class UB out
+    class UB,IRO,RA out
 ```
 
 ### Read it as a single transaction
@@ -90,12 +95,17 @@ security. Most of the prior art we keep finding gets the mechanism right and the
 (see `concepts/sol/README.md` on ERC-7754, which puts the check in exactly the right place and then
 lets the user proceed anyway).
 
-### Why ultrabrain sits outside — for now
+### Why ultrabrain, iro, and rapana sit outside — for now
 
-Everything in the spine *adjudicates* work. ultrabrain *produces* it: LLMs propose, verifiers gate,
-ledgers remember. It shares the DNA — the gate-and-ledger core is the same idea — but it is the
-supply side of the market the rest of the stack settles, and wiring it in before its own verdict is
-written would couple a working stack to an unfinished kernel. It joins when it earns a verdict.
+Everything in the spine *adjudicates* work. Three concepts sit deliberately **off the settlement path**:
+
+| Concept | Why outside the spine |
+|---------|------------------------|
+| **ultrabrain** | *Produces* work (code/math propose → verify → ledger). Supply side of the market the stack settles; joins when it earns a full verdict. |
+| **iro** | *Redesigns* intelligence as Eyes · Search · Run (closed loop under partial observability). Architecture research; shares fail-closed DNA, is not a settlement layer. |
+| **rapana** | *Falsifies* free-data trading alpha on MEXC with DSR/holdout gates and risk fences. Live **PARKED**. Receipts for *not* lying about edge — adjacent culture, different domain (markets, not agent settlement). |
+
+Wiring any of them into the spine before their own verdicts are earned would couple a working stack to unfinished or domain-foreign kernels. They join when (and if) composition is real, not aspirational.
 
 ---
 
@@ -110,8 +120,25 @@ written would couple a working stack to an unfinished kernel. It joins when it e
 | [`concepts/vouch`](concepts/vouch/) | Permissionless surety for machine work: anyone can underwrite anyone else's promise, settlement is a deterministic verifier over a receipt — never a claims process, never a vote. Closes the consequential-loss gap escrow structurally cannot | **Concept — working prototype** (adversarial proofs in `test/`; runnable `examples/demo-deliveryproof.mjs`) | The gatekeeper still standing in 2026 is *the right to make a credible promise* — a new agent must either rent reputation from a platform that gates it or post capital it doesn't have. vouch lets a stranger's balance sheet substitute, and the premium *is* the market's live probability of delivery — the most valuable output of the system. Runs on no layer, deliberately |
 | [`concepts/sol`](concepts/sol/) | **PageProof** — a fail-closed web: pages that prove themselves. On-chain manifest + a client that refuses to render (and refuses to let the page ask you to sign) when the bytes don't match. Serve from Solana for reach, verify on Base where a light client actually exists | **Concept — research brief only** (zero code) | Censorship-resistance is a five-link chain and everyone fixes one; the unfixed link is the last mile, proven twice in 2026 with on-chain records perfectly intact. Closest prior art (ERC-7754) checks in the right place then roots trust in DNS+TLS and is fail-open by spec. Serve-on-Solana / verify-on-Base appears unoccupied. Next step is a one-day latency spike that kills the concept if verification can't sit inside a page load — see [`ROADMAP.md`](concepts/sol/ROADMAP.md) |
 | [`concepts/ultrabrain`](concepts/ultrabrain/) | Self-learning local agent kernel: LLMs propose, verifiers gate, ledgers remember, skills improve behavior, Datalog answers with proofs. **Supply side — outside the settlement stack for now** | **Concept — working kernel (WIP)** | Architecture proved; the gate + ledger + proofs are the core, now extended with experience streams, skill memory, and teacher-gated training candidates — headline cost-per-solved-task win not yet measured against a real fine-tune. Sandbox hardening is explicit that a same-address-space candidate can still forge a certificate: sound execution of untrusted code requires the OS capability boundary, not a deny-list |
+| [`concepts/iro`](concepts/iro/) | **IRO** (Eyes · Search · Run): closed-loop intelligence under partial observability — precision-weighted prediction error, info-gain sensing policy, transactional verify-before-commit. Not a bigger transformer; not RAG-as-search | **Concept — locked + POMDP prototype** (`new-llm-loop/experiments/iro_pomdp/`) | Concept-locked; full agent beats random_sense; Search + no_verify ablations causal on hardened toy; Eyes ablation still undifferentiable. Outside the spine. See [`README.md`](concepts/iro/README.md) |
+| [`concepts/rapana`](concepts/rapana/) | Risk-fenced, paper-first multi-agent **MEXC spot** research fleet: deterministic risk gates, DSR/walk-forward/holdout honesty, hash-chained journal. Unique product is **falsification + loss-prevention**, not LLM daytrading | **Concept — built lab; live PARKED** | Free-data directional alpha **falsified** (honest gates). Maker = cost layer only. Council: no free-data TA restart; defense + structural yield observation only. See [`RESEARCH-CLOSURE.md`](concepts/rapana/RESEARCH-CLOSURE.md), [`README.md`](concepts/rapana/README.md) |
 
 ## Layout
+
+```
+thinktank/
+  README.md              # this file — house thesis + concept index
+  concepts/
+    cog/                 # settlement spine
+    actweave/
+    deliveryproof/
+    vouch/
+    sol/                 # PageProof
+    sealedtrial/
+    ultrabrain/          # outside spine — supply / kernel research
+    iro/                 # outside spine — Eyes · Search · Run
+    rapana/              # outside spine — MEXC research fleet (live parked)
+```
 
 ```
 concepts/<name>/         self-contained prototype: README, whitepaper, code, docs/
@@ -119,6 +146,8 @@ concepts/<name>/         self-contained prototype: README, whitepaper, code, doc
 
 ThinkTank is a git/docs monorepo. Package-manager workspaces, when a concept needs
 them, live inside that concept directory; for example `concepts/deliveryproof` is
-its own npm-workspaces package with `concept/` and `adapters/*`.
+its own npm-workspaces package with `concept/` and `adapters/*`. **rapana** is a
+Python package (`pip install -e .` from `concepts/rapana/`); **iro** is design +
+Python POMDP prototype under `concepts/iro/new-llm-loop/`.
 
 A concept graduates out when something earns its own repo; the write-up stays as the trail.

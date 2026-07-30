@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rapana"
+version = "0.1.0"
+description = "Risk-fenced multi-agent trading fleet for MEXC (spot). Paper-first, audit-first."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Rapana" }]
+dependencies = [
+    "ccxt>=4.4.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+    "pandas>=2.2",
+    "structlog>=24.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "numpy>=1.26",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+agents = [
+    # Added in Phase 1+ (kept separate so Phase 0 stays light)
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
+]
+
+[project.scripts]
+rapana = "rapana.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rapana"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_mode = "auto"
